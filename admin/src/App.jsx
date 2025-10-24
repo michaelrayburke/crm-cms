@@ -13,16 +13,18 @@ export default function App() {
   const [contentTypes, setContentTypes] = useState([]);
   const [slug, setSlug] = useState('');
   const [name, setName] = useState('');
-  const [fields, setFields] = useState([{ key: 'title', label: 'Title', type: 'text', required: true, sort: 0 }]);
+  const [fields, setFields] = useState([
+    { key: 'title', label: 'Title', type: 'text', required: true, sort: 0 }
+  ]);
   const [selectedType, setSelectedType] = useState(null);
   const [entries, setEntries] = useState([]);
   const [entryData, setEntryData] = useState({});
 
-  const apiBase = import.meta.env.VITE_API_BASE || '';
-
   useEffect(() => {
     fetchTypes();
   }, []);
+
+  const apiBase = import.meta.env.VITE_API_BASE || '';
 
   async function login() {
     try {
@@ -31,18 +33,18 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: emailLogin, password: passwordLogin })
       });
-      const data = await res.json();
+      const json = await res.json();
       if (res.ok) {
-        setToken(data.token);
-        localStorage.setItem('token', data.token);
+        setToken(json.token);
+        localStorage.setItem('token', json.token);
         setEmailLogin('');
         setPasswordLogin('');
       } else {
-        alert(data.error || 'Login failed');
+        alert(json.error || 'Login failed');
       }
     } catch (err) {
       console.error(err);
-      alert('Login error');
+      alert('Login failed');
     }
   }
 
@@ -86,20 +88,53 @@ export default function App() {
   async function selectType(type) {
     try {
       const resType = await fetch(`${apiBase}/api/content-types/${type.slug}`);
-      if (!resType.ok) return alert('Cannot fetch type');
-      const fullType = await resType.json();
-      setSelectedType(fullType);
-      const resEntries = await fetch(`${apiBase}/api/content/${type.slug}`);
-      if (resEntries.ok) {
-        setEntries(await resEntries.json());
+      if (!resType.ok) {
+        alert('Could not fetch type details');
+        return;
+      }
+      const typeWithFields = await resType.json();
+      setSelectedType(typeWithFields);
+      const entriesRes = await fetch(`${apiBase}/api/content/${type.slug}`);
+      if (entriesRes.ok) {
+        const data = await entriesRes.json();
+        setEntries(data);
       } else {
         setEntries([]);
       }
-      const initData = {};
-      fullType.fields.forEach(f => {
-        initData[f.key] = f.type === 'boolean' ? false : '';
+      const init = {};
+      if (typeWithFields.fields) {
+        typeWithFields.fields.forEach((f) => {
+          init[f.key] = f.type === 'boolean' ? false : '';
+        });
+      }
+      setEntryData(init);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function createEntry() {
+    if (!selectedType) return;
+    try {
+      const res = await fetch(`${apiBase}/api/content/${selectedType.slug}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ data: entryData })
       });
-      setEntryData(initData);
+      if (res.ok) {
+        const entry = await res.json();
+        setEntries([entry, ...entries]);
+        const init = {};
+        selectedType.fields.forEach((f) => {
+          init[f.key] = f.type === 'boolean' ? false : '';
+        });
+        setEntryData(init);
+      } else {
+        alert('Failed to create entry');
+      }
     } catch (err) {
       console.error(err);
     }
@@ -119,40 +154,22 @@ export default function App() {
     setEntryData({ ...entryData, [key]: value });
   }
 
-  async function createEntry() {
-    if (!selectedType) return;
-    try {
-      const res = await fetch(`${apiBase}/api/content/${selectedType.slug}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: token ? `Bearer ${token}` : ''
-        },
-        body: JSON.stringify({ data: entryData })
-      });
-      if (res.ok) {
-        const entry = await res.json();
-        setEntries([entry, ...entries]);
-        const initData = {};
-        selectedType.fields.forEach(f => {
-          initData[f.key] = f.type === 'boolean' ? false : '';
-        });
-        setEntryData(initData);
-      } else {
-        alert('Failed to create entry');
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
   if (!token) {
     return (
       <div style={{ padding: '1rem' }}>
         <h1>CRM CMS Dashboard</h1>
         <h2>Login</h2>
-        <input placeholder="Email" value={emailLogin} onChange={(e) => setEmailLogin(e.target.value)} />
-        <input type="password" placeholder="Password" value={passwordLogin} onChange={(e) => setPasswordLogin(e.target.value)} />
+        <input
+          placeholder="Email"
+          value={emailLogin}
+          onChange={(e) => setEmailLogin(e.target.value)}
+        />
+        <input
+          placeholder="Password"
+          type="password"
+          value={passwordLogin}
+          onChange={(e) => setPasswordLogin(e.target.value)}
+        />
         <button onClick={login}>Login</button>
       </div>
     );
@@ -163,14 +180,33 @@ export default function App() {
       <div style={{ padding: '1rem' }}>
         <h1>CRM CMS Dashboard</h1>
         <h2>Create Content Type</h2>
-        <input placeholder="Slug" value={slug} onChange={(e) => setSlug(e.target.value)} />
-        <input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          placeholder="Slug"
+          value={slug}
+          onChange={(e) => setSlug(e.target.value)}
+        />
+        <input
+          placeholder="Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
         <h3>Fields</h3>
         {fields.map((f, i) => (
           <div key={i} style={{ marginBottom: '0.5rem' }}>
-            <input placeholder="Key" value={f.key} onChange={(e) => handleFieldChange(i, 'key', e.target.value)} />
-            <input placeholder="Label" value={f.label} onChange={(e) => handleFieldChange(i, 'label', e.target.value)} />
-            <select value={f.type} onChange={(e) => handleFieldChange(i, 'type', e.target.value)}>
+            <input
+              placeholder="Key"
+              value={f.key}
+              onChange={(e) => handleFieldChange(i, 'key', e.target.value)}
+            />
+            <input
+              placeholder="Label"
+              value={f.label}
+              onChange={(e) => handleFieldChange(i, 'label', e.target.value)}
+            />
+            <select
+              value={f.type}
+              onChange={(e) => handleFieldChange(i, 'type', e.target.value)}
+            >
               <option value="text">Text</option>
               <option value="textarea">Textarea</option>
               <option value="number">Number</option>
@@ -179,7 +215,12 @@ export default function App() {
               <option value="json">JSON</option>
             </select>
             <label style={{ marginLeft: '0.5rem' }}>
-              <input type="checkbox" checked={f.required} onChange={(e) => handleFieldChange(i, 'required', e.target.checked)} /> Required
+              <input
+                type="checkbox"
+                checked={f.required}
+                onChange={(e) => handleFieldChange(i, 'required', e.target.checked)}
+              />
+              Required
             </label>
           </div>
         ))}
@@ -189,7 +230,8 @@ export default function App() {
         <ul>
           {contentTypes.map((t) => (
             <li key={t.id}>
-              {t.name} ({t.slug}) <button onClick={() => selectType(t)}>Manage</button>
+              {t.name} ({t.slug}){' '}
+              <button onClick={() => selectType(t)}>Manage</button>
             </li>
           ))}
         </ul>
@@ -199,20 +241,40 @@ export default function App() {
 
   return (
     <div style={{ padding: '1rem' }}>
-      <button onClick={() => { setSelectedType(null); setEntries([]); }}>Back</button>
+      <button
+        onClick={() => {
+          setSelectedType(null);
+          setEntries([]);
+        }}
+      >
+        Back
+      </button>
       <h2>{selectedType.name} Entries</h2>
-      <div style={{ border: '1px solid #ccc', padding: '1rem', marginBottom: '1rem' }}>
+      <div
+        style={{ border: '1px solid #ccc', padding: '1rem', marginBottom: '1rem' }}
+      >
         <h3>Create Entry</h3>
         {selectedType.fields.map((f) => (
           <div key={f.id || f.key} style={{ marginBottom: '0.5rem' }}>
             <label>
               {f.label}{' '}
               {f.type === 'boolean' ? (
-                <input type="checkbox" checked={!!entryData[f.key]} onChange={(e) => updateEntryField(f.key, e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={!!entryData[f.key]}
+                  onChange={(e) => updateEntryField(f.key, e.target.checked)}
+                />
               ) : f.type === 'textarea' ? (
-                <textarea value={entryData[f.key] || ''} onChange={(e) => updateEntryField(f.key, e.target.value)} />
+                <textarea
+                  value={entryData[f.key] || ''}
+                  onChange={(e) => updateEntryField(f.key, e.target.value)}
+                />
               ) : (
-                <input type={f.type === 'number' ? 'number' : 'text'} value={entryData[f.key] || ''} onChange={(e) => updateEntryField(f.key, e.target.value)} />
+                <input
+                  type={f.type === 'number' ? 'number' : 'text'}
+                  value={entryData[f.key] || ''}
+                  onChange={(e) => updateEntryField(f.key, e.target.value)}
+                />
               )}
             </label>
           </div>
