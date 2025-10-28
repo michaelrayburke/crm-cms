@@ -183,6 +183,72 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
   }
 });
 
+/* === New endpoints for editing content types and fields === */
+
+// Update a content type's slug and name
+app.put('/api/content-types/:slug', authMiddleware, async (req, res) => {
+  const { slug } = req.params;
+  const { slug: newSlug, name } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE content_types SET slug = $1, name = $2 WHERE slug = $3 RETURNING *',
+      [newSlug || slug, name, slug]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Add a new field to a content type
+app.post('/api/content-types/:slug/fields', authMiddleware, async (req, res) => {
+  const { slug } = req.params;
+  const { name, type, options } = req.body;
+  try {
+    const ctRes = await pool.query(
+      'SELECT id FROM content_types WHERE slug = $1 LIMIT 1',
+      [slug]
+    );
+    if (!ctRes.rows.length) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const ctId = ctRes.rows[0].id;
+    const insertRes = await pool.query(
+      'INSERT INTO fields (content_type_id, name, type, options) VALUES ($1, $2, $3, $4) RETURNING *',
+      [ctId, name, type, options ? JSON.stringify(options) : null]
+    );
+    res.json(insertRes.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update an existing field on a content type
+app.put('/api/content-types/:slug/fields/:fieldId', authMiddleware, async (req, res) => {
+  const { fieldId } = req.params;
+  const { name, type, options } = req.body;
+  try {
+    const updateRes = await pool.query(
+      'UPDATE fields SET name = $1, type = $2, options = $3 WHERE id = $4 RETURNING *',
+      [name, type, options ? JSON.stringify(options) : null, fieldId]
+    );
+    if (!updateRes.rows.length) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    res.json(updateRes.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/* === End of new endpoints === */
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
