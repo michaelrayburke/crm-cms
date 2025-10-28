@@ -5,13 +5,23 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'https://serviceup-api.onrende
 
 function normalizeOptionsForSave(field) {
   if (['radio','dropdown','checkbox'].includes(field.type)) {
+    // static (CSV) or dynamic object
+    if (typeof field.options === 'object' && field.options?.sourceType) {
+      // dynamic
+      const srcField = field.options.sourceField || 'title';
+      return { sourceType: field.options.sourceType.trim(), sourceField: srcField };
+    }
+    // static
     if (!field.options) return [];
     if (Array.isArray(field.options)) return field.options;
     return String(field.options).split(',').map(s => s.trim()).filter(Boolean);
   }
   if (field.type === 'relationship') {
     if (!field.options) return null;
-    if (typeof field.options === 'object' && field.options.relatedType) return field.options;
+    if (typeof field.options === 'object' && field.options.relatedType) return {
+      relatedType: String(field.options.relatedType).trim(),
+      multiple: !!field.options.multiple
+    };
     return { relatedType: String(field.options).trim(), multiple: false };
   }
   return null;
@@ -19,18 +29,41 @@ function normalizeOptionsForSave(field) {
 
 function parseOptionsForEdit(type, options) {
   if (['radio','dropdown','checkbox'].includes(type)) {
+    if (options && typeof options === 'object' && options.sourceType) {
+      // dynamic
+      return { sourceType: options.sourceType, sourceField: options.sourceField || 'title' };
+    }
+    // static
     if (Array.isArray(options)) return options.join(', ');
     return Array.isArray(options) ? options : '';
   }
   if (type === 'relationship') {
-    return options || { relatedType: '', multiple: false };
+    if (!options) return { relatedType: '', multiple: false };
+    if (typeof options === 'object') return { relatedType: options.relatedType || '', multiple: !!options.multiple };
+    return { relatedType: String(options), multiple: false };
   }
   return '';
 }
 
-function FieldInput({ field, value, onChange, relatedCache }) {
+function FieldInput({ field, value, onChange, relatedCache, choicesCache }) {
+  // dynamic choices support for radio/dropdown/checkbox
+  const isChoice = ['radio','dropdown','checkbox'].includes(field.type);
+  const isDynamic = isChoice && field.options && typeof field.options === 'object' && field.options.sourceType;
+  let dynamicChoices = [];
+  if (isDynamic) {
+    const sourceType = field.options.sourceType;
+    const sourceField = field.options.sourceField || 'title';
+    const list = (choicesCache?.[sourceType]) || [];
+    dynamicChoices = list.map(ent => {
+      const v = (ent.data && (ent.data[sourceField] ?? ent.data.title)) ?? ent.id;
+      return String(v);
+    });
+  }
+
   if (['radio','dropdown'].includes(field.type)) {
-    const choices = Array.isArray(field.options) ? field.options : [];
+    const choices = isDynamic
+      ? dynamicChoices
+      : (Array.isArray(field.options) ? field.options : []);
     return (
       <select value={value ?? ''} onChange={e => onChange(e.target.value)}>
         <option value="" disabled>Select…</option>
@@ -38,8 +71,11 @@ function FieldInput({ field, value, onChange, relatedCache }) {
       </select>
     );
   }
+
   if (field.type === 'checkbox') {
-    const choices = Array.isArray(field.options) ? field.options : [];
+    const choices = isDynamic
+      ? dynamicChoices
+      : (Array.isArray(field.options) ? field.options : []);
     const current = Array.isArray(value) ? value : [];
     return (
       <div>
@@ -64,6 +100,7 @@ function FieldInput({ field, value, onChange, relatedCache }) {
       </div>
     );
   }
+
   if (field.type === 'boolean') {
     return (
       <label>
@@ -75,6 +112,7 @@ function FieldInput({ field, value, onChange, relatedCache }) {
       </label>
     );
   }
+
   if (field.type === 'relationship') {
     const rel = field.options?.relatedType;
     const list = (rel && relatedCache?.[rel]) || [];
@@ -88,15 +126,19 @@ function FieldInput({ field, value, onChange, relatedCache }) {
       </select>
     );
   }
+
   if (field.type === 'textarea') {
     return <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} />;
   }
+
   if (field.type === 'number') {
     return <input type="number" value={value ?? ''} onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))} />;
   }
+
   if (field.type === 'date') {
     return <input type="date" value={value ?? ''} onChange={e => onChange(e.target.value)} />;
   }
+
   if (field.type === 'json') {
     return (
       <textarea
@@ -109,6 +151,7 @@ function FieldInput({ field, value, onChange, relatedCache }) {
       />
     );
   }
+
   return <input type="text" value={value ?? ''} onChange={e => onChange(e.target.value)} />;
 }
 
@@ -158,9 +201,12 @@ export default function App() {
   const [entries, setEntries] = useState([]);
   const [entryData, setEntryData] = useState({});
   const [editingEntryId, setEditingEntryId] = useState(null);
+  const [creatingNew, setCreatingNew] = useState(false);
 
   // related cache for relationship inputs
   const [relatedCache, setRelatedCache] = useState({});
+  // dynamic choices cache for choice fields
+  const [choicesCache, setChoicesCache] = useState({});
 
   async function fetchTypes() {
     const res = await fetch(`${API_BASE}/api/content-types`);
@@ -196,6 +242,13 @@ export default function App() {
     setRelatedCache(prev => ({ ...prev, [relatedSlug]: data || [] }));
   }
 
+  async function ensureChoicesLoaded(sourceType) {
+    if (!sourceType || choicesCache[sourceType]) return;
+    const res = await fetch(`${API_BASE}/api/content/${sourceType}`);
+    const data = await res.json();
+    setChoicesCache(prev => ({ ...prev, [sourceType]: data || [] }));
+  }
+
   useEffect(() => { fetchTypes(); }, []);
 
   useEffect(() => {
@@ -217,6 +270,20 @@ export default function App() {
     setNewFields(prev => {
       const arr = [...prev];
       arr[i] = { ...arr[i], ...patch };
+      return arr;
+    });
+  }
+
+  function toggleNewFieldDynamic(i, useDynamic) {
+    setNewFields(prev => {
+      const arr = [...prev];
+      const f = { ...arr[i] };
+      if (useDynamic) {
+        f.options = { sourceType: '', sourceField: 'title' };
+      } else {
+        f.options = '';
+      }
+      arr[i] = f;
       return arr;
     });
   }
@@ -271,6 +338,20 @@ export default function App() {
     });
   }
 
+  function toggleEditingFieldDynamic(i, useDynamic) {
+    setEditingFields(prev => {
+      const arr = [...prev];
+      const f = { ...arr[i] };
+      if (useDynamic) {
+        f.options = { sourceType: '', sourceField: 'title' };
+      } else {
+        f.options = '';
+      }
+      arr[i] = f;
+      return arr;
+    });
+  }
+
   async function addFieldToType() {
     if (!token || !selectedType) { alert('Please login/select type'); return; }
     const newField = { key: '', label: '', type: 'text', required: false, sort: (editingFields?.length || 0), options: '' };
@@ -315,9 +396,14 @@ export default function App() {
   function startNewEntry() {
     setEditingEntryId(null);
     setEntryData({});
+    setCreatingNew(true);
+    // prime relationship & dynamic choice dropdowns
     selectedType?.fields?.forEach(f => {
       if (f.type === 'relationship' && f.options?.relatedType) {
         ensureRelatedLoaded(f.options.relatedType);
+      }
+      if (['radio','dropdown','checkbox'].includes(f.type) && f.options && typeof f.options === 'object' && f.options.sourceType) {
+        ensureChoicesLoaded(f.options.sourceType);
       }
     });
   }
@@ -325,10 +411,15 @@ export default function App() {
   function editEntry(id) {
     const ent = entries.find(e => String(e.id) === String(id));
     setEditingEntryId(id);
+    setCreatingNew(false);
     setEntryData(ent?.data || {});
+    // prime relationship & dynamic choice dropdowns
     selectedType?.fields?.forEach(f => {
       if (f.type === 'relationship' && f.options?.relatedType) {
         ensureRelatedLoaded(f.options.relatedType);
+      }
+      if (['radio','dropdown','checkbox'].includes(f.type) && f.options && typeof f.options === 'object' && f.options.sourceType) {
+        ensureChoicesLoaded(f.options.sourceType);
       }
     });
   }
@@ -348,6 +439,7 @@ export default function App() {
     if (!res.ok) { alert('Failed to save entry'); return; }
     await fetchEntries(selectedType.slug);
     setEditingEntryId(null);
+    setCreatingNew(false);
     setEntryData({});
     alert('Entry saved');
   }
@@ -427,6 +519,20 @@ export default function App() {
                 <input type="number" value={f.sort ?? 0} onChange={e => changeNewField(i, { sort: Number(e.target.value) })} />
               </div>
               <div>
+                <label>Options Mode: </label>
+                {['radio','dropdown','checkbox'].includes(f.type) && (
+                  <>
+                    <label style={{marginLeft:8}}>
+                      <input
+                        type="checkbox"
+                        checked={typeof f.options === 'object' && !!f.options.sourceType}
+                        onChange={e => toggleNewFieldDynamic(i, !!e.target.checked)}
+                      /> Use dynamic options (from content type)
+                    </label>
+                  </>
+                )}
+              </div>
+              <div>
                 <label>Options: </label>
                 {f.type === 'relationship' ? (
                   <>
@@ -448,6 +554,20 @@ export default function App() {
                         }}
                       /> Multiple
                     </label>
+                  </>
+                ) : (['radio','dropdown','checkbox'].includes(f.type) && typeof f.options === 'object' && f.options.sourceType) ? (
+                  <>
+                    <input
+                      placeholder="source content type slug (e.g., categories)"
+                      value={f.options.sourceType || ''}
+                      onChange={e => changeNewField(i, { options: { ...f.options, sourceType: e.target.value } })}
+                    />
+                    <input
+                      style={{marginLeft:8}}
+                      placeholder="source field (default: title)"
+                      value={f.options.sourceField || 'title'}
+                      onChange={e => changeNewField(i, { options: { ...f.options, sourceField: e.target.value || 'title' } })}
+                    />
                   </>
                 ) : (
                   <input
@@ -525,6 +645,19 @@ export default function App() {
                     />
                   </div>
 
+                  {['radio','dropdown','checkbox'].includes(f.type) && (
+                    <div>
+                      <label>Options Mode: </label>
+                      <label style={{marginLeft:8}}>
+                        <input
+                          type="checkbox"
+                          checked={typeof f.options === 'object' && !!f.options.sourceType}
+                          onChange={e => toggleEditingFieldDynamic(i, !!e.target.checked)}
+                        /> Use dynamic options (from content type)
+                      </label>
+                    </div>
+                  )}
+
                   <div>
                     <label>Options: </label>
                     {f.type === 'relationship' ? (
@@ -547,6 +680,20 @@ export default function App() {
                             }}
                           /> Multiple
                         </label>
+                      </>
+                    ) : (['radio','dropdown','checkbox'].includes(f.type) && typeof f.options === 'object' && f.options.sourceType) ? (
+                      <>
+                        <input
+                          placeholder="source content type slug (e.g., categories)"
+                          value={f.options.sourceType || ''}
+                          onChange={e => changeEditingField(i, { options: { ...f.options, sourceType: e.target.value } })}
+                        />
+                        <input
+                          style={{marginLeft:8}}
+                          placeholder="source field (default: title)"
+                          value={f.options.sourceField || 'title'}
+                          onChange={e => changeEditingField(i, { options: { ...f.options, sourceField: e.target.value || 'title' } })}
+                        />
                       </>
                     ) : (
                       <input
@@ -579,7 +726,7 @@ export default function App() {
               <button onClick={startNewEntry}>+ New Entry</button>
             </div>
 
-            {(editingEntryId !== null || Object.keys(entryData).length > 0) && (
+            {(creatingNew || editingEntryId !== null) && (
               <div style={{border:'1px solid #ddd', padding:12, marginBottom:16}}>
                 <h4>{editingEntryId ? `Edit #${editingEntryId}` : 'New Entry'}</h4>
                 {(selectedType.fields || []).map(f => (
@@ -590,6 +737,7 @@ export default function App() {
                       value={entryData[f.key]}
                       onChange={(v) => setEntryData(prev => ({ ...prev, [f.key]: v }))}
                       relatedCache={relatedCache}
+                      choicesCache={choicesCache}
                     />
                   </div>
                 ))}
