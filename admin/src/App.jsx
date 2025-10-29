@@ -1,3 +1,7 @@
+import { normalizeAddress } from './utils/address';
+import { normalizeUrl } from './utils/url';
+import { normalizeToE164 } from './utils/phone';
+import { normalizeEmail } from './utils/email';
 import { useEffect, useMemo, useState } from 'react';
 
 // === CONFIG ===
@@ -762,3 +766,89 @@ export default function App() {
     </div>
   );
 }
+
+
+/* ServiceUp FieldInput: email */
+export function FieldInputEmail({ value, onChange }) {
+  return (
+    <input
+      type="email"
+      value={value ?? ''}
+      placeholder="email@example.com"
+      onChange={e => onChange(e.target.value)}
+      onBlur={e => onChange(normalizeEmail(e.target.value))}
+    />
+  );
+}
+
+
+
+/* ServiceUp FieldInput: phone */
+export function FieldInputPhone({ value, onChange }) {
+  return (
+    <input
+      type="tel"
+      value={value ?? ''}
+      placeholder="+1 760 660 1289"
+      onChange={e => onChange(e.target.value)}
+      onBlur={e => onChange(normalizeToE164(e.target.value, 'US'))}
+    />
+  );
+}
+
+
+
+/* ServiceUp FieldInput: url */
+export function FieldInputUrl({ value, onChange }) {
+  return (
+    <input
+      type="url"
+      value={value ?? ''}
+      placeholder="example.com"
+      onChange={e => onChange(e.target.value)}
+      onBlur={e => onChange(normalizeUrl(e.target.value))}
+    />
+  );
+}
+
+
+
+/* ServiceUp FieldInput: address */
+export function FieldInputAddress({ value, onChange }) {
+  const v = value || {};
+  const set = (k, val) => onChange({ ...(value || {}), [k]: val });
+  return (
+    <div style={{display:'grid', gap:6}}>
+      <input placeholder="Line 1" value={v.line1 || ''} onChange={e=>set('line1', e.target.value)} />
+      <input placeholder="Line 2" value={v.line2 || ''} onChange={e=>set('line2', e.target.value)} />
+      <input placeholder="City / Locality" value={v.locality || ''} onChange={e=>set('locality', e.target.value)} />
+      <div style={{display:'flex', gap:6}}>
+        <input placeholder="State/Prov Code" value={v.admin1?.code || ''} onChange={e=>set('admin1', { ...(v.admin1||{}), code: e.target.value })} />
+        <input placeholder="State/Prov Name" value={v.admin1?.name || ''} onChange={e=>set('admin1', { ...(v.admin1||{}), name: e.target.value })} />
+      </div>
+      <div style={{display:'flex', gap:6}}>
+        <input placeholder="Postal" value={v.postal || ''} onChange={e=>set('postal', e.target.value)} />
+        <input placeholder="Country Code (e.g., US)" value={v.country?.code || ''} onChange={e=>set('country', { ...(v.country||{}), code: e.target.value })} />
+        <input placeholder="Country Name" value={v.country?.name || ''} onChange={e=>set('country', { ...(v.country||{}), name: e.target.value })} />
+      </div>
+      <button type="button" onClick={async () => {
+        const r = await fetch(`/api/geocode`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address: normalizeAddress(v, 'US') })
+        });
+        const data = await r.json();
+        if (data?.normalized) {
+          onChange({
+            ...normalizeAddress(v, 'US'),
+            geo: { lat: data.lat, lng: data.lng, placeId: data.placeId },
+            ...data.normalized
+          });
+        } else {
+          alert(data?.error || 'Geocode failed');
+        }
+      }}>Geocode</button>
+    </div>
+  );
+}
+
