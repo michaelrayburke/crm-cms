@@ -512,6 +512,11 @@ export default function App() {
                   <option value="dropdown">dropdown</option>
                   <option value="checkbox">checkbox</option>
                   <option value="relationship">relationship</option>
+                  <option value="email">email</option>
+                  <option value="phone">phone</option>
+                  <option value="url">url</option>
+                  <option value="address">address</option>
+                  <option value="rich_text">rich_text</option>
                 </select>
               </div>
               <div>
@@ -630,6 +635,11 @@ export default function App() {
                       <option value="dropdown">dropdown</option>
                       <option value="checkbox">checkbox</option>
                       <option value="relationship">relationship</option>
+                      <option value="email">email</option>
+                      <option value="phone">phone</option>
+                      <option value="url">url</option>
+                      <option value="address">address</option>
+                      <option value="rich_text">rich_text</option>
                     </select>
                   </div>
                   <div>
