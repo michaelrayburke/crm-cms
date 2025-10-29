@@ -1,6 +1,5 @@
+// Using Node 18+ global fetch (no import needed)
 // api/extra-routes.js
-import fetch from 'node-fetch';
-
 export default function mountExtraRoutes(app) {
   app.post('/api/geocode', async (req, res) => {
     const address = req.body?.address;

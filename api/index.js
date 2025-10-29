@@ -1,3 +1,5 @@
+import { normalizeEmail, normalizePhoneE164, normalizeUrl, normalizeAddress } from './lib/fieldUtils.js';
+import mountExtraRoutes from './extra-routes.js';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -323,6 +325,32 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
   }
 });
 
+/* ServiceUp: extra routes mount */
+mountExtraRoutes(app);
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
+
+// ServiceUp: Normalize incoming entry data based on field types
+function normalizeEntryData(fieldDefs, dataIn) {
+  try {
+    const out = { ...(dataIn || {}) };
+    for (const f of (fieldDefs || [])) {
+      const k = f.key;
+      const t = f.type;
+      const v = out[k];
+      switch (t) {
+        case 'email':    out[k] = normalizeEmail(v); break;
+        case 'phone':    out[k] = normalizePhoneE164(v, 'US'); break;
+        case 'url':      out[k] = normalizeUrl(v); break;
+        case 'address':  out[k] = normalizeAddress(v); break;
+        default: break;
+      }
+    }
+    return out;
+  } catch (e) {
+    return dataIn;
+  }
+}
+
