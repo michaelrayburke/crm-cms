@@ -10,7 +10,7 @@ function normalizeOptionsForSave(field) {
   if (['radio','dropdown','checkbox'].includes(field.type)) {
     // static (CSV) or dynamic object
     if (typeof field.options === 'object' && field.options?.sourceType) {
-      // dynamic
+      // dynxamic
       const srcField = field.options.sourceField || 'title';
       return { sourceType: field.options.sourceType.trim(), sourceField: srcField };
     }
@@ -63,7 +63,136 @@ function FieldInput({ field, value, onChange, relatedCache, choicesCache }) {
     });
   }
 
-  if (['radio','dropdown'].includes(field.type)) {
+  // custom field types early return
+  if (field.type === 'email') {
+    return <FieldInputEmail value={value} onChange={onChange} />;
+  }
+  if (field.type === 'phone') {
+    return <FieldInputPhone value={value} onChange={onChange} />;
+  }
+  if (field.type === 'url') {
+    return <FieldInputUrl value={value} onChange={onChange} />;
+  }
+  if (field.type === 'address') {
+    return <FieldInputAddress value={value} onChange={onChange} />;
+  }
+  if (field.type === 'rich_text') {
+    const text = value && typeof value === 'object' ? JSON.stringify(value, null, 2) : (value || '');
+    return (
+      <textarea
+        value={text}
+        placeholder='{"type":"doc","content":[...]}'
+        rows={10}
+        onChange={e => {
+          const t = e.target.value;
+          try {
+            onChange(JSON.parse(t));
+          } catch {
+            onChange(t);
+          }
+        }}
+      />
+    );
+  }
+
+  if  // custom field types early return
+  if (field.type === 'email') {
+    return (
+      <input
+        type="email"
+        value={value ?? ''}
+        placeholder="email@example.com"
+        onChange={e => onChange(e.target.value)}
+        onBlur={e => onChange(normalizeEmail(e.target.value))}
+      />
+    );
+  }
+
+  if (field.type === 'phone') {
+    return (
+      <input
+        type="tel"
+        value={value ?? ''}
+        placeholder="+1 760 660 1289"
+        onChange={e => onChange(e.target.value)}
+        onBlur={e => onChange(normalizeToE164(e.target.value, 'US'))}
+      />
+    );
+  }
+
+  if (field.type === 'url') {
+    return (
+      <input
+        type="url"
+        value={value ?? ''}
+        placeholder="example.com"
+        onChange={e => onChange(e.target.value)}
+        onBlur={e => onChange(normalizeUrl(e.target.value))}
+      />
+    );
+  }
+
+  if (field.type === 'address') {
+    const v = value || {};
+    const set = (k, val) => onChange({ ...(value || {}), [k]: val });
+    return (
+      <div style={{display:'grid', gap:6}}>
+        <input placeholder="Line 1" value={v.line1 || ''} onChange={e=>set('line1', e.target.value)} />
+        <input placeholder="Line 2" value={v.line2 || ''} onChange={e=>set('line2', e.target.value)} />
+        <input placeholder="City / Locality" value={v.locality || ''} onChange={e=>set('locality', e.target.value)} />
+        <div style={{display:'flex', gap:6}}>
+          <input placeholder="State/Prov Code" value={v.admin1?.code || ''} onChange={e=>set('admin1', { ...(v.admin1||{}), code: e.target.value })} />
+          <input placeholder="State/Prov Name" value={v.admin1?.name || ''} onChange={e=>set('admin1', { ...(v.admin1||{}), name: e.target.value })} />
+        </div>
+        <div style={{display:'flex', gap:6}}>
+          <input placeholder="Postal" value={v.postal || ''} onChange={e=>set('postal', e.target.value)} />
+          <input placeholder="Country Code (e.g., US)" value={v.country?.code || ''} onChange={e=>set('country', { ...(v.country||{}), code: e.target.value })} />
+          <input placeholder="Country Name" value={v.country?.name || ''} onChange={e=>set('country', { ...(v.country||{}), name: e.target.value })} />
+        </div>
+        <button type="button" onClick={async () => {
+          const resp = await fetch(`${API_BASE}/api/geocode`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ address: normalizeAddress(v, 'US') })
+          });
+          const data = await resp.json();
+          if (data?.normalized) {
+            onChange({
+              ...normalizeAddress(v, 'US'),
+              geo: { lat: data.lat, lng: data.lng, placeId: data.placeId },
+              ...data.normalized
+            });
+          } else {
+            alert(data?.error || 'Geocode failed');
+          }
+        }}>Geocode</button>
+      </div>
+    );
+  }
+
+  if (field.type === 'rich_text') {
+    // For now, accept JSON via textarea; can integrate a WYSIWYG editor later
+    const text = value && typeof value === 'object' ? JSON.stringify(value, null, 2) : (value || '');
+    return (
+      <textarea
+        value={text}
+        placeholder='{"type":"doc","content":[...]}'
+        rows={10}
+        onChange={e => {
+          const t = e.target.value;
+          try {
+            onChange(JSON.parse(t));
+          } catch {
+            onChange(t);
+          }
+        }}
+      />
+    );
+  }
+
+ 
+      
+    (['radio','dropdown'].includes(field.type)) {
   // custom types before default text input
   if (field.type === 'email') {
     return (
