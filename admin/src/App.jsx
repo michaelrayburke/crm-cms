@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 // import normalization helpers for custom field types
-import { normalizeAddress } from './utils/address';
-import { normalizeUrl } from './utils/url';
-import { normalizeToE164 } from './utils/phone';
-import { normalizeEmail } from './utils/email';
+import { normalizeAddress } from '@utils/address';
+import { normalizeUrl } from '@utils/url';
+import { normalizeToE164 } from '@utils/phone';
+import { normalizeEmail } from '@utils/email';
 
 // === CONFIG ===
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://serviceup-api.onrender.com';
