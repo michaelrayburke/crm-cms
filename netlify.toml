@@ -1,9 +1,10 @@
 [build]
   base    = "admin"
-  command = "node -v && npm -v && npm ci || (rm -rf node_modules package-lock.json && npm install) && npm run build -- --debug"
-  publish = "admin/dist"
+  command = "rm -rf node_modules package-lock.json && npm install && npm run build"
+  publish = "dist"
 
 [build.environment]
-  NODE_VERSION      = "20"
-  NPM_CONFIG_LOGLEVEL = "verbose"
+  NODE_VERSION = "20"
+  NPM_CONFIG_FUND = "false"
+  NPM_CONFIG_AUDIT = "false"
   CI = "true"
