@@ -1,0 +1,5 @@
+# OPTIONAL robots.txt (use only if app is public)
+User-agent: *
+Allow: /
+# If you generate a sitemap later, uncomment the line below and update path:
+# Sitemap: /sitemap.xml
