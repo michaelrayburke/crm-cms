@@ -1,13 +1,22 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
+// admin/vite.config.js (CommonJS)
+const { resolve } = require("path");
+const react = require("@vitejs/plugin-react");
 
-export default defineConfig({
+/** @type {import("vite").UserConfig} */
+module.exports = {
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
-      '@utils': path.resolve(__dirname, 'src/utils'),
+      "@utils": resolve(__dirname, "src/utils"),
+      "@":      resolve(__dirname, "src"),
     },
   },
-});
+  build: {
+    sourcemap: true,
+    outDir: "dist",
+    emptyOutDir: true,
+    rollupOptions: {
+      input: resolve(__dirname, "index.html"),
+    },
+  },
+};
