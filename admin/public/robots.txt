@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-# When we generate a sitemap later, uncomment the line below and update path:
-# Sitemap: /sitemap.xml
