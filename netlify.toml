@@ -1,8 +1,24 @@
 [build]
   base    = "admin"
-  command = "npm install --omit=optional && npm run build"
-  publish = "dist"
+  command = "npm ci --omit=optional && npm run build"
+  publish = "admin/dist"
 
 [build.environment]
   NODE_VERSION = "20"
-  ROLLUP_DISABLE_NATIVE = "true"
+  # Force Rollup to use the JS/wasm implementation instead of the native binary
+  ROLLUP_SKIP_NODE_BINARY = "true"
+
+# SPA fallback (if you're using client-side routing)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Basic hardening headers (optional)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
