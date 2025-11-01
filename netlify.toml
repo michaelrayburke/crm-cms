@@ -3,7 +3,10 @@
   command = "node -v && npm -v && npm ci && npm run build"
   publish = "dist"
 
-# Optional but recommended defaults for SPA & security
+[build.environment]
+  NODE_VERSION = "18"
+  ROLLUP_DISABLE_NATIVE = "1"
+
 [[headers]]
   for = "/*"
   [headers.values]
@@ -14,5 +17,5 @@
 
 [[redirects]]
   from = "/*"
-  to = "/index.html"
+  to   = "/index.html"
   status = 200
