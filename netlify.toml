@@ -1,10 +1,8 @@
 [build]
   base    = "admin"
-  # Install without optional native binaries to avoid npm optional-deps bug on CI
-  command = "npm ci --no-optional && npm run build"
-  # When base = "admin", publish should be "dist" (NOT "admin/dist")
+  command = "npm install --omit=optional && npm run build"
   publish = "dist"
 
 [build.environment]
   NODE_VERSION = "20"
-  NPM_FLAGS    = "--no-optional"
+  ROLLUP_DISABLE_NATIVE = "true"

@@ -1,16 +1,16 @@
+// admin/vite.config.js
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
-      '@utils': resolve(__dirname, 'src/utils')
+      '@': '/src',
+      '@utils': '/src/utils'
     }
   },
   build: {
-    sourcemap: true
+    sourcemap: false
   }
 })
