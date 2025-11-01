@@ -1,20 +1,18 @@
 [build]
   base    = "admin"
-  command = "npm ci --omit=optional && npm run build"
-  publish = "admin/dist"
+  command = "node -v && npm -v && npm install --omit=optional && npm run build"
+  publish = "dist"
 
 [build.environment]
   NODE_VERSION = "20"
-  # Force Rollup to use the JS/wasm implementation instead of the native binary
   ROLLUP_SKIP_NODE_BINARY = "true"
 
-# SPA fallback (if you're using client-side routing)
+# Optional SPA fallback (keeps it here so Netlify reads a single config file)
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-# Basic hardening headers (optional)
 [[headers]]
   for = "/*"
   [headers.values]
