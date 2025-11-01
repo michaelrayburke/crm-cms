@@ -1,4 +1,4 @@
-[build]
+﻿[build]
   base    = "admin"
   command = "npm ci || (rm -rf node_modules package-lock.json && npm install) && npm run build"
   publish = "admin/dist"
