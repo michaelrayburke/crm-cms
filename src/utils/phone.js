@@ -8,9 +8,6 @@ function digits(s) {
 /**
  * normalizeToE164("760-555-1234") -> "+17605551234"   (US default)
  * normalizeToE164("+44 20 7946 0958") -> "+442079460958"
- * normalizeToE164("17605551234") -> "+17605551234"
- * normalizeToE164("0017605551234") -> "+17605551234"
- * normalizeToE164("07555123456", { defaultCountry: "GB" }) -> "+447555123456"
  */
 export function normalizeToE164(input, { defaultCountry = "US" } = {}) {
   if (input == null) return "";
