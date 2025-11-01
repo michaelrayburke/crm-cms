@@ -1,10 +1,22 @@
 [build]
   base    = "admin"
-  command = "rm -rf node_modules package-lock.json && npm install && npm run build"
+  command = "npm ci || (rm -rf node_modules package-lock.json && npm install) && npm run build"
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "20"
-  NPM_CONFIG_FUND = "false"
-  NPM_CONFIG_AUDIT = "false"
-  CI = "true"
+  NODE_VERSION        = "20"
+  NPM_CONFIG_FUND     = "false"
+  NPM_CONFIG_AUDIT    = "false"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy        = "strict-origin-when-cross-origin"
+    X-Frame-Options        = "DENY"
+    Permissions-Policy     = "geolocation=(), microphone=(), camera=()"
