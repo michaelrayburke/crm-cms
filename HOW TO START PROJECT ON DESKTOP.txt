@@ -1,0 +1,13 @@
+# 1) Go to admin app
+cd C:\Users\mikey\OneDrive\Desktop\ServiceUp\admin
+
+# 2) Set env vars for this shell session (replace values)
+$env:VITE_API_BASE = "https://serviceup-api.onrender.com"
+$env:VITE_SUPABASE_URL = "https://amvelysrjxpigiokbkgr.supabase.co"
+$env:VITE_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtdmVseXNyanhwaWdpb2tia2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNzI2MjUsImV4cCI6MjA3Njg0ODYyNX0.pP3SRuxIjYAnEKKJvAojf8DpHyAS08MIcxjJE4M2pQk"
+
+# 3) Install deps (safe to run anytime)
+npm install
+
+# 4) Start the dev server
+npm run dev
