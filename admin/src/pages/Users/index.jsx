@@ -20,7 +20,13 @@ export default function UsersPage() {
   }
 
   async function setRole(id, role) {
-    await api.patch(`/users/${id}`, { role });
+    if (typeof api.patch === 'function') {
+      await api.patch(`/users/${id}`, { role });
+    } else {
+      // Fallback to POST if patch isn't supported in the helper
+      await api.post(`/users/${id}`, { role });
+    }
+
     setUsers((uu) =>
       uu.map((u) => (u.id === id ? { ...u, role } : u)),
     );

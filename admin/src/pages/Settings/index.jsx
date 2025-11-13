@@ -37,7 +37,11 @@ export default function SettingsPage() {
     setSaving(true);
     setSavedMsg('');
     try {
-      const updated = await api.put('/settings', form);
+      // Fallback for older api helpers that don't support .put
+      const updated = typeof api.put === 'function'
+        ? await api.put('/settings', form)
+        : await api.post('/settings', form);
+
       setSettings(updated);
       const mode = updated?.theme?.mode || 'light';
       document.documentElement.setAttribute('data-theme', mode);

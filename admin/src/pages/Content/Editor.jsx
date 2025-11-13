@@ -47,8 +47,11 @@ export default function TypeEditor() {
       let saved;
       if (isNew) {
         saved = await api.post(`/content/${typeSlug}`, doc);
-      } else {
+      } else if (typeof api.put === 'function') {
         saved = await api.put(`/content/${typeSlug}/${id}`, doc);
+      } else {
+        // Fallback: some older helpers only have .post
+        saved = await api.post(`/content/${typeSlug}/${id}`, doc);
       }
 
       const newId = saved.id || saved._id || id;
