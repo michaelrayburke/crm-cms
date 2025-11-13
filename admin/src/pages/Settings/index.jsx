@@ -1,77 +1,171 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSettings } from '../../context/SettingsContext';
 import { api } from '../../lib/api';
 
-export default function SettingsPage(){
-  const { settings, setSettings } = useSettings();
-  const [form, setForm] = useState(settings || {});
+export default function SettingsPage() {
+  const { settings, setSettings, loading } = useSettings();
+  const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState('');
 
-  const bind = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const bindTheme = (k) => (e) => setForm({ ...form, theme:{...form.theme, [k]: e.target.value} });
-  const bindRoleHide = (role) => (e) => setForm({ ...form, hideChromeByRole:{...form.hideChromeByRole, [role]: e.target.checked} });
+  useEffect(() => {
+    if (settings && !form) {
+      setForm(settings);
+    }
+  }, [settings, form]);
 
-  async function save(){
+  const bind = (key) => (e) =>
+    setForm((prev) => ({ ...prev, [key]: e.target.value }));
+
+  const bindTheme = (key) => (e) =>
+    setForm((prev) => ({
+      ...prev,
+      theme: { ...(prev.theme || {}), [key]: e.target.value },
+    }));
+
+  const bindRoleHide = (role) => (e) =>
+    setForm((prev) => ({
+      ...prev,
+      hideChromeByRole: {
+        ...(prev.hideChromeByRole || {}),
+        [role]: e.target.checked,
+      },
+    }));
+
+  async function save() {
+    if (!form) return;
     setSaving(true);
-    try{
-      const updated = await api.post('/settings', form);
+    setSavedMsg('');
+    try {
+      const updated = await api.put('/settings', form);
       setSettings(updated);
-      alert('Saved ✓');
-    }catch(e){ alert('Could not save: ' + e.message); }
-    finally{ setSaving(false); }
+      const mode = updated?.theme?.mode || 'light';
+      document.documentElement.setAttribute('data-theme', mode);
+      setSavedMsg('Settings saved.');
+    } catch (e) {
+      console.error(e);
+      setSavedMsg('Error saving settings.');
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSavedMsg(''), 2500);
+    }
+  }
+
+  if (loading || !form) {
+    return <div className="su-card">Loading settings…</div>;
   }
 
   return (
     <div className="su-grid cols-2">
       <div className="su-card">
         <h2>General</h2>
-        <label>Timezone
-          <input className="su-input" value={form.timezone||''} onChange={bind('timezone')} placeholder="America/Los_Angeles" />
+        <label>
+          App name
+          <input
+            className="su-input"
+            value={form.appName || ''}
+            onChange={bind('appName')}
+          />
         </label>
-        <div style={{height:8}}/>
-        <label>Powered by
-          <input className="su-input" value={form.poweredBy||''} onChange={bind('poweredBy')} placeholder="serviceup / bmp" />
+        <div style={{ height: 8 }} />
+        <label>
+          Timezone
+          <input
+            className="su-input"
+            value={form.timezone || ''}
+            onChange={bind('timezone')}
+          />
         </label>
-        <div style={{height:8}}/>
-        <label>Sidebar (JSON)
-          <textarea className="su-textarea" rows={8}
-            value={JSON.stringify(form.nav || [], null, 2)}
-            onChange={e=>{ try { setForm({...form, nav: JSON.parse(e.target.value)}); } catch{} }} />
-          <small style={{color:'var(--su-muted)'}}>Example: [{{"label":"Dashboard","to":"/admin"}}, {{"label":"Content","to":"/admin/content"}}]</small>
+        <div style={{ height: 8 }} />
+        <label>
+          Powered by line
+          <input
+            className="su-input"
+            value={form.poweredBy || ''}
+            onChange={bind('poweredBy')}
+          />
         </label>
-        <div style={{height:8}}/>
-        <button className="su-btn primary" disabled={saving} onClick={save}>Save</button>
-      </div>
-
-      <div className="su-card">
-        <h2>Branding</h2>
-        <label>Logo URL <input className="su-input" value={form.logoUrl||''} onChange={bind('logoUrl')} /></label>
-        <div style={{height:8}}/>
-        <label>Favicon URL <input className="su-input" value={form.faviconUrl||''} onChange={bind('faviconUrl')} /></label>
-        <div style={{height:8}}/>
-        <label>App Icon URL <input className="su-input" value={form.appIconUrl||''} onChange={bind('appIconUrl')} /></label>
+        <div style={{ height: 8 }} />
+        <label>
+          Logo URL
+          <input
+            className="su-input"
+            value={form.logoUrl || ''}
+            onChange={bind('logoUrl')}
+          />
+        </label>
       </div>
 
       <div className="su-card">
         <h2>Theme</h2>
-        <label>Mode
-          <select className="su-select" value={form.theme?.mode||'light'} onChange={bindTheme('mode')}>
+        <label>
+          Mode
+          <select
+            className="su-select"
+            value={form.theme?.mode || 'light'}
+            onChange={bindTheme('mode')}
+          >
             <option value="light">Light</option>
             <option value="dark">Dark</option>
           </select>
         </label>
-        <div style={{height:8}}/>
-        <label>Primary <input className="su-input" value={form.theme?.primary||''} onChange={bindTheme('primary')} placeholder="#000000" /></label>
+        <div style={{ height: 8 }} />
+        <label>
+          Primary color
+          <input
+            type="color"
+            value={form.theme?.primary || '#000000'}
+            onChange={bindTheme('primary')}
+          />
+        </label>
+        <div style={{ height: 8 }} />
+        <label>
+          Surface color
+          <input
+            type="color"
+            value={form.theme?.surface || '#ffffff'}
+            onChange={bindTheme('surface')}
+          />
+        </label>
+        <div style={{ height: 8 }} />
+        <label>
+          Text color
+          <input
+            type="color"
+            value={form.theme?.text || '#111111'}
+            onChange={bindTheme('text')}
+          />
+        </label>
       </div>
 
       <div className="su-card">
-        <h2>Visibility</h2>
-        {['ADMIN','EDITOR','VIEWER'].map(r => (
-          <label key={r} style={{display:'block', marginBottom:6}}>
-            <input type="checkbox" checked={!!form.hideChromeByRole?.[r]} onChange={bindRoleHide(r)} />
-            <span style={{marginLeft:8}}>Hide admin chrome for {r}</span>
+        <h2>Visibility (Hide Admin Chrome)</h2>
+        {['ADMIN', 'EDITOR', 'VIEWER'].map((role) => (
+          <label key={role} style={{ display: 'block', marginBottom: 6 }}>
+            <input
+              type="checkbox"
+              checked={!!form.hideChromeByRole?.[role]}
+              onChange={bindRoleHide(role)}
+            />{' '}
+            <span style={{ marginLeft: 8 }}>
+              Hide sidebar/topbar/footer for {role}
+            </span>
           </label>
         ))}
+      </div>
+
+      <div className="su-card">
+        <h2>Save</h2>
+        <button
+          className="su-btn primary"
+          onClick={save}
+          disabled={saving}
+        >
+          {saving ? 'Saving…' : 'Save settings'}
+        </button>
+        {savedMsg && (
+          <div style={{ marginTop: 8, opacity: 0.75 }}>{savedMsg}</div>
+        )}
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import Topbar from '../components/Topbar';
 import Footer from '../components/Footer';
 import { useSettings } from '../context/SettingsContext';
 
-export default function AdminLayout({ children, role='ADMIN' }){
+export default function AdminLayout({ children, role = 'ADMIN' }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const { settings } = useSettings();
@@ -12,27 +12,46 @@ export default function AdminLayout({ children, role='ADMIN' }){
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
-  useEffect(()=>{
-    function onKey(e){
-      if(e.key === 'Escape') closeSidebar();
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        setSidebarOpen(false);
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [closeSidebar]);
+  }, []);
 
-  if(hideChrome){
-    return <div className="su-content">{children}</div>;
+  if (hideChrome) {
+    // Viewer mode / embed mode
+    return (
+      <main className="su-content">
+        {children}
+      </main>
+    );
   }
 
   return (
-    <div className={'su-layout' + (collapsed ? ' collapsed' : '')}>
-      <div className={ 'su-sidebar ' + (sidebarOpen ? 'open' : '') }>
+    <div className={`su-layout${collapsed ? ' collapsed' : ''}`}>
+      <div
+        className={`su-sidebar ${sidebarOpen ? 'open' : ''}`}
+        id="admin-sidebar"
+      >
         <Sidebar />
       </div>
-      <Topbar onToggleSidebar={()=> setSidebarOpen(v => !v)} />
+      <Topbar
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
+        onToggleCollapse={() => setCollapsed((v) => !v)}
+      />
       <main className="su-content">{children}</main>
       <Footer />
-      {sidebarOpen && <div className="su-backdrop" onClick={closeSidebar} aria-hidden="true" />}
+      {sidebarOpen && (
+        <div
+          className="su-backdrop"
+          onClick={closeSidebar}
+          aria-hidden="true"
+        />
+      )}
     </div>
   );
 }

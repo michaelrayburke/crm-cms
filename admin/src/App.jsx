@@ -15,24 +15,112 @@ import TypeList from './pages/Content/TypeList';
 import TypeEditor from './pages/Content/Editor';
 import QuickBuilderShim from './quickbuilder/QuickBuilderShim';
 
-export default function App(){
+function App() {
   return (
     <SettingsProvider>
       <Routes>
+        {/* Redirect root -> admin dashboard */}
         <Route path="/" element={<Navigate to="/admin" replace />} />
-        <Route path="/quick-builder" element={<AdminLayout><QuickBuilderShim /></AdminLayout>} />
-        <Route path="/admin" element={<AdminLayout><Dashboard /></AdminLayout>} />
-        <Route path="/admin/settings" element={<AdminLayout><SettingsPage /></AdminLayout>} />
-        <Route path="/admin/menus" element={<AdminLayout><MenusPage /></AdminLayout>} />
-        <Route path="/admin/headers" element={<AdminLayout><HeadersPage /></AdminLayout>} />
-        <Route path="/admin/footers" element={<AdminLayout><FootersPage /></AdminLayout>} />
-        <Route path="/admin/users" element={<AdminLayout><UsersPage /></AdminLayout>} />
-        <Route path="/admin/taxonomies" element={<AdminLayout><TaxonomiesPage /></AdminLayout>} />
 
-        <Route path="/admin/content" element={<AdminLayout><ContentIndex /></AdminLayout>} />
-        <Route path="/admin/content/:typeSlug" element={<AdminLayout><TypeList /></AdminLayout>} />
-        <Route path="/admin/content/:typeSlug/:id" element={<AdminLayout><TypeEditor /></AdminLayout>} />
+        {/* Main admin pages */}
+        <Route
+          path="/admin"
+          element={
+            <AdminLayout>
+              <Dashboard />
+            </AdminLayout>
+          }
+        />
+        <Route
+          path="/admin/settings"
+          element={
+            <AdminLayout>
+              <SettingsPage />
+            </AdminLayout>
+          }
+        />
+        <Route
+          path="/admin/menus"
+          element={
+            <AdminLayout>
+              <MenusPage />
+            </AdminLayout>
+          }
+        />
+        <Route
+          path="/admin/headers"
+          element={
+            <AdminLayout>
+              <HeadersPage />
+            </AdminLayout>
+          }
+        />
+        <Route
+          path="/admin/footers"
+          element={
+            <AdminLayout>
+              <FootersPage />
+            </AdminLayout>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <AdminLayout>
+              <UsersPage />
+            </AdminLayout>
+          }
+        />
+        <Route
+          path="/admin/taxonomies"
+          element={
+            <AdminLayout>
+              <TaxonomiesPage />
+            </AdminLayout>
+          }
+        />
+
+        {/* Content CRUD */}
+        <Route
+          path="/admin/content"
+          element={
+            <AdminLayout>
+              <ContentIndex />
+            </AdminLayout>
+          }
+        />
+        <Route
+          path="/admin/content/:typeSlug"
+          element={
+            <AdminLayout>
+              <TypeList />
+            </AdminLayout>
+          }
+        />
+        <Route
+          path="/admin/content/:typeSlug/:id"
+          element={
+            <AdminLayout>
+              <TypeEditor />
+            </AdminLayout>
+          }
+        />
+
+        {/* Quick builder bridge */}
+        <Route
+          path="/quick-builder/*"
+          element={
+            <AdminLayout>
+              <QuickBuilderShim />
+            </AdminLayout>
+          }
+        />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     </SettingsProvider>
   );
 }
+
+export default App;
