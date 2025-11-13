@@ -43,7 +43,7 @@ export default function TypeList() {
       <div
         style={{
           display: 'flex',
-          justifyContent: 'space-between',
+          justifyacing: 'space-between',
           alignItems: 'center',
         }}
       >
