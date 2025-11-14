@@ -14,105 +14,142 @@ import ContentIndex from './pages/Content';
 import TypeList from './pages/Content/TypeList';
 import TypeEditor from './pages/Content/Editor';
 import QuickBuilderShim from './quickbuilder/QuickBuilderShim';
+import LoginPage from './pages/Login';
+
+function RequireAuth({ children }) {
+  // Very simple auth gate for now: just check for token in localStorage.
+  const token =
+    typeof window !== 'undefined'
+      ? window.localStorage.getItem('serviceup.jwt')
+      : null;
+
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+}
 
 function App() {
   return (
     <SettingsProvider>
       <Routes>
-        {/* Redirect root -> admin dashboard */}
+        {/* Root redirects to admin dashboard (which is auth-protected) */}
         <Route path="/" element={<Navigate to="/admin" replace />} />
 
-        {/* Main admin pages */}
+        {/* Public login route */}
+        <Route path="/login" element={<LoginPage />} />
+
+        {/* Main admin pages (all behind RequireAuth) */}
         <Route
           path="/admin"
           element={
-            <AdminLayout>
-              <Dashboard />
-            </AdminLayout>
+            <RequireAuth>
+              <AdminLayout>
+                <Dashboard />
+              </AdminLayout>
+            </RequireAuth>
           }
         />
         <Route
           path="/admin/settings"
-          element={
-            <AdminLayout>
-              <SettingsPage />
-            </AdminLayout>
+          element{
+            <RequireAuth>
+              <AdminLayout>
+                <SettingsPage />
+              </AdminLayout>
+            </RequireAuth>
           }
         />
         <Route
           path="/admin/menus"
           element={
-            <AdminLayout>
-              <MenusPage />
-            </AdminLayout>
+            <RequireAuth>
+              <AdminLayout>
+                <MenusPage />
+              </AdminLayout>
+            </RequireAuth>
           }
         />
         <Route
           path="/admin/headers"
           element={
-            <AdminLayout>
-              <HeadersPage />
-            </AdminLayout>
+            <RequireAuth>
+              <AdminLayout>
+                <HeadersPage />
+              </AdminLayout>
+            </RequireAuth>
           }
         />
         <Route
           path="/admin/footers"
           element={
-            <AdminLayout>
-              <FootersPage />
-            </AdminLayout>
+            <RequireAuth>
+              <AdminLayout>
+                <FootersPage />
+              </AdminLayout>
+            </RequireAuth>
           }
         />
         <Route
           path="/admin/users"
           element={
-            <AdminLayout>
-              <UsersPage />
-            </AdminLayout>
+            <RequireAuth>
+              <AdminLayout>
+                <UsersPage />
+              </AdminLayout>
+            </RequireAuth>
           }
         />
         <Route
           path="/admin/taxonomies"
           element={
-            <AdminLayout>
-              <TaxonomiesPage />
-            </AdminLayout>
+            <RequireAuth>
+              <AdminLayout>
+                <TaxonomiesPage />
+              </AdminLayout>
+            </RequireAuth>
           }
         />
-
-        {/* Content CRUD */}
         <Route
           path="/admin/content"
           element={
-            <AdminLayout>
-              <ContentIndex />
-            </AdminLayout>
+            <RequireAuth>
+              <AdminLayout>
+                <ContentIndex />
+              </AdminLayout>
+            </RequireAuth>
           }
         />
         <Route
           path="/admin/content/:typeSlug"
           element={
-            <AdminLayout>
-              <TypeList />
-            </AdminLayout>
+            <RequireAuth>
+              <AdminLayout>
+                <TypeList />
+              </AdminLayout>
+            </RequireAuth>
           }
         />
         <Route
           path="/admin/content/:typeSlug/:id"
           element={
-            <AdminLayout>
-              <TypeEditor />
-            </AdminLayout>
+            <RequireAuth>
+              <AdminLayout>
+                <TypeEditor />
+              </AdminLayout>
+            </RequireAuth>
           }
         />
 
-        {/* Quick builder bridge */}
+        {/* Quick builder bridge (also behind auth) */}
         <Route
           path="/quick-builder/*"
           element={
-            <AdminLayout>
-              <QuickBuilderShim />
-            </AdminLayout>
+            <RequireAuth>
+              <AdminLayout>
+                <QuickBuilderShim />
+              </AdminLayout>
+            </RequireAuth>
           }
         />
 
