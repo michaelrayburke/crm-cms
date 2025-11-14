@@ -2,7 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 
-/** Local helpers for list view + identifier/columns config (per content type) */
+/**
+ * Content list for a single type.
+ * - Talks to /api/content/:slug
+ * - Knows that entries look like: { id, data: {...}, created_at, updated_at }
+ * - Lets you customize which data.* fields show as columns
+ */
 
 function getIdentifierKeyForType(typeSlug) {
   try {
@@ -101,7 +106,8 @@ export default function TypeList() {
       setLoading(true);
       setError('');
       try {
-        const res = await api.get(`/content/${typeSlug}`);
+        // IMPORTANT: backend route is /api/content/:slug
+        const res = await api.get(`/api/content/${typeSlug}`);
         const list = Array.isArray(res) ? res : res?.data || [];
         setRows(list);
 
@@ -134,13 +140,13 @@ export default function TypeList() {
     const confirmed = window.confirm('Delete this entry permanently?');
     if (!confirmed) return;
     try {
+      // Backend has DELETE /api/content/:slug/:id
       if (typeof api.del === 'function') {
-        await api.del(`/content/${typeSlug}/${entryId}`);
+        await api.del(`/api/content/${typeSlug}/${entryId}`);
       } else if (typeof api.delete === 'function') {
-        await api.delete(`/content/${typeSlug}/${entryId}`);
+        await api.delete(`/api/content/${typeSlug}/${entryId}`);
       } else {
-        // Very legacy fallback
-        await api.post(`/content/${typeSlug}/${entryId}/delete`, {});
+        await api.post(`/api/content/${typeSlug}/${entryId}/delete`, {});
       }
       setRows((prev) => prev.filter((r) => (r.id || r._id) !== entryId));
     } catch (e) {
@@ -290,7 +296,7 @@ export default function TypeList() {
             const data = r.data || {};
             const title =
               data[titleKey] ?? data.title ?? data.name ?? `(id: ${id})`;
-            const updated = r.updatedAt || r.updated_at || r.created_at || '-';
+            const updated = r.updated_at || r.updatedAt || r.created_at || '-';
 
             return (
               <tr
@@ -308,7 +314,13 @@ export default function TypeList() {
                 <td>{id}</td>
                 <td>{updated}</td>
                 <td align="right">
-                  <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 4,
+                      justifyContent: 'flex-end',
+                    }}
+                  >
                     <button
                       className="su-btn"
                       type="button"
@@ -332,7 +344,10 @@ export default function TypeList() {
           })}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={4 + columns.length} style={{ padding: '12px 0', opacity: 0.7 }}>
+              <td
+                colSpan={4 + columns.length}
+                style={{ padding: '12px 0', opacity: 0.7 }}
+              >
                 No entries yet.
               </td>
             </tr>

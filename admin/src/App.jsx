@@ -33,7 +33,7 @@ function App() {
   return (
     <SettingsProvider>
       <Routes>
-        {/* Root redirects to admin dashboard (which is auth-protected) */}
+        {/* Root redirects to admin dashboard (auth-protected) */}
         <Route path="/" element={<Navigate to="/admin" replace />} />
 
         {/* Public login route */}
@@ -50,9 +50,10 @@ function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/admin/settings"
-          element{
+          element={
             <RequireAuth>
               <AdminLayout>
                 <SettingsPage />
@@ -60,6 +61,7 @@ function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/admin/menus"
           element={
@@ -70,6 +72,7 @@ function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/admin/headers"
           element={
@@ -80,6 +83,7 @@ function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/admin/footers"
           element={
@@ -90,6 +94,7 @@ function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/admin/users"
           element={
@@ -100,6 +105,7 @@ function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/admin/taxonomies"
           element={
@@ -110,6 +116,7 @@ function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/admin/content"
           element={
@@ -120,6 +127,7 @@ function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/admin/content/:typeSlug"
           element={
@@ -130,6 +138,7 @@ function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/admin/content/:typeSlug/:id"
           element={

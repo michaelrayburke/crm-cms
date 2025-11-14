@@ -7,67 +7,62 @@ export default function UsersPage() {
 
   useEffect(() => {
     api
-      .get('/users')
-      .then((res) => setUsers(Array.isArray(res) ? res : res?.data || []))
+      // Backend route: /api/users
+      .get('/api/users')
+      .then((res) => {
+        if (Array.isArray(res)) return setUsers(res);
+        if (res && Array.isArray(res.users)) return setUsers(res.users);
+        setUsers([]);
+      })
       .catch(() => setUsers([]));
   }, []);
 
   function filtered() {
     const needle = q.toLowerCase();
-    return users.filter((u) =>
-      (u.email || '').toLowerCase().includes(needle)
-    );
-  }
-
-  async function setRole(id, role) {
-    if (typeof api.patch === 'function') {
-      await api.patch(`/users/${id}`, { role });
-    } else {
-      // Fallback to POST if patch isn't supported in the helper
-      await api.post(`/users/${id}`, { role });
-    }
-
-    setUsers((uu) =>
-      uu.map((u) => (u.id === id ? { ...u, role } : u)),
-    );
+    if (!needle) return users;
+    return users.filter((u) => {
+      return (
+        (u.email || '').toLowerCase().includes(needle) ||
+        (u.name || '').toLowerCase().includes(needle) ||
+        (u.username || '').toLowerCase().includes(needle)
+      );
+    });
   }
 
   return (
     <div className="su-card">
-      <h2>Users</h2>
-      <input
-        className="su-input"
-        placeholder="Search by email…"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-      />
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <h2 style={{ margin: 0 }}>Users</h2>
+        <input
+          className="su-input"
+          style={{ maxWidth: 260 }}
+          placeholder="Search by name or email"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
+
       <table className="su-table" style={{ marginTop: 12 }}>
         <thead>
           <tr>
-            <th align="left">Email</th>
             <th align="left">Name</th>
+            <th align="left">Email</th>
             <th align="left">Role</th>
           </tr>
         </thead>
         <tbody>
           {filtered().map((u) => (
-            <tr
-              key={u.id}
-              style={{ borderTop: '1px solid var(--su-border)' }}
-            >
+            <tr key={u.id}>
+              <td>{u.name || u.username || '(no name)'}</td>
               <td>{u.email}</td>
-              <td>{u.name || '-'}</td>
-              <td>
-                <select
-                  className="su-select"
-                  value={u.role || 'VIEWER'}
-                  onChange={(e) => setRole(u.id, e.target.value)}
-                >
-                  <option value="ADMIN">ADMIN</option>
-                  <option value="EDITOR">EDITOR</option>
-                  <option value="VIEWER">VIEWER</option>
-                </select>
-              </td>
+              <td>{u.role || '(none)'}</td>
             </tr>
           ))}
           {filtered().length === 0 && (
