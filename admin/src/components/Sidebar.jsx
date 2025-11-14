@@ -1,5 +1,6 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { useSettings } from '../context/SettingsContext';
 
 const navItemBaseClass = 'su-btn su-nav-link';
 
@@ -15,21 +16,45 @@ const NavItem = ({ to, children }) => (
   </NavLink>
 );
 
+const DEFAULT_NAV = [
+  { label: 'Dashboard', to: '/admin' },
+  { label: 'Content', to: '/admin/content' },
+  { label: 'Users', to: '/admin/users' },
+  { label: 'Taxonomies', to: '/admin/taxonomies' },
+  { label: 'Headers', to: '/admin/headers' },
+  { label: 'Footers', to: '/admin/footers' },
+  { label: 'Menus', to: '/admin/menus' },
+  { label: 'Settings', to: '/admin/settings' },
+];
+
 export default function Sidebar() {
+  const { settings } = useSettings();
+  const navigate = useNavigate();
+
+  const navItems =
+    settings && Array.isArray(settings.navSidebar) && settings.navSidebar.length
+      ? settings.navSidebar
+      : DEFAULT_NAV;
+
   return (
-    <aside className="su-sidebar-inner">
-      <div style={{ fontWeight: 700, marginBottom: 12 }}>Navigation</div>
-      <NavItem to="/admin">Dashboard</NavItem>
-      <NavItem to="/admin/content">Content</NavItem>
-      <NavItem to="/admin/taxonomies">Taxonomies</NavItem>
-      <NavItem to="/admin/users">Users</NavItem>
-      <div style={{ margin: '16px 0', borderTop: '1px solid var(--su-border)' }} />
-      <NavItem to="/admin/menus">Menus</NavItem>
-      <NavItem to="/admin/headers">Headers</NavItem>
-      <NavItem to="/admin/footers">Footers</NavItem>
-      <NavItem to="/admin/settings">Settings</NavItem>
-      <div style={{ marginTop: 16, opacity: 0.7 }}>
-        <NavItem to="/quick-builder">Quick Builder</NavItem>
+    <aside className="su-sidebar">
+      <div style={{ padding: 16 }}>
+        {navItems.map((item) => (
+          <NavItem key={item.to} to={item.to}>
+            {item.label}
+          </NavItem>
+        ))}
+
+        <div style={{ marginTop: 24, borderTop: '1px solid var(--su-border)', paddingTop: 12 }}>
+          <button
+            type="button"
+            className="su-btn"
+            style={{ width: '100%' }}
+            onClick={() => navigate('/admin/settings#navigation')}
+          >
+            ✏️ Edit navigation
+          </button>
+        </div>
       </div>
     </aside>
   );

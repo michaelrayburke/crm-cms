@@ -13,47 +13,48 @@ export default function UsersPage() {
 
   useEffect(() => {
     api
-      .get('/users')
+      .get('/api/users')
       .then((res) => {
-        if (Array.isArray(res)) {
-          setUsers(res);
-        } else if (Array.isArray(res?.users)) {
-          setUsers(res.users);
-        } else if (Array.isArray(res?.data)) {
-          setUsers(res.data);
-        } else {
-          setUsers([]);
-        }
+        if (Array.isArray(res)) return setUsers(res);
+        if (Array.isArray(res?.users)) return setUsers(res.users);
+        if (Array.isArray(res?.data)) return setUsers(res.data);
+        setUsers([]);
       })
       .catch(() => setUsers([]));
   }, []);
 
   function filtered() {
     const needle = q.toLowerCase();
-    return users.filter((u) => (u.email || '').toLowerCase().includes(needle));
+    return users.filter(
+      (u) =>
+        (u.email || '').toLowerCase().includes(needle) ||
+        (u.name || '').toLowerCase().includes(needle)
+    );
   }
 
   async function setRole(id, role) {
     if (typeof api.patch === 'function') {
-      await api.patch(`/users/${id}`, { role });
+      await api.patch(`/api/users/${id}`, { role });
     } else {
-      await api.post(`/users/${id}`, { role });
+      await api.post(`/api/users/${id}`, { role });
     }
-
     setUsers((uu) => uu.map((u) => (u.id === id ? { ...u, role } : u)));
   }
 
   async function createUser(e) {
     e.preventDefault();
-    if (!form.email.trim() || !form.password.trim()) return;
-    const created = await api.post('/users', form);
+    const email = form.email.trim();
+    const password = form.password.trim();
+    if (!email || !password) return;
+
+    const created = await api.post('/api/users', form);
     setUsers((uu) => [...uu, created]);
     setForm({ email: '', name: '', password: '', role: 'EDITOR' });
   }
 
   async function removeUser(id) {
     if (!window.confirm('Remove this user?')) return;
-    await api.del(`/users/${id}`);
+    await api.del(`/api/users/${id}`);
     setUsers((uu) => uu.filter((u) => u.id !== id));
   }
 
@@ -71,6 +72,7 @@ export default function UsersPage() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, email: e.target.value }))
               }
+              required
             />
           </label>
           <div style={{ height: 8 }} />
@@ -94,6 +96,7 @@ export default function UsersPage() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, password: e.target.value }))
               }
+              required
             />
           </label>
           <div style={{ height: 8 }} />
@@ -123,7 +126,7 @@ export default function UsersPage() {
         <div style={{ marginBottom: 8 }}>
           <input
             className="su-input"
-            placeholder="Search by email…"
+            placeholder="Search by email or name…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />

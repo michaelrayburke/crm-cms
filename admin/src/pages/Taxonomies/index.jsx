@@ -11,24 +11,27 @@ export default function TaxonomiesPage() {
 
   useEffect(() => {
     api
-      .get('/taxonomies')
+      .get('/api/taxonomies')
       .then((res) => {
-        if (Array.isArray(res)) {
-          setTax(res);
-        } else if (Array.isArray(res?.taxonomies)) {
-          setTax(res.taxonomies);
-        } else if (Array.isArray(res?.data)) {
-          setTax(res.data);
-        } else {
-          setTax([]);
-        }
+        if (Array.isArray(res)) return setTax(res);
+        if (Array.isArray(res?.taxonomies)) return setTax(res.taxonomies);
+        if (Array.isArray(res?.data)) return setTax(res.data);
+        setTax([]);
       })
       .catch(() => setTax([]));
   }, []);
 
   async function add() {
-    if (!form.key.trim() || !form.label.trim()) return;
-    const created = await api.post('/taxonomies', form);
+    const key = form.key.trim();
+    const label = form.label.trim();
+    if (!key || !label) return;
+
+    const created = await api.post('/api/taxonomies', {
+      key,
+      label,
+      isHierarchical: !!form.isHierarchical,
+    });
+
     setTax((t) => [...t, created]);
     setForm({ key: '', label: '', isHierarchical: false });
   }
@@ -42,7 +45,10 @@ export default function TaxonomiesPage() {
           <input
             className="su-input"
             value={form.key}
-            onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, key: e.target.value }))
+            }
+            placeholder="genre, topic, location…"
           />
         </label>
         <div style={{ height: 8 }} />
@@ -54,6 +60,7 @@ export default function TaxonomiesPage() {
             onChange={(e) =>
               setForm((f) => ({ ...f, label: e.target.value }))
             }
+            placeholder="Genre, Topic, Location…"
           />
         </label>
         <div style={{ height: 8 }} />
@@ -65,9 +72,9 @@ export default function TaxonomiesPage() {
               setForm((f) => ({ ...f, isHierarchical: e.target.checked }))
             }
           />{' '}
-          Hierarchical
+          Hierarchical (parent/child)
         </label>
-        <div style={{ height: 8 }} />
+        <div style={{ height: 12 }} />
         <button className="su-btn primary" onClick={add}>
           Add taxonomy
         </button>

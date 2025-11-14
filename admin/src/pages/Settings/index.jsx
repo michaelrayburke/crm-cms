@@ -53,7 +53,77 @@ export default function SettingsPage() {
       setSaving(false);
       setTimeout(() => setSavedMsg(''), 2500);
     }
+  
+  const sidebarItems = Array.isArray(form?.navSidebar)
+    ? form.navSidebar
+    : [];
+
+  function addSidebarItem() {
+    setForm((prev) => ({
+      ...prev,
+      navSidebar: [
+        ...(Array.isArray(prev.navSidebar) ? prev.navSidebar : []),
+        { label: 'New item', to: '/admin' },
+      ],
+    }));
   }
+
+  function updateSidebarItem(index, key, value) {
+    setForm((prev) => {
+      const items = Array.isArray(prev.navSidebar)
+        ? [...prev.navSidebar]
+        : [];
+      items[index] = { ...(items[index] || {}), [key]: value };
+      return { ...prev, navSidebar: items };
+    });
+  }
+
+  function removeSidebarItem(index) {
+    setForm((prev) => {
+      const items = Array.isArray(prev.navSidebar)
+        ? [...prev.navSidebar]
+        : [];
+      items.splice(index, 1);
+      return { ...prev, navSidebar: items };
+    });
+  }
+
+  const topbarButtons = Array.isArray(form?.navTopbarButtons)
+    ? form.navTopbarButtons
+    : [];
+
+  function addTopbarButton() {
+    setForm((prev) => ({
+      ...prev,
+      navTopbarButtons: [
+        ...(Array.isArray(prev.navTopbarButtons)
+          ? prev.navTopbarButtons
+          : []),
+        { label: 'Quick Builder', to: '/quick-builder' },
+      ],
+    }));
+  }
+
+  function updateTopbarButton(index, key, value) {
+    setForm((prev) => {
+      const items = Array.isArray(prev.navTopbarButtons)
+        ? [...prev.navTopbarButtons]
+        : [];
+      items[index] = { ...(items[index] || {}), [key]: value };
+      return { ...prev, navTopbarButtons: items };
+    });
+  }
+
+  function removeTopbarButton(index) {
+    setForm((prev) => {
+      const items = Array.isArray(prev.navTopbarButtons)
+        ? [...prev.navTopbarButtons]
+        : [];
+      items.splice(index, 1);
+      return { ...prev, navTopbarButtons: items };
+    });
+  }
+}
 
   if (loading || !form) {
     return <div className="su-card">Loading settings…</div>;
@@ -156,6 +226,118 @@ export default function SettingsPage() {
             </span>
           </label>
         ))}
+      </div>
+
+      <div className="su-card" id="navigation">
+        <h2>Navigation</h2>
+        <p style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
+          Control sidebar menu items and topbar buttons. If you leave a list empty,
+          defaults will be used.
+        </p>
+
+        <h3 style={{ marginTop: 0 }}>Sidebar menu</h3>
+        {sidebarItems.length === 0 && (
+          <p style={{ fontSize: 12, opacity: 0.7 }}>
+            No custom sidebar items. Defaults will be shown.
+          </p>
+        )}
+        {sidebarItems.map((item, index) => (
+          <div
+            key={index}
+            style={{
+              display: 'flex',
+              gap: 8,
+              marginBottom: 8,
+              alignItems: 'center',
+            }}
+          >
+            <input
+              className="su-input"
+              style={{ flex: 1 }}
+              placeholder="Label"
+              value={item.label || ''}
+              onChange={(e) =>
+                updateSidebarItem(index, 'label', e.target.value)
+              }
+            />
+            <input
+              className="su-input"
+              style={{ flex: 1 }}
+              placeholder="Path, e.g. /admin/content"
+              value={item.to || ''}
+              onChange={(e) => updateSidebarItem(index, 'to', e.target.value)}
+            />
+            <button
+              type="button"
+              className="su-btn"
+              onClick={() => removeSidebarItem(index)}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="su-btn"
+          onClick={addSidebarItem}
+          style={{ marginTop: 4 }}
+        >
+          + Add sidebar link
+        </button>
+
+        <div style={{ height: 16 }} />
+
+        <h3>Topbar buttons</h3>
+        {topbarButtons.length === 0 && (
+          <p style={{ fontSize: 12, opacity: 0.7 }}>
+            No custom topbar buttons. Defaults will be used (Quick Builder).
+          </p>
+        )}
+        {topbarButtons.map((btn, index) => (
+          <div
+            key={index}
+            style={{
+              display: 'flex',
+              gap: 8,
+              marginBottom: 8,
+              alignItems: 'center',
+            }}
+          >
+            <input
+              className="su-input"
+              style={{ flex: 1 }}
+              placeholder="Label"
+              value={btn.label || ''}
+              onChange={(e) =>
+                updateTopbarButton(index, 'label', e.target.value)
+              }
+            />
+            <input
+              className="su-input"
+              style={{ flex: 1 }}
+              placeholder="Path, e.g. /quick-builder"
+              value={btn.to || ''}
+              onChange={(e) =>
+                updateTopbarButton(index, 'to', e.target.value)
+              }
+            />
+            <button
+              type="button"
+              className="su-btn"
+              onClick={() => removeTopbarButton(index)}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="su-btn"
+          onClick={addTopbarButton}
+          style={{ marginTop: 4 }}
+        >
+          + Add topbar button
+        </button>
       </div>
 
       <div className="su-card">
