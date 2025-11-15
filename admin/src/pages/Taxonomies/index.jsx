@@ -1,272 +1,285 @@
-// admin/src/pages/Taxonomies/index.jsx
-// Taxonomies admin page: list + create + inline edit + delete.
+import { useEffect, useState } from 'react';
+import { api } from '../../lib/api';
 
-import { useEffect, useMemo, useState } from 'react';
-import { api } from '../../../lib/api';
-
+// Simple slug helper, same behavior everywhere
 function slugify(value) {
   return value
+    .toString()
     .toLowerCase()
     .trim()
+    .replace(/['"]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }
 
 export default function TaxonomiesPage() {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [taxonomies, setTaxonomies] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
   const [form, setForm] = useState({
     key: '',
     label: '',
-    isHierarchical: false,
+    is_hierarchical: false,
   });
-  const [saving, setSaving] = useState(false);
 
-  // Load on mount
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const data = await api.get('/taxonomies');
-        // backend returns { ok: true, taxonomies: [...] }
-        if (!cancelled) {
-          setItems(data.taxonomies || []);
-        }
-      } catch (err) {
-        console.error('Failed to load taxonomies', err);
-        if (!cancelled) setError('Failed to load taxonomies');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const canSubmit = useMemo(
-    () => form.key.trim().length > 0 && form.label.trim().length > 0 && !saving,
-    [form, saving],
-  );
-
-  function handleChange(e) {
-    const { name, type, checked, value } = e.target;
-    setForm(prev => {
-      const next = { ...prev, [name]: type === 'checkbox' ? checked : value };
-      // If user types label first and key is empty, auto-suggest a key
-      if (name === 'label' && !prev.key) {
-        next.key = slugify(value);
-      }
-      return next;
-    });
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!canSubmit) return;
-
-    setSaving(true);
+  // Load all taxonomies ---------------------------------
+  async function loadTaxonomies() {
+    setLoading(true);
     setError('');
     try {
-      const payload = {
-        key: form.key.trim(),
-        label: form.label.trim(),
-        isHierarchical: !!form.isHierarchical,
-      };
-      const data = await api.post('/taxonomies', payload);
-      // backend: { ok: true, taxonomy: {...} }
-      if (!data.ok) {
-        throw new Error(data.error || 'Failed to create taxonomy');
-      }
-      const taxonomy = data.taxonomy || data;
-      setItems(prev => [...prev, taxonomy]);
-      setForm({ key: '', label: '', isHierarchical: false });
+      const res = await api.get('/taxonomies'); // -> /api/taxonomies
+      // backend returns { ok, items } or { ok, taxonomies }
+      const list = res.items || res.taxonomies || [];
+      setTaxonomies(list);
     } catch (err) {
-      console.error('Create taxonomy failed', err);
-      setError(err.message || 'Failed to create taxonomy');
+      console.error('Failed to load taxonomies', err);
+      setError(err?.message || 'Failed to load taxonomies.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadTaxonomies();
+  }, []);
+
+  // Create new taxonomy ---------------------------------
+  async function handleCreate(e) {
+    e.preventDefault();
+    setError('');
+    setMessage('');
+    setSaving(true);
+
+    const key = form.key.trim();
+    const label = form.label.trim();
+    const is_hierarchical = !!form.is_hierarchical;
+
+    if (!key || !label) {
+      setError('Key and label are required.');
+      setSaving(false);
+      return;
+    }
+
+    try {
+      await api.post('/taxonomies', {
+        key,
+        label,
+        is_hierarchical,
+        // slug will be set in the backend (we can keep this consistent)
+      }); // -> POST /api/taxonomies
+
+      setForm({ key: '', label: '', is_hierarchical: false });
+      setMessage('Taxonomy created.');
+      await loadTaxonomies();
+    } catch (err) {
+      console.error('Failed to create taxonomy', err);
+      setError(
+        err?.message ||
+          'Failed to create taxonomy. Make sure the key is unique.'
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  function handleInlineChange(id, field, value) {
-    setItems(prev => prev.map(t => (t.id === id ? { ...t, [field]: value } : t)));
-  }
+  // Inline update (label, slug, is_hierarchical) --------
+  async function handleUpdate(id, field, value) {
+    setError('');
+    setMessage('');
 
-  async function handleInlineBlur(item) {
+    // Optimistic UI update
+    setTaxonomies((prev) =>
+      prev.map((t) =>
+        t.id === id ? { ...t, [field]: field === 'is_hierarchical' ? !!value : value } : t
+      )
+    );
+
+    const payload = {};
+    if (field === 'label') payload.label = value;
+    if (field === 'slug') payload.slug = value;
+    if (field === 'is_hierarchical') payload.is_hierarchical = !!value;
+
     try {
-      const payload = {
-        key: item.key,
-        label: item.label,
-        isHierarchical: item.is_hierarchical,
-        is_visible: item.is_visible,
-      };
-      const data = await api.patch(`/taxonomies/${item.id}`, payload);
-      if (!data.ok) throw new Error(data.error || 'Failed to update taxonomy');
+      await api.patch(`/taxonomies/${id}`, payload); // -> PATCH /api/taxonomies/:id
+      setMessage('Taxonomy updated.');
     } catch (err) {
-      console.error('Update taxonomy failed', err);
-      setError(err.message || 'Failed to update taxonomy');
+      console.error('Failed to update taxonomy', err);
+      setError(err?.message || 'Failed to update taxonomy.');
+      // reload to undo optimistic change
+      loadTaxonomies();
     }
   }
 
+  // Delete taxonomy -------------------------------------
   async function handleDelete(id) {
-    if (!window.confirm('Delete this taxonomy?')) return;
+    setError('');
+    setMessage('');
+
+    const target = taxonomies.find((t) => t.id === id);
+    const label = target?.label || target?.key || 'this taxonomy';
+
+    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+
     try {
-      const data = await api.del(`/taxonomies/${id}`);
-      if (data && data.ok === false) {
-        throw new Error(data.error || 'Failed to delete taxonomy');
-      }
-      setItems(prev => prev.filter(t => t.id !== id));
+      await api.del(`/taxonomies/${id}`); // -> DELETE /api/taxonomies/:id
+      setTaxonomies((prev) => prev.filter((t) => t.id !== id));
+      setMessage('Taxonomy deleted.');
     } catch (err) {
-      console.error('Delete taxonomy failed', err);
-      setError(err.message || 'Failed to delete taxonomy');
+      console.error('Failed to delete taxonomy', err);
+      setError(err?.message || 'Failed to delete taxonomy.');
     }
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Taxonomies</h1>
-        {loading && <span className="text-sm text-gray-500">Loading…</span>}
-      </div>
+    <div className="grid gap-8 md:grid-cols-2">
+      {/* New Taxonomy form */}
+      <div className="bg-white rounded-xl shadow p-6">
+        <h1 className="text-xl font-semibold mb-4">New Taxonomy</h1>
 
-      {error && (
-        <div className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700 border border-red-200">
-          {error}
-        </div>
-      )}
+        {error && (
+          <div className="mb-4 rounded bg-red-50 text-red-700 px-3 py-2 text-sm">
+            {error}
+          </div>
+        )}
+        {message && !error && (
+          <div className="mb-4 rounded bg-green-50 text-green-700 px-3 py-2 text-sm">
+            {message}
+          </div>
+        )}
 
-      {/* New taxonomy form */}
-      <form
-        onSubmit={handleSubmit}
-        className="grid gap-4 rounded-xl border bg-white p-4 md:grid-cols-3"
-      >
-        <div className="md:col-span-3">
-          <h2 className="text-lg font-medium">New taxonomy</h2>
-          <p className="text-xs text-gray-500">
-            Give it a short machine key and a human label. The key is how content types will refer
-            to this taxonomy.
-          </p>
-        </div>
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Key</label>
+            <input
+              type="text"
+              className="w-full rounded border px-3 py-2 text-sm"
+              value={form.key}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, key: e.target.value }))
+              }
+              placeholder="collection, category, tag..."
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Internal identifier (must be unique).
+            </p>
+          </div>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium uppercase tracking-wide text-gray-600">Key</span>
-          <input
-            name="key"
-            value={form.key}
-            onChange={handleChange}
-            className="rounded-md border px-3 py-2 text-sm"
-            placeholder="collection"
-          />
-        </label>
+          <div>
+            <label className="block text-sm font-medium mb-1">Label</label>
+            <input
+              type="text"
+              className="w-full rounded border px-3 py-2 text-sm"
+              value={form.label}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, label: e.target.value }))
+              }
+              placeholder="Collections, Categories, Tags..."
+            />
+          </div>
 
-        <label className="flex flex-col gap-1 md:col-span-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-gray-600">Label</span>
-          <input
-            name="label"
-            value={form.label}
-            onChange={handleChange}
-            className="rounded-md border px-3 py-2 text-sm"
-            placeholder="Collection"
-          />
-        </label>
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.is_hierarchical}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, is_hierarchical: e.target.checked }))
+              }
+            />
+            Hierarchical (like categories) instead of flat (like tags)
+          </label>
 
-        <label className="inline-flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            name="isHierarchical"
-            checked={form.isHierarchical}
-            onChange={handleChange}
-            className="h-4 w-4"
-          />
-          Hierarchical (like categories vs. tags)
-        </label>
-
-        <div className="md:col-span-2 flex items-center justify-end gap-2">
           <button
             type="submit"
-            disabled={!canSubmit}
-            className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+            className="inline-flex items-center rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+            disabled={saving}
           >
             {saving ? 'Saving…' : 'Add taxonomy'}
           </button>
-        </div>
-      </form>
+        </form>
+      </div>
 
-      {/* Existing taxonomies */}
-      <div className="overflow-hidden rounded-xl border bg-white">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-2 text-left font-medium text-gray-600">Key</th>
-              <th className="px-4 py-2 text-left font-medium text-gray-600">Label</th>
-              <th className="px-4 py-2 text-left font-medium text-gray-600">Hierarchical</th>
-              <th className="px-4 py-2 text-left font-medium text-gray-600">Visible</th>
-              <th className="px-4 py-2 text-right font-medium text-gray-600">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 bg-white">
-            {items.map(item => (
-              <tr key={item.id}>
-                <td className="px-4 py-2 align-middle">
-                  <input
-                    className="w-full rounded-md border px-2 py-1 text-xs"
-                    value={item.key || ''}
-                    onChange={e => handleInlineChange(item.id, 'key', e.target.value)}
-                    onBlur={() => handleInlineBlur(item)}
-                  />
-                </td>
-                <td className="px-4 py-2 align-middle">
-                  <input
-                    className="w-full rounded-md border px-2 py-1 text-xs"
-                    value={item.label || ''}
-                    onChange={e => handleInlineChange(item.id, 'label', e.target.value)}
-                    onBlur={() => handleInlineBlur(item)}
-                  />
-                </td>
-                <td className="px-4 py-2 align-middle">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
-                    checked={!!item.is_hierarchical}
-                    onChange={e =>
-                      handleInlineChange(item.id, 'is_hierarchical', e.target.checked)
-                    }
-                    onBlur={() => handleInlineBlur(item)}
-                  />
-                </td>
-                <td className="px-4 py-2 align-middle">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
-                    checked={item.is_visible !== false}
-                    onChange={e => handleInlineChange(item.id, 'is_visible', e.target.checked)}
-                    onBlur={() => handleInlineBlur(item)}
-                  />
-                </td>
-                <td className="px-4 py-2 align-middle text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(item.id)}
-                    className="text-xs font-medium text-red-600 hover:underline"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!items.length && !loading && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-xs text-gray-500">
-                  No taxonomies yet. Create your first one above.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      {/* List of taxonomies */}
+      <div className="bg-white rounded-xl shadow p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">Taxonomies</h2>
+          {loading && (
+            <span className="text-xs text-slate-500">Loading…</span>
+          )}
+        </div>
+
+        {taxonomies.length === 0 && !loading && (
+          <p className="text-sm text-slate-500">
+            No taxonomies yet. Create one on the left.
+          </p>
+        )}
+
+        {taxonomies.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase text-slate-500">
+                  <th className="py-2 pr-4">Key</th>
+                  <th className="py-2 pr-4">Label</th>
+                  <th className="py-2 pr-4">Slug</th>
+                  <th className="py-2 pr-4">Hierarchical</th>
+                  <th className="py-2 pr-4"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {taxonomies.map((tax) => (
+                  <tr key={tax.id} className="border-b last:border-0">
+                    <td className="py-2 pr-4 text-xs font-mono text-slate-600">
+                      {tax.key}
+                    </td>
+                    <td className="py-2 pr-4">
+                      <input
+                        className="w-full rounded border px-2 py-1 text-sm"
+                        value={tax.label || ''}
+                        onChange={(e) =>
+                          handleUpdate(tax.id, 'label', e.target.value)
+                        }
+                      />
+                    </td>
+                    <td className="py-2 pr-4">
+                      <input
+                        className="w-full rounded border px-2 py-1 text-sm"
+                        value={tax.slug || ''}
+                        onChange={(e) =>
+                          handleUpdate(tax.id, 'slug', slugify(e.target.value))
+                        }
+                      />
+                    </td>
+                    <td className="py-2 pr-4">
+                      <input
+                        type="checkbox"
+                        checked={!!tax.is_hierarchical}
+                        onChange={(e) =>
+                          handleUpdate(
+                            tax.id,
+                            'is_hierarchical',
+                            e.target.checked
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="py-2 pr-4 text-right">
+                      <button
+                        type="button"
+                        className="rounded bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100"
+                        onClick={() => handleDelete(tax.id)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
