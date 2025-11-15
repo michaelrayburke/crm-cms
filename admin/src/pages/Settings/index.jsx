@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSettings } from '../../context/SettingsContext';
 import { api } from '../../lib/api';
 
@@ -10,111 +10,97 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (settings && !form) {
-      setForm(settings);
+      // Clone to avoid mutating context directly
+      setForm({
+        appName: settings.appName || 'ServiceUp Admin',
+        theme: {
+          mode: settings.theme?.mode || 'light',
+        },
+        navSidebar: Array.isArray(settings.navSidebar)
+          ? settings.navSidebar
+          : [],
+        navTopbarButtons: Array.isArray(settings.navTopbarButtons)
+          ? settings.navTopbarButtons
+          : [],
+        dashboardWidgets: Array.isArray(settings.dashboardWidgets)
+          ? settings.dashboardWidgets
+          : settings.dashboardWidgets || [],
+        // keep any other keys around
+        ...settings,
+      });
     }
   }, [settings, form]);
 
-  const bind = (key) => (e) =>
-    setForm((prev) => ({ ...prev, [key]: e.target.value }));
+  function bind(path) {
+    return (e) => {
+      const value =
+        e && e.target && e.target.type === 'checkbox'
+          ? e.target.checked
+          : e.target.value;
+      setForm((prev) => {
+        const next = { ...prev };
+        const parts = path.split('.');
+        let cur = next;
+        for (let i = 0; i < parts.length - 1; i++) {
+          const key = parts[i];
+          cur[key] = cur[key] || {};
+          cur = cur[key];
+        }
+        cur[parts[parts.length - 1]] = value;
+        return next;
+      });
+    };
+  }
 
-  const bindTheme = (key) => (e) =>
-    setForm((prev) => ({
-      ...prev,
-      theme: { ...(prev.theme || {}), [key]: e.target.value },
-    }));
-
-  const bindRoleHide = (role) => (e) =>
-    setForm((prev) => ({
-      ...prev,
-      hideChromeByRole: {
-        ...(prev.hideChromeByRole || {}),
-        [role]: e.target.checked,
-      },
-    }));
-
-  async function save() {
-    if (!form) return;
-    setSaving(true);
-    setSavedMsg('');
-    try {
-      // Fallback for older api helpers that don't support .put
-      const updated = typeof api.put === 'function'
-        ? await api.put('/settings', form)
-        : await api.post('/settings', form);
-
-      setSettings(updated);
-      const mode = updated?.theme?.mode || 'light';
-      document.documentElement.setAttribute('data-theme', mode);
-      setSavedMsg('Settings saved.');
-    } catch (e) {
-      console.error(e);
-      setSavedMsg('Error saving settings.');
-    } finally {
-      setSaving(false);
-      setTimeout(() => setSavedMsg(''), 2500);
-    }
-  
-  const sidebarItems = Array.isArray(form?.navSidebar)
-    ? form.navSidebar
-    : [];
+  function updateNavSidebar(index, field, value) {
+    setForm((prev) => {
+      const nav = Array.isArray(prev.navSidebar) ? [...prev.navSidebar] : [];
+      nav[index] = { ...(nav[index] || {}), [field]: value };
+      return { ...prev, navSidebar: nav };
+    });
+  }
 
   function addSidebarItem() {
     setForm((prev) => ({
       ...prev,
       navSidebar: [
         ...(Array.isArray(prev.navSidebar) ? prev.navSidebar : []),
-        { label: 'New item', to: '/admin' },
+        { label: 'New link', to: '/admin' },
       ],
     }));
   }
 
-  function updateSidebarItem(index, key, value) {
-    setForm((prev) => {
-      const items = Array.isArray(prev.navSidebar)
-        ? [...prev.navSidebar]
-        : [];
-      items[index] = { ...(items[index] || {}), [key]: value };
-      return { ...prev, navSidebar: items };
-    });
-  }
-
   function removeSidebarItem(index) {
     setForm((prev) => {
-      const items = Array.isArray(prev.navSidebar)
-        ? [...prev.navSidebar]
-        : [];
-      items.splice(index, 1);
-      return { ...prev, navSidebar: items };
+      const nav = Array.isArray(prev.navSidebar) ? [...prev.navSidebar] : [];
+      nav.splice(index, 1);
+      return { ...prev, navSidebar: nav };
     });
   }
 
-  const topbarButtons = Array.isArray(form?.navTopbarButtons)
-    ? form.navTopbarButtons
-    : [];
+  function updateTopbar(index, field, value) {
+    setForm((prev) => {
+      const items = Array.isArray(prev.navTopbarButtons)
+        ? [...prev.navTopbarButtons]
+        : [];
+      items[index] = { ...(items[index] || {}), [field]: value };
+      return { ...prev, navTopbarButtons: items };
+    });
+  }
 
-  function addTopbarButton() {
+  function addTopbarItem() {
     setForm((prev) => ({
       ...prev,
       navTopbarButtons: [
         ...(Array.isArray(prev.navTopbarButtons)
           ? prev.navTopbarButtons
           : []),
-        { label: 'Quick Builder', to: '/quick-builder' },
+        { label: 'New button', to: '/' },
       ],
     }));
   }
 
-  function updateTopbarButton(index, key, value) {
-    setForm((prev) => {
-      const items = Array.isArray(prev.navTopbarButtons)
-        ? [...prev.navTopbarButtons]
-        : [];
-      items[index] = { ...(items[index] || {}), [key]: value };
-      return { ...prev, navTopbarButtons: items };
-    });
-  }
-
-  function removeTopbarButton(index) {
+  function removeTopbarItem(index) {
     setForm((prev) => {
       const items = Array.isArray(prev.navTopbarButtons)
         ? [...prev.navTopbarButtons]
@@ -123,7 +109,23 @@ export default function SettingsPage() {
       return { ...prev, navTopbarButtons: items };
     });
   }
-}
+
+  async function save() {
+    if (!form) return;
+    setSaving(true);
+    setSavedMsg('');
+    try {
+      const saved = await api.post('/settings', form);
+      setSettings(saved);
+      setSavedMsg('Settings saved.');
+    } catch (err) {
+      console.error('Failed to save settings', err);
+      setSavedMsg(err.message || 'Failed to save settings.');
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSavedMsg(''), 3000);
+    }
+  }
 
   if (loading || !form) {
     return <div className="su-card">Loading settings…</div>;
@@ -143,205 +145,115 @@ export default function SettingsPage() {
         </label>
         <div style={{ height: 8 }} />
         <label>
-          Timezone
-          <input
-            className="su-input"
-            value={form.timezone || ''}
-            onChange={bind('timezone')}
-          />
-        </label>
-        <div style={{ height: 8 }} />
-        <label>
-          Powered by line
-          <input
-            className="su-input"
-            value={form.poweredBy || ''}
-            onChange={bind('poweredBy')}
-          />
-        </label>
-        <div style={{ height: 8 }} />
-        <label>
-          Logo URL
-          <input
-            className="su-input"
-            value={form.logoUrl || ''}
-            onChange={bind('logoUrl')}
-          />
-        </label>
-      </div>
-
-      <div className="su-card">
-        <h2>Theme</h2>
-        <label>
-          Mode
+          Theme
           <select
             className="su-select"
             value={form.theme?.mode || 'light'}
-            onChange={bindTheme('mode')}
+            onChange={bind('theme.mode')}
           >
             <option value="light">Light</option>
             <option value="dark">Dark</option>
+            <option value="system">System</option>
           </select>
         </label>
-        <div style={{ height: 8 }} />
-        <label>
-          Primary color
-          <input
-            type="color"
-            value={form.theme?.primary || '#000000'}
-            onChange={bindTheme('primary')}
-          />
-        </label>
-        <div style={{ height: 8 }} />
-        <label>
-          Surface color
-          <input
-            type="color"
-            value={form.theme?.surface || '#ffffff'}
-            onChange={bindTheme('surface')}
-          />
-        </label>
-        <div style={{ height: 8 }} />
-        <label>
-          Text color
-          <input
-            type="color"
-            value={form.theme?.text || '#111111'}
-            onChange={bindTheme('text')}
-          />
-        </label>
-      </div>
-
-      <div className="su-card">
-        <h2>Visibility (Hide Admin Chrome)</h2>
-        {['ADMIN', 'EDITOR', 'VIEWER'].map((role) => (
-          <label key={role} style={{ display: 'block', marginBottom: 6 }}>
-            <input
-              type="checkbox"
-              checked={!!form.hideChromeByRole?.[role]}
-              onChange={bindRoleHide(role)}
-            />{' '}
-            <span style={{ marginLeft: 8 }}>
-              Hide sidebar/topbar/footer for {role}
-            </span>
-          </label>
-        ))}
       </div>
 
       <div className="su-card" id="navigation">
         <h2>Navigation</h2>
-        <p style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
-          Control sidebar menu items and topbar buttons. If you leave a list empty,
-          defaults will be used.
-        </p>
-
         <h3 style={{ marginTop: 0 }}>Sidebar menu</h3>
-        {sidebarItems.length === 0 && (
-          <p style={{ fontSize: 12, opacity: 0.7 }}>
-            No custom sidebar items. Defaults will be shown.
-          </p>
-        )}
-        {sidebarItems.map((item, index) => (
-          <div
-            key={index}
-            style={{
-              display: 'flex',
-              gap: 8,
-              marginBottom: 8,
-              alignItems: 'center',
-            }}
-          >
-            <input
-              className="su-input"
-              style={{ flex: 1 }}
-              placeholder="Label"
-              value={item.label || ''}
-              onChange={(e) =>
-                updateSidebarItem(index, 'label', e.target.value)
-              }
-            />
-            <input
-              className="su-input"
-              style={{ flex: 1 }}
-              placeholder="Path, e.g. /admin/content"
-              value={item.to || ''}
-              onChange={(e) => updateSidebarItem(index, 'to', e.target.value)}
-            />
-            <button
-              type="button"
-              className="su-btn"
-              onClick={() => removeSidebarItem(index)}
+        <div style={{ marginBottom: 8 }}>
+          {(form.navSidebar || []).map((item, i) => (
+            <div
+              key={i}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr auto',
+                gap: 8,
+                marginBottom: 4,
+              }}
             >
-              ×
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          className="su-btn"
-          onClick={addSidebarItem}
-          style={{ marginTop: 4 }}
-        >
-          + Add sidebar link
-        </button>
-
-        <div style={{ height: 16 }} />
+              <input
+                className="su-input"
+                placeholder="Label"
+                value={item.label || ''}
+                onChange={(e) =>
+                  updateNavSidebar(i, 'label', e.target.value)
+                }
+              />
+              <input
+                className="su-input"
+                placeholder="Path (e.g. /admin/content)"
+                value={item.to || ''}
+                onChange={(e) =>
+                  updateNavSidebar(i, 'to', e.target.value)
+                }
+              />
+              <button
+                className="su-btn"
+                type="button"
+                onClick={() => removeSidebarItem(i)}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <button
+            className="su-btn"
+            type="button"
+            onClick={addSidebarItem}
+          >
+            + Add sidebar link
+          </button>
+        </div>
 
         <h3>Topbar buttons</h3>
-        {topbarButtons.length === 0 && (
-          <p style={{ fontSize: 12, opacity: 0.7 }}>
-            No custom topbar buttons. Defaults will be used (Quick Builder).
-          </p>
-        )}
-        {topbarButtons.map((btn, index) => (
-          <div
-            key={index}
-            style={{
-              display: 'flex',
-              gap: 8,
-              marginBottom: 8,
-              alignItems: 'center',
-            }}
-          >
-            <input
-              className="su-input"
-              style={{ flex: 1 }}
-              placeholder="Label"
-              value={btn.label || ''}
-              onChange={(e) =>
-                updateTopbarButton(index, 'label', e.target.value)
-              }
-            />
-            <input
-              className="su-input"
-              style={{ flex: 1 }}
-              placeholder="Path, e.g. /quick-builder"
-              value={btn.to || ''}
-              onChange={(e) =>
-                updateTopbarButton(index, 'to', e.target.value)
-              }
-            />
-            <button
-              type="button"
-              className="su-btn"
-              onClick={() => removeTopbarButton(index)}
+        <div>
+          {(form.navTopbarButtons || []).map((item, i) => (
+            <div
+              key={i}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr auto',
+                gap: 8,
+                marginBottom: 4,
+              }}
             >
-              ×
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          className="su-btn"
-          onClick={addTopbarButton}
-          style={{ marginTop: 4 }}
-        >
-          + Add topbar button
-        </button>
+              <input
+                className="su-input"
+                placeholder="Label"
+                value={item.label || ''}
+                onChange={(e) =>
+                  updateTopbar(i, 'label', e.target.value)
+                }
+              />
+              <input
+                className="su-input"
+                placeholder="Path (e.g. /quick-builder)"
+                value={item.to || ''}
+                onChange={(e) =>
+                  updateTopbar(i, 'to', e.target.value)
+                }
+              />
+              <button
+                className="su-btn"
+                type="button"
+                onClick={() => removeTopbarItem(i)}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <button
+            className="su-btn"
+            type="button"
+            onClick={addTopbarItem}
+          >
+            + Add topbar button
+          </button>
+        </div>
       </div>
 
-      <div className="su-card">
-        <h2>Save</h2>
+      <div className="su-card" style={{ gridColumn: '1 / span 2' }}>
         <button
           className="su-btn primary"
           onClick={save}
@@ -350,7 +262,7 @@ export default function SettingsPage() {
           {saving ? 'Saving…' : 'Save settings'}
         </button>
         {savedMsg && (
-          <div style={{ marginTop: 8, opacity: 0.75 }}>{savedMsg}</div>
+          <div style={{ marginTop: 8, opacity: 0.8 }}>{savedMsg}</div>
         )}
       </div>
     </div>

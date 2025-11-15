@@ -10,52 +10,73 @@ export default function UsersPage() {
     password: '',
     role: 'EDITOR',
   });
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api
-      .get('/api/users')
-      .then((res) => {
-        if (Array.isArray(res)) return setUsers(res);
-        if (Array.isArray(res?.users)) return setUsers(res.users);
-        if (Array.isArray(res?.data)) return setUsers(res.data);
-        setUsers([]);
-      })
-      .catch(() => setUsers([]));
+    (async () => {
+      try {
+        const res = await api.get('/users');
+        if (Array.isArray(res)) {
+          setUsers(res);
+        } else if (Array.isArray(res?.users)) {
+          setUsers(res.users);
+        } else if (Array.isArray(res?.data)) {
+          setUsers(res.data);
+        } else {
+          setUsers([]);
+        }
+      } catch (err) {
+        console.error('Failed to load users', err);
+        setError('Failed to load users.');
+      }
+    })();
   }, []);
 
-  function filtered() {
+  function filteredUsers() {
     const needle = q.toLowerCase();
-    return users.filter(
-      (u) =>
-        (u.email || '').toLowerCase().includes(needle) ||
-        (u.name || '').toLowerCase().includes(needle)
+    return users.filter((u) =>
+      (u.email || '').toLowerCase().includes(needle)
     );
-  }
-
-  async function setRole(id, role) {
-    if (typeof api.patch === 'function') {
-      await api.patch(`/api/users/${id}`, { role });
-    } else {
-      await api.post(`/api/users/${id}`, { role });
-    }
-    setUsers((uu) => uu.map((u) => (u.id === id ? { ...u, role } : u)));
   }
 
   async function createUser(e) {
     e.preventDefault();
-    const email = form.email.trim();
-    const password = form.password.trim();
-    if (!email || !password) return;
+    setError('');
+    if (!form.email.trim() || !form.password.trim()) {
+      setError('Email and password are required.');
+      return;
+    }
+    try {
+      const created = await api.post('/users', form);
+      setUsers((prev) => [...prev, created]);
+      setForm({ email: '', name: '', password: '', role: 'EDITOR' });
+    } catch (err) {
+      console.error('Failed to create user', err);
+      setError(err.message || 'Failed to create user.');
+    }
+  }
 
-    const created = await api.post('/api/users', form);
-    setUsers((uu) => [...uu, created]);
-    setForm({ email: '', name: '', password: '', role: 'EDITOR' });
+  async function updateUser(id, patch) {
+    try {
+      const updated = await api.patch(`/users/${id}`, patch);
+      setUsers((prev) =>
+        prev.map((u) => (u.id === id ? { ...u, ...updated } : u))
+      );
+    } catch (err) {
+      console.error('Failed to update user', err);
+      setError(err.message || 'Failed to update user.');
+    }
   }
 
   async function removeUser(id) {
     if (!window.confirm('Remove this user?')) return;
-    await api.del(`/api/users/${id}`);
-    setUsers((uu) => uu.filter((u) => u.id !== id));
+    try {
+      await api.del(`/users/${id}`);
+      setUsers((prev) => prev.filter((u) => u.id !== id));
+    } catch (err) {
+      console.error('Failed to remove user', err);
+      setError(err.message || 'Failed to remove user.');
+    }
   }
 
   return (
@@ -72,7 +93,6 @@ export default function UsersPage() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, email: e.target.value }))
               }
-              required
             />
           </label>
           <div style={{ height: 8 }} />
@@ -96,7 +116,6 @@ export default function UsersPage() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, password: e.target.value }))
               }
-              required
             />
           </label>
           <div style={{ height: 8 }} />
@@ -118,6 +137,11 @@ export default function UsersPage() {
           <button className="su-btn primary" type="submit">
             Create user
           </button>
+          {error && (
+            <div style={{ marginTop: 8, color: 'var(--su-danger)' }}>
+              {error}
+            </div>
+          )}
         </form>
       </div>
 
@@ -126,7 +150,7 @@ export default function UsersPage() {
         <div style={{ marginBottom: 8 }}>
           <input
             className="su-input"
-            placeholder="Search by email or name…"
+            placeholder="Search by email…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -142,18 +166,32 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered().map((u) => (
-              <tr
-                key={u.id}
-                style={{ borderTop: '1px solid var(--su-border)' }}
-              >
+            {filteredUsers().map((u) => (
+              <tr key={u.id}>
                 <td>{u.email}</td>
-                <td>{u.name || '-'}</td>
+                <td>
+                  <input
+                    className="su-input"
+                    value={u.name || ''}
+                    onChange={(e) =>
+                      setUsers((prev) =>
+                        prev.map((x) =>
+                          x.id === u.id ? { ...x, name: e.target.value } : x
+                        )
+                      )
+                    }
+                    onBlur={(e) =>
+                      updateUser(u.id, { name: e.target.value })
+                    }
+                  />
+                </td>
                 <td>
                   <select
                     className="su-select"
                     value={u.role || 'VIEWER'}
-                    onChange={(e) => setRole(u.id, e.target.value)}
+                    onChange={(e) =>
+                      updateUser(u.id, { role: e.target.value })
+                    }
                   >
                     <option value="ADMIN">ADMIN</option>
                     <option value="EDITOR">EDITOR</option>
@@ -171,9 +209,9 @@ export default function UsersPage() {
                 </td>
               </tr>
             ))}
-            {filtered().length === 0 && (
+            {filteredUsers().length === 0 && (
               <tr>
-                <td colSpan={4} style={{ padding: '12px 0', opacity: 0.7 }}>
+                <td colSpan={4} style={{ padding: '12px 0', opacity: 0.75 }}>
                   No users found.
                 </td>
               </tr>

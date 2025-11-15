@@ -1,77 +1,63 @@
 import { Router } from 'express';
+import { pool } from '../dbPool.js';
 
-export const router = Router();
+const router = Router();
 
-// list taxonomies
-router.get('/', async (req, res) => {
+// GET /api/taxonomies - list all taxonomies
+router.get('/', async (_req, res) => {
   try {
-    const { pool } = await import('../dbPool.js'); // pooled pg instance
-    const { rows } = await pool.query('select * from taxonomies order by key asc');
-    // keep existing shape so older clients still work
+    const { rows } = await pool.query(
+      'SELECT id, key, label, is_hierarchical, created_at FROM taxonomies ORDER BY label ASC'
+    );
     res.json({ ok: true, taxonomies: rows });
-  } catch (e) {
-    console.error('Error listing taxonomies', e);
-    res.status(500).json({ ok: false, error: 'Failed to list taxonomies' });
+  } catch (err) {
+    console.error('[GET /api/taxonomies]', err);
+    res.status(500).json({
+      ok: false,
+      error: 'Failed to list taxonomies',
+      detail: String(err.message || err),
+    });
   }
 });
 
-// create taxonomy
+// POST /api/taxonomies - create a taxonomy
 router.post('/', async (req, res) => {
   try {
-    const { pool } = await import('../dbPool.js');
     const { key, label, isHierarchical } = req.body || {};
-
     const trimmedKey = (key || '').trim();
     const trimmedLabel = (label || '').trim();
 
     if (!trimmedKey || !trimmedLabel) {
-      return res.status(400).json({ error: 'Both "key" and "label" are required.' });
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Both "key" and "label" are required.' });
     }
 
     const insertSql = `
-      insert into taxonomies (key, label, is_hierarchical)
-      values ($1, $2, $3)
-      returning *
-    `;
+      INSERT INTO taxonomies (key, label, is_hierarchical)
+      VALUES ($1, $2, COALESCE($3, FALSE))
+      RETURNING id, key, label, is_hierarchical, created_at
+    `.replace('\n', ' ').replace('  ', ' ');
 
     const { rows } = await pool.query(insertSql, [
       trimmedKey,
       trimmedLabel,
-      !!isHierarchical,
+      typeof isHierarchical === 'boolean' ? isHierarchical : null,
     ]);
 
-    // Frontend expects the created row directly
     return res.status(201).json(rows[0]);
-  } catch (e) {
-    console.error('Error creating taxonomy', e);
+  } catch (err) {
+    console.error('[POST /api/taxonomies]', err);
     // unique violation
-    if (e?.code === '23505') {
-      return res.status(409).json({ error: 'A taxonomy with that key already exists.' });
-    }
-    return res.status(500).json({ error: 'Failed to create taxonomy' });
-  }
-});
-
-// list terms by taxonomy key
-router.get('/:key/terms', async (req, res) => {
-  try {
-    const { pool } = await import('../dbPool.js');
-    const { key } = req.params;
-    const { rows: tx } = await pool.query(
-      'select id, tenant_id from taxonomies where key = $1 limit 1',
-      [key]
-    );
-    if (!tx.length) {
-      return res.status(404).json({ ok: false, error: 'Taxonomy not found' });
-    }
-    const { rows } = await pool.query(
-      'select * from terms where taxonomy_id = $1 order by parent_id nulls first, name asc',
-      [tx[0].id]
-    );
-    res.json({ ok: true, terms: rows });
-  } catch (e) {
-    console.error('Error listing terms', e);
-    res.status(500).json({ ok: false, error: 'Failed to list terms' });
+    if (err && err.code === '23505') {
+            return res
+        .status(409)
+        .json({ ok: false, error: 'A taxonomy with that key already exists.'     }
+    return res.status(500).json({
+      ok: false,
+      error: 'Failed to create taxonomy',
+      detail: String(err.message || err),
+    });
   }
 });
 
