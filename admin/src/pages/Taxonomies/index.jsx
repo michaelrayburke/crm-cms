@@ -1,8 +1,8 @@
 // admin/src/pages/Taxonomies/index.jsx
-// Simple Taxonomies admin page: list + create + inline edit label/key + delete.
+// Taxonomies admin page: list + create + inline edit + delete.
 
 import { useEffect, useMemo, useState } from 'react';
-import { get, post, patch, del } from '../../../lib/api';
+import { api } from '../../../lib/api';
 
 function slugify(value) {
   return value
@@ -30,7 +30,8 @@ export default function TaxonomiesPage() {
       setLoading(true);
       setError('');
       try {
-        const data = await get('/taxonomies');
+        const data = await api.get('/taxonomies');
+        // backend returns { ok: true, taxonomies: [...] }
         if (!cancelled) {
           setItems(data.taxonomies || []);
         }
@@ -55,6 +56,7 @@ export default function TaxonomiesPage() {
     const { name, type, checked, value } = e.target;
     setForm(prev => {
       const next = { ...prev, [name]: type === 'checkbox' ? checked : value };
+      // If user types label first and key is empty, auto-suggest a key
       if (name === 'label' && !prev.key) {
         next.key = slugify(value);
       }
@@ -74,11 +76,11 @@ export default function TaxonomiesPage() {
         label: form.label.trim(),
         isHierarchical: !!form.isHierarchical,
       };
-      const data = await post('/taxonomies', payload);
+      const data = await api.post('/taxonomies', payload);
+      // backend: { ok: true, taxonomy: {...} }
       if (!data.ok) {
         throw new Error(data.error || 'Failed to create taxonomy');
       }
-      // Some api helpers wrap JSON, others return the raw object; support both.
       const taxonomy = data.taxonomy || data;
       setItems(prev => [...prev, taxonomy]);
       setForm({ key: '', label: '', isHierarchical: false });
@@ -90,7 +92,7 @@ export default function TaxonomiesPage() {
     }
   }
 
-  async function handleInlineChange(id, field, value) {
+  function handleInlineChange(id, field, value) {
     setItems(prev => prev.map(t => (t.id === id ? { ...t, [field]: value } : t)));
   }
 
@@ -102,7 +104,7 @@ export default function TaxonomiesPage() {
         isHierarchical: item.is_hierarchical,
         is_visible: item.is_visible,
       };
-      const data = await patch(`/taxonomies/${item.id}`, payload);
+      const data = await api.patch(`/taxonomies/${item.id}`, payload);
       if (!data.ok) throw new Error(data.error || 'Failed to update taxonomy');
     } catch (err) {
       console.error('Update taxonomy failed', err);
@@ -113,7 +115,7 @@ export default function TaxonomiesPage() {
   async function handleDelete(id) {
     if (!window.confirm('Delete this taxonomy?')) return;
     try {
-      const data = await del(`/taxonomies/${id}`);
+      const data = await api.del(`/taxonomies/${id}`);
       if (data && data.ok === false) {
         throw new Error(data.error || 'Failed to delete taxonomy');
       }
@@ -138,7 +140,10 @@ export default function TaxonomiesPage() {
       )}
 
       {/* New taxonomy form */}
-      <form onSubmit={handleSubmit} className="grid gap-4 rounded-xl border bg-white p-4 md:grid-cols-3">
+      <form
+        onSubmit={handleSubmit}
+        className="grid gap-4 rounded-xl border bg-white p-4 md:grid-cols-3"
+      >
         <div className="md:col-span-3">
           <h2 className="text-lg font-medium">New taxonomy</h2>
           <p className="text-xs text-gray-500">
@@ -255,10 +260,7 @@ export default function TaxonomiesPage() {
             ))}
             {!items.length && !loading && (
               <tr>
-                <td
-                  colSpan={5}
-                  className="px-4 py-6 text-center text-xs text-gray-500"
-                >
+                <td colSpan={5} className="px-4 py-6 text-center text-xs text-gray-500">
                   No taxonomies yet. Create your first one above.
                 </td>
               </tr>
