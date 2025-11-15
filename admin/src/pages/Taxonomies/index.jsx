@@ -14,7 +14,8 @@ export default function TaxonomiesPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get('/taxonomies');
+        // IMPORTANT: hit /api/taxonomies (not /taxonomies)
+        const res = await api.get('/api/taxonomies');
         if (Array.isArray(res)) {
           setTaxonomies(res);
         } else if (Array.isArray(res?.taxonomies)) {
@@ -42,7 +43,8 @@ export default function TaxonomiesPage() {
     }
 
     try {
-      const created = await api.post('/taxonomies', form);
+      // IMPORTANT: hit /api/taxonomies (not /taxonomies)
+      const created = await api.post('/api/taxonomies', form);
       setTaxonomies((prev) => [...prev, created]);
       setForm({ key: '', label: '', isHierarchical: false });
     } catch (err) {
@@ -82,12 +84,21 @@ export default function TaxonomiesPage() {
             />
           </label>
           <div style={{ height: 8 }} />
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <label
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
             <input
               type="checkbox"
               checked={form.isHierarchical}
               onChange={(e) =>
-                setForm((f) => ({ ...f, isHierarchical: e.target.checked }))
+                setForm((f) => ({
+                  ...f,
+                  isHierarchical: e.target.checked,
+                }))
               }
             />
             Hierarchical
@@ -97,7 +108,9 @@ export default function TaxonomiesPage() {
             Add taxonomy
           </button>
           {error && (
-            <div style={{ marginTop: 8, color: 'var(--su-danger)' }}>{error}</div>
+            <div style={{ marginTop: 8, color: 'var(--su-danger)' }}>
+              {error}
+            </div>
           )}
         </form>
       </div>
@@ -119,7 +132,9 @@ export default function TaxonomiesPage() {
               <strong>{t.label || t.key}</strong>{' '}
               <span style={{ opacity: 0.7 }}>/ {t.key}</span>{' '}
               {t.is_hierarchical && (
-                <span style={{ fontSize: 12, opacity: 0.7 }}>(hierarchical)</span>
+                <span style={{ fontSize: 12, opacity: 0.7 }}>
+                  (hierarchical)
+                </span>
               )}
             </li>
           ))}

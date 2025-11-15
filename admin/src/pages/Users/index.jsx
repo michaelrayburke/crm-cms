@@ -15,7 +15,8 @@ export default function UsersPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get('/users');
+        // IMPORTANT: hit /api/users (not /users)
+        const res = await api.get('/api/users');
         if (Array.isArray(res)) {
           setUsers(res);
         } else if (Array.isArray(res?.users)) {
@@ -47,7 +48,7 @@ export default function UsersPage() {
       return;
     }
     try {
-      const created = await api.post('/users', form);
+      const created = await api.post('/api/users', form);
       setUsers((prev) => [...prev, created]);
       setForm({ email: '', name: '', password: '', role: 'EDITOR' });
     } catch (err) {
@@ -58,7 +59,7 @@ export default function UsersPage() {
 
   async function updateUser(id, patch) {
     try {
-      const updated = await api.patch(`/users/${id}`, patch);
+      const updated = await api.patch(`/api/users/${id}`, patch);
       setUsers((prev) =>
         prev.map((u) => (u.id === id ? { ...u, ...updated } : u))
       );
@@ -71,7 +72,7 @@ export default function UsersPage() {
   async function removeUser(id) {
     if (!window.confirm('Remove this user?')) return;
     try {
-      await api.del(`/users/${id}`);
+      await api.del(`/api/users/${id}`);
       setUsers((prev) => prev.filter((u) => u.id !== id));
     } catch (err) {
       console.error('Failed to remove user', err);
