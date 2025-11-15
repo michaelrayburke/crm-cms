@@ -1,154 +1,143 @@
-import { Router } from 'express';
+// api/routes/taxonomies.js
+// Express router for taxonomy CRUD.
+// This version assumes a single-tenant installation and always writes the same tenant_id.
+import express from 'express';
 import { pool } from '../dbPool.js';
 
-const router = Router();
+const router = express.Router();
 
-// Single-tenant for now: every taxonomy row gets the same tenant_id.
-// Later we can move this into a real Tenants table or an env var.
-const SINGLE_TENANT_ID =
-  process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+// Hard-coded tenant for now; later we'll thread the real tenant id from auth/session.
+const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000000';
 
-async function ensureTable() {
-  // Safe: IF NOT EXISTS is a no-op if the table already exists.
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS taxonomies (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      tenant_id uuid NOT NULL,
-      slug text NOT NULL,
-      label text NOT NULL,
-      is_hierarchical boolean NOT NULL DEFAULT false,
-      is_visible boolean NOT NULL DEFAULT true,
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-
-  await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS taxonomies_tenant_slug_idx
-      ON taxonomies (tenant_id, slug);
-  `);
+function mapRow(row) {
+  return {
+    id: row.id,
+    tenant_id: row.tenant_id,
+    key: row.key,
+    label: row.label,
+    is_hierarchical: row.is_hierarchical,
+    is_visible: row.is_visible,
+    created_at: row.created_at,
+  };
 }
 
 // GET /api/taxonomies
 router.get('/', async (req, res) => {
   try {
-    await ensureTable();
-
     const { rows } = await pool.query(
-      `
-      SELECT
-        id,
-        slug,
-        label,
-        is_hierarchical,
-        is_visible,
-        created_at
-      FROM taxonomies
-      ORDER BY label ASC
-      `
+      'SELECT id, tenant_id, key, label, is_hierarchical, is_visible, created_at FROM taxonomies WHERE tenant_id = $1 ORDER BY created_at ASC',
+      [DEFAULT_TENANT_ID],
     );
-
-    res.json({ ok: true, taxonomies: rows });
+    res.json({ ok: true, taxonomies: rows.map(mapRow) });
   } catch (err) {
     console.error('[GET /api/taxonomies] error', err);
-    res.status(500).json({
-      ok: false,
-      error: 'Failed to list taxonomies',
-      detail: err.message || String(err),
-    });
+    res.status(500).json({ ok: false, error: 'Failed to load taxonomies', detail: err.message });
   }
 });
 
 // POST /api/taxonomies
 router.post('/', async (req, res) => {
+  const { key, label, is_hierarchical, isHierarchical } = req.body || {};
+  const finalKey = (key || '').trim();
+  const finalLabel = (label || '').trim();
+  const finalHier = Boolean(
+    typeof is_hierarchical === 'boolean' ? is_hierarchical : isHierarchical,
+  );
+
+  if (!finalKey || !finalLabel) {
+    return res
+      .status(400)
+      .json({ ok: false, error: 'Key and label are required to create a taxonomy.' });
+  }
+
   try {
-    await ensureTable();
-
-    const { key, slug, label, isHierarchical } = req.body || {};
-
-    // Allow UI to send either "key" or "slug"
-    const rawSlug = (slug || key || '').trim();
-    const trimmedLabel = (label || '').trim();
-    const isHier =
-      typeof isHierarchical === 'boolean' ? isHierarchical : false;
-
-    if (!rawSlug || !trimmedLabel) {
-      return res.status(400).json({
-        ok: false,
-        error: 'Both "key/slug" and "label" are required.',
-      });
-    }
-
-    // Check for duplicate within this tenant
-    const { rows: existing } = await pool.query(
-      `
-      SELECT id
-      FROM taxonomies
-      WHERE tenant_id = $1 AND slug = $2
-      LIMIT 1
-      `,
-      [SINGLE_TENANT_ID, rawSlug]
+    const { rows } = await pool.query(
+      `INSERT INTO taxonomies (tenant_id, key, label, is_hierarchical, is_visible)
+       VALUES ($1, $2, $3, $4, TRUE)
+       RETURNING id, tenant_id, key, label, is_hierarchical, is_visible, created_at`,
+      [DEFAULT_TENANT_ID, finalKey, finalLabel, finalHier],
     );
-
-    if (existing.length) {
-      return res.status(409).json({
-        ok: false,
-        error: 'A taxonomy with that key/slug already exists.',
-      });
-    }
-
-    const insertSql = `
-      INSERT INTO taxonomies (tenant_id, slug, label, is_hierarchical, is_visible)
-      VALUES ($1, $2, $3, $4, TRUE)
-      RETURNING
-        id,
-        slug,
-        label,
-        is_hierarchical,
-        is_visible,
-        created_at
-    `;
-
-    const params = [SINGLE_TENANT_ID, rawSlug, trimmedLabel, isHier];
-
-    const { rows } = await pool.query(insertSql, params);
-
-    res.status(201).json({
-      ok: true,
-      taxonomy: rows[0],
-    });
+    res.status(201).json({ ok: true, taxonomy: mapRow(rows[0]) });
   } catch (err) {
+    // 23505 = unique_violation
+    if (err.code == '23505') {
+      return res
+        .status(400)
+        .json({ ok: false, error: 'A taxonomy with that key already exists.' });
+    }
     console.error('[POST /api/taxonomies] error', err);
-    res.status(500).json({
-      ok: false,
-      error: 'Failed to create taxonomy',
-      detail: err.message || String(err),
-    });
+    res.status(500).json({ ok: false, error: 'Failed to create taxonomy', detail: err.message });
+  }
+});
+
+// PATCH /api/taxonomies/:id
+router.patch('/:id', async (req, res) => {
+  const { id } = req.params;
+  const { key, label, is_hierarchical, isHierarchical, is_visible } = req.body || {};
+
+  const fields = [];
+  const values = [];
+  let idx = 1;
+
+  if (typeof key === 'string') {
+    fields.push(`key = $${idx++}`);
+    values.push(key.trim());
+  }
+  if (typeof label === 'string') {
+    fields.push(`label = $${idx++}`);
+    values.push(label.trim());
+  }
+  if (typeof is_hierarchical === 'boolean' || typeof isHierarchical === 'boolean') {
+    fields.push(`is_hierarchical = $${idx++}`);
+    values.push(Boolean(typeof is_hierarchical === 'boolean' ? is_hierarchical : isHierarchical));
+  }
+  if (typeof is_visible === 'boolean') {
+    fields.push(`is_visible = $${idx++}`);
+    values.push(is_visible);
+  }
+
+  if (!fields.length) {
+    return res.status(400).json({ ok: false, error: 'No fields to update.' });
+  }
+
+  values.push(id);
+  values.push(DEFAULT_TENANT_ID);
+
+  const sql = `
+    UPDATE taxonomies
+       SET ${fields.join(', ')}
+     WHERE id = $${idx++}
+       AND tenant_id = $${idx}
+     RETURNING id, tenant_id, key, label, is_hierarchical, is_visible, created_at
+  `;
+
+  try {
+    const { rows } = await pool.query(sql, values);
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, error: 'Taxonomy not found.' });
+    }
+    res.json({ ok: true, taxonomy: mapRow(rows[0]) });
+  } catch (err) {
+    console.error('[PATCH /api/taxonomies/:id] error', err);
+    res.status(500).json({ ok: false, error: 'Failed to update taxonomy', detail: err.message });
   }
 });
 
 // DELETE /api/taxonomies/:id
 router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
   try {
-    await ensureTable();
-
-    const { id } = req.params;
-    if (!id) {
-      return res.status(400).json({
-        ok: false,
-        error: 'Missing taxonomy id',
-      });
+    const { rowCount } = await pool.query(
+      'DELETE FROM taxonomies WHERE id = $1 AND tenant_id = $2',
+      [id, DEFAULT_TENANT_ID],
+    );
+    if (!rowCount) {
+      return res.status(404).json({ ok: false, error: 'Taxonomy not found.' });
     }
-
-    await pool.query('DELETE FROM taxonomies WHERE id = $1', [id]);
-
     res.json({ ok: true });
   } catch (err) {
     console.error('[DELETE /api/taxonomies/:id] error', err);
-    res.status(500).json({
-      ok: false,
-      error: 'Failed to delete taxonomy',
-      detail: err.message || String(err),
-    });
+    res.status(500).json({ ok: false, error: 'Failed to delete taxonomy', detail: err.message });
   }
 });
 
