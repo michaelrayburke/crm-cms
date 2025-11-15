@@ -14,7 +14,6 @@ export default function TaxonomiesPage() {
   useEffect(() => {
     (async () => {
       try {
-        // IMPORTANT: hit /api/taxonomies (not /taxonomies)
         const res = await api.get('/api/taxonomies');
         if (Array.isArray(res)) {
           setTaxonomies(res);
@@ -43,7 +42,6 @@ export default function TaxonomiesPage() {
     }
 
     try {
-      // IMPORTANT: hit /api/taxonomies (not /taxonomies)
       const created = await api.post('/api/taxonomies', form);
       setTaxonomies((prev) => [...prev, created]);
       setForm({ key: '', label: '', isHierarchical: false });
