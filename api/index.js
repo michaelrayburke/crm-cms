@@ -1,5 +1,6 @@
 import usersRouter from './routes/users.js';
 import taxonomiesRouter from './routes/taxonomies.js';
+import rolesRouter from './routes/roles.js';
 import { normalizeEmail, normalizePhoneE164, normalizeUrl, normalizeAddress } from './lib/fieldUtils.js';
 import mountExtraRoutes from './extra-routes.js';
 import express from 'express';
@@ -526,6 +527,8 @@ app.post('/settings', (req, res) => {
 /* ----------------------- Routers ----------------------------------- */
 app.use('/api/users', usersRouter);
 app.use('/api/taxonomies', taxonomiesRouter);
+app.use('/api/roles', rolesRouter);
+
 
 // Simple redirects for old paths
 app.get('/content-types', (_req, res) => res.redirect(301, '/api/content-types'));
