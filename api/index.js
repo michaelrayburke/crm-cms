@@ -8,6 +8,9 @@ import dotenv from 'dotenv';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import permissionsRouter from './routes/permissions.js';
+import settingsRouter from './routes/settings.js';
+
 
 dotenv.config();
 
@@ -525,9 +528,11 @@ app.post('/settings', (req, res) => {
 });
 
 /* ----------------------- Routers ----------------------------------- */
-app.use('/api/users', usersRouter);
+app.use('/api/users', authMiddleware, usersRouter);
 app.use('/api/taxonomies', taxonomiesRouter);
-app.use('/api/roles', rolesRouter);
+app.use('/api/roles', authMiddleware, rolesRouter);
+app.use('/api/permissions', authMiddleware, permissionsRouter);
+app.use('/api/settings', settingsRouter);
 
 
 // Simple redirects for old paths
