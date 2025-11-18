@@ -1,42 +1,49 @@
 import { useEffect, useState } from 'react';
-import { api } from '../../lib/api';
+import { api } from '../../../lib/api';
 
-// Simple slug helper, same behavior everywhere
 function slugify(value) {
-  return value
+  return (value || '')
     .toString()
-    .toLowerCase()
     .trim()
-    .replace(/['"]/g, '')
+    .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }
 
 export default function TaxonomiesPage() {
   const [taxonomies, setTaxonomies] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const [savingId, setSavingId] = useState(null);
+  const [creating, setCreating] = useState(false);
 
-  const [form, setForm] = useState({
-    key: '',
+  // We only care about label + slug + isHierarchical now
+  const [newTax, setNewTax] = useState({
     label: '',
-    is_hierarchical: false,
+    slug: '',
+    isHierarchical: false,
   });
 
-  // Load all taxonomies ---------------------------------
+  // ---- Load list ----
   async function loadTaxonomies() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.get('/taxonomies'); // -> /api/taxonomies
-      // backend returns { ok, items } or { ok, taxonomies }
-      const list = res.items || res.taxonomies || [];
-      setTaxonomies(list);
+      const res = await api.get('/api/taxonomies');
+      if (res && res.ok === false) {
+        throw new Error(res.error || res.detail || 'Failed to load taxonomies');
+      }
+      const rows = res?.taxonomies || res?.data || [];
+      setTaxonomies(
+        rows.map((t) => ({
+          ...t,
+          // normalise casing from API -> UI
+          isHierarchical: t.isHierarchical ?? t.is_hierarchical ?? false,
+        })),
+      );
     } catch (err) {
       console.error('Failed to load taxonomies', err);
-      setError(err?.message || 'Failed to load taxonomies.');
+      setError(err.message || 'Failed to load taxonomies');
     } finally {
       setLoading(false);
     }
@@ -46,240 +53,295 @@ export default function TaxonomiesPage() {
     loadTaxonomies();
   }, []);
 
-  // Create new taxonomy ---------------------------------
+  // ---- Create ----
   async function handleCreate(e) {
     e.preventDefault();
     setError('');
-    setMessage('');
-    setSaving(true);
 
-    const key = form.key.trim();
-    const label = form.label.trim();
-    const is_hierarchical = !!form.is_hierarchical;
+    const label = newTax.label.trim();
+    const slugInput = newTax.slug.trim();
 
-    if (!key || !label) {
-      setError('Key and label are required.');
-      setSaving(false);
+    if (!label && !slugInput) {
+      setError('Please enter at least a label or a slug.');
       return;
     }
 
-    try {
-      await api.post('/taxonomies', {
-        key,
-        label,
-        is_hierarchical,
-        // slug will be set in the backend (we can keep this consistent)
-      }); // -> POST /api/taxonomies
+    const finalSlug = slugInput || slugify(label);
 
-      setForm({ key: '', label: '', is_hierarchical: false });
-      setMessage('Taxonomy created.');
-      await loadTaxonomies();
+    const payload = {
+      label,
+      slug: finalSlug,
+      isHierarchical: !!newTax.isHierarchical,
+    };
+
+    try {
+      setCreating(true);
+      const res = await api.post('/api/taxonomies', payload);
+      if (res && res.ok === false) {
+        throw new Error(res.error || res.detail || 'Failed to create taxonomy');
+      }
+      const created = res.taxonomy || res.data || res;
+      if (created) {
+        setTaxonomies((prev) => [
+          ...prev,
+          {
+            ...created,
+            isHierarchical:
+              created.isHierarchical ?? created.is_hierarchical ?? false,
+          },
+        ]);
+      }
+      setNewTax({ label: '', slug: '', isHierarchical: false });
     } catch (err) {
       console.error('Failed to create taxonomy', err);
-      setError(
-        err?.message ||
-          'Failed to create taxonomy. Make sure the key is unique.'
-      );
+      setError(err.message || 'Failed to create taxonomy');
     } finally {
-      setSaving(false);
+      setCreating(false);
     }
   }
 
-  // Inline update (label, slug, is_hierarchical) --------
-  async function handleUpdate(id, field, value) {
-    setError('');
-    setMessage('');
-
-    // Optimistic UI update
+  // ---- Inline edit helpers ----
+  function updateLocal(id, partial) {
     setTaxonomies((prev) =>
-      prev.map((t) =>
-        t.id === id ? { ...t, [field]: field === 'is_hierarchical' ? !!value : value } : t
-      )
+      prev.map((t) => (t.id === id ? { ...t, ...partial } : t)),
     );
+  }
 
-    const payload = {};
-    if (field === 'label') payload.label = value;
-    if (field === 'slug') payload.slug = value;
-    if (field === 'is_hierarchical') payload.is_hierarchical = !!value;
+  async function handleInlineSave(id) {
+    const item = taxonomies.find((t) => t.id === id);
+    if (!item) return;
+
+    setSavingId(id);
+    setError('');
+
+    const label = (item.label || '').trim();
+    const slugInput = (item.slug || '').trim();
+    const finalSlug = slugInput || slugify(label);
+
+    const payload = {
+      label,
+      slug: finalSlug,
+      isHierarchical: !!item.isHierarchical,
+    };
 
     try {
-      await api.patch(`/taxonomies/${id}`, payload); // -> PATCH /api/taxonomies/:id
-      setMessage('Taxonomy updated.');
+      const res = await api.patch(`/api/taxonomies/${id}`, payload);
+      if (res && res.ok === false) {
+        throw new Error(res.error || res.detail || 'Failed to update taxonomy');
+      }
+      // local state already reflects edits
     } catch (err) {
       console.error('Failed to update taxonomy', err);
-      setError(err?.message || 'Failed to update taxonomy.');
-      // reload to undo optimistic change
+      setError(err.message || 'Failed to update taxonomy');
+      // reload to discard bad local edits
       loadTaxonomies();
+    } finally {
+      setSavingId(null);
     }
   }
 
-  // Delete taxonomy -------------------------------------
+  // ---- Delete ----
   async function handleDelete(id) {
+    if (!window.confirm('Delete this taxonomy? This cannot be undone.')) {
+      return;
+    }
+    setSavingId(id);
     setError('');
-    setMessage('');
-
-    const target = taxonomies.find((t) => t.id === id);
-    const label = target?.label || target?.key || 'this taxonomy';
-
-    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
-
     try {
-      await api.del(`/taxonomies/${id}`); // -> DELETE /api/taxonomies/:id
+      const res = await api.del(`/api/taxonomies/${id}`);
+      if (res && res.ok === false) {
+        throw new Error(res.error || res.detail || 'Failed to delete taxonomy');
+      }
       setTaxonomies((prev) => prev.filter((t) => t.id !== id));
-      setMessage('Taxonomy deleted.');
     } catch (err) {
       console.error('Failed to delete taxonomy', err);
-      setError(err?.message || 'Failed to delete taxonomy.');
+      setError(err.message || 'Failed to delete taxonomy');
+    } finally {
+      setSavingId(null);
     }
   }
 
+  // ---- Render ----
   return (
-    <div className="grid gap-8 md:grid-cols-2">
-      {/* New Taxonomy form */}
-      <div className="bg-white rounded-xl shadow p-6">
-        <h1 className="text-xl font-semibold mb-4">New Taxonomy</h1>
-
-        {error && (
-          <div className="mb-4 rounded bg-red-50 text-red-700 px-3 py-2 text-sm">
-            {error}
-          </div>
-        )}
-        {message && !error && (
-          <div className="mb-4 rounded bg-green-50 text-green-700 px-3 py-2 text-sm">
-            {message}
-          </div>
-        )}
-
-        <form onSubmit={handleCreate} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Key</label>
-            <input
-              type="text"
-              className="w-full rounded border px-3 py-2 text-sm"
-              value={form.key}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, key: e.target.value }))
-              }
-              placeholder="collection, category, tag..."
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              Internal identifier (must be unique).
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Label</label>
-            <input
-              type="text"
-              className="w-full rounded border px-3 py-2 text-sm"
-              value={form.label}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, label: e.target.value }))
-              }
-              placeholder="Collections, Categories, Tags..."
-            />
-          </div>
-
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.is_hierarchical}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, is_hierarchical: e.target.checked }))
-              }
-            />
-            Hierarchical (like categories) instead of flat (like tags)
-          </label>
-
-          <button
-            type="submit"
-            className="inline-flex items-center rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-            disabled={saving}
-          >
-            {saving ? 'Saving…' : 'Add taxonomy'}
-          </button>
-        </form>
+    <div className="space-y-8 p-6">
+      <div>
+        <h1 className="text-2xl font-semibold mb-2">Taxonomies</h1>
+        <p className="text-sm text-gray-600">
+          Create and manage taxonomies like categories, tags, collections, etc.
+        </p>
       </div>
 
-      {/* List of taxonomies */}
-      <div className="bg-white rounded-xl shadow p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Taxonomies</h2>
+      {/* Errors */}
+      {error && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {/* New taxonomy form */}
+      <form
+        onSubmit={handleCreate}
+        className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-white rounded-xl border border-gray-200 p-4 shadow-sm"
+      >
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Label
+          </label>
+          <input
+            className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+            value={newTax.label}
+            onChange={(e) =>
+              setNewTax((t) => ({
+                ...t,
+                label: e.target.value,
+              }))
+            }
+            placeholder="Collection"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Slug
+          </label>
+          <input
+            className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+            value={newTax.slug}
+            onChange={(e) =>
+              setNewTax((t) => ({
+                ...t,
+                slug: e.target.value,
+              }))
+            }
+            placeholder={slugify(newTax.label || 'collection')}
+          />
+          <p className="mt-1 text-[11px] text-gray-500">
+            Leave blank to auto-generate from the label.
+          </p>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Options
+          </label>
+          <label className="inline-flex items-center text-xs text-gray-700">
+            <input
+              type="checkbox"
+              className="mr-2"
+              checked={newTax.isHierarchical}
+              onChange={(e) =>
+                setNewTax((t) => ({
+                  ...t,
+                  isHierarchical: e.target.checked,
+                }))
+              }
+            />
+            Hierarchical (like categories)
+          </label>
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={creating}
+            className="self-end inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
+          >
+            {creating ? 'Adding…' : 'Add taxonomy'}
+          </button>
+        </div>
+      </form>
+
+      {/* List */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-800">
+            Existing taxonomies
+          </h2>
           {loading && (
-            <span className="text-xs text-slate-500">Loading…</span>
+            <span className="text-xs text-gray-500">Loading…</span>
           )}
         </div>
 
-        {taxonomies.length === 0 && !loading && (
-          <p className="text-sm text-slate-500">
-            No taxonomies yet. Create one on the left.
-          </p>
-        )}
+        <div className="divide-y divide-gray-100">
+          {taxonomies.length === 0 && !loading && (
+            <div className="px-4 py-6 text-sm text-gray-500">
+              No taxonomies yet. Create your first one above.
+            </div>
+          )}
 
-        {taxonomies.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs uppercase text-slate-500">
-                  <th className="py-2 pr-4">Key</th>
-                  <th className="py-2 pr-4">Label</th>
-                  <th className="py-2 pr-4">Slug</th>
-                  <th className="py-2 pr-4">Hierarchical</th>
-                  <th className="py-2 pr-4"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {taxonomies.map((tax) => (
-                  <tr key={tax.id} className="border-b last:border-0">
-                    <td className="py-2 pr-4 text-xs font-mono text-slate-600">
-                      {tax.key}
-                    </td>
-                    <td className="py-2 pr-4">
-                      <input
-                        className="w-full rounded border px-2 py-1 text-sm"
-                        value={tax.label || ''}
-                        onChange={(e) =>
-                          handleUpdate(tax.id, 'label', e.target.value)
-                        }
-                      />
-                    </td>
-                    <td className="py-2 pr-4">
-                      <input
-                        className="w-full rounded border px-2 py-1 text-sm"
-                        value={tax.slug || ''}
-                        onChange={(e) =>
-                          handleUpdate(tax.id, 'slug', slugify(e.target.value))
-                        }
-                      />
-                    </td>
-                    <td className="py-2 pr-4">
-                      <input
-                        type="checkbox"
-                        checked={!!tax.is_hierarchical}
-                        onChange={(e) =>
-                          handleUpdate(
-                            tax.id,
-                            'is_hierarchical',
-                            e.target.checked
-                          )
-                        }
-                      />
-                    </td>
-                    <td className="py-2 pr-4 text-right">
-                      <button
-                        type="button"
-                        className="rounded bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100"
-                        onClick={() => handleDelete(tax.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+          {taxonomies.map((tax) => (
+            <div
+              key={tax.id}
+              className="px-4 py-3 grid grid-cols-1 md:grid-cols-5 gap-3 items-center"
+            >
+              <div className="text-xs text-gray-400 truncate">
+                ID: {tax.id}
+              </div>
+
+              <div>
+                <label className="block text-[11px] uppercase tracking-wide text-gray-400 mb-1">
+                  Label
+                </label>
+                <input
+                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                  value={tax.label || ''}
+                  onChange={(e) =>
+                    updateLocal(tax.id, { label: e.target.value })
+                  }
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] uppercase tracking-wide text-gray-400 mb-1">
+                  Slug
+                </label>
+                <input
+                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                  value={tax.slug || ''}
+                  onChange={(e) =>
+                    updateLocal(tax.id, { slug: e.target.value })
+                  }
+                  placeholder={slugify(tax.label)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] uppercase tracking-wide text-gray-400 mb-1">
+                  Options
+                </label>
+                <label className="inline-flex items-center mt-2 text-xs text-gray-700">
+                  <input
+                    type="checkbox"
+                    className="mr-2"
+                    checked={!!tax.isHierarchical}
+                    onChange={(e) =>
+                      updateLocal(tax.id, {
+                        isHierarchical: e.target.checked,
+                      })
+                    }
+                  />
+                  Hierarchical
+                </label>
+              </div>
+
+              <div className="flex flex-col items-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleInlineSave(tax.id)}
+                  disabled={savingId === tax.id}
+                  className="inline-flex items-center rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  {savingId === tax.id ? 'Saving…' : 'Save changes'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(tax.id)}
+                  disabled={savingId === tax.id}
+                  className="inline-flex items-center rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

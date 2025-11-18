@@ -1,8 +1,10 @@
+// admin/src/pages/Users/index.jsx
 import React, { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
+  const [roles, setRoles] = useState([]);
   const [q, setQ] = useState('');
   const [form, setForm] = useState({
     email: '',
@@ -10,33 +12,36 @@ export default function UsersPage() {
     password: '',
     role: 'EDITOR',
   });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        // IMPORTANT: hit /api/users (not /users)
-        const res = await api.get('/api/users');
-        if (Array.isArray(res)) {
-          setUsers(res);
-        } else if (Array.isArray(res?.users)) {
-          setUsers(res.users);
-        } else if (Array.isArray(res?.data)) {
-          setUsers(res.data);
-        } else {
-          setUsers([]);
-        }
+        setLoading(true);
+        const [usersRes, rolesRes] = await Promise.all([
+          api.get('/api/users'),
+          api.get('/api/roles'),
+        ]);
+        setUsers(usersRes || []);
+        setRoles(rolesRes || []);
       } catch (err) {
-        console.error('Failed to load users', err);
-        setError('Failed to load users.');
+        console.error(err);
+        setError(err.message || 'Failed to load users/roles');
+      } finally {
+        setLoading(false);
       }
     })();
   }, []);
 
   function filteredUsers() {
-    const needle = q.toLowerCase();
-    return users.filter((u) =>
-      (u.email || '').toLowerCase().includes(needle)
+    const term = q.trim().toLowerCase();
+    if (!term) return users;
+    return users.filter(
+      (u) =>
+        (u.email && u.email.toLowerCase().includes(term)) ||
+        (u.name && u.name.toLowerCase().includes(term))
     );
   }
 
@@ -48,177 +53,217 @@ export default function UsersPage() {
       return;
     }
     try {
-      const created = await api.post('/api/users', form);
-      setUsers((prev) => [...prev, created]);
-      setForm({ email: '', name: '', password: '', role: 'EDITOR' });
+      setSaving(true);
+      const created = await api.post('/api/users', {
+        email: form.email.trim(),
+        name: form.name.trim() || null,
+        password: form.password,
+        role: form.role,
+      });
+      setUsers((prev) => [created, ...prev]);
+      setForm({
+        email: '',
+        name: '',
+        password: '',
+        role: form.role, // keep same role selected
+      });
     } catch (err) {
-      console.error('Failed to create user', err);
-      setError(err.message || 'Failed to create user.');
+      console.error(err);
+      setError(err.message || 'Failed to create user');
+    } finally {
+      setSaving(false);
     }
   }
 
   async function updateUser(id, patch) {
+    setError('');
     try {
       const updated = await api.patch(`/api/users/${id}`, patch);
-      setUsers((prev) =>
-        prev.map((u) => (u.id === id ? { ...u, ...updated } : u))
-      );
+      setUsers((prev) => prev.map((u) => (u.id === id ? updated : u)));
     } catch (err) {
-      console.error('Failed to update user', err);
-      setError(err.message || 'Failed to update user.');
+      console.error(err);
+      setError(err.message || 'Failed to update user');
     }
   }
 
-  async function removeUser(id) {
-    if (!window.confirm('Remove this user?')) return;
+  async function deleteUser(id) {
+    const user = users.find((u) => u.id === id);
+    if (!user) return;
+    if (!window.confirm(`Delete user "${user.email}"? This cannot be undone.`)) {
+      return;
+    }
+    setError('');
     try {
       await api.del(`/api/users/${id}`);
       setUsers((prev) => prev.filter((u) => u.id !== id));
     } catch (err) {
-      console.error('Failed to remove user', err);
-      setError(err.message || 'Failed to remove user.');
+      console.error(err);
+      setError(err.message || 'Failed to delete user');
     }
   }
 
   return (
-    <div className="su-grid cols-2">
-      <div className="su-card">
-        <h2>New User</h2>
-        <form onSubmit={createUser}>
-          <label>
-            Email
-            <input
-              className="su-input"
-              type="email"
-              value={form.email}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, email: e.target.value }))
-              }
-            />
-          </label>
-          <div style={{ height: 8 }} />
-          <label>
-            Name
-            <input
-              className="su-input"
-              value={form.name}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, name: e.target.value }))
-              }
-            />
-          </label>
-          <div style={{ height: 8 }} />
-          <label>
-            Password
-            <input
-              className="su-input"
-              type="password"
-              value={form.password}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, password: e.target.value }))
-              }
-            />
-          </label>
-          <div style={{ height: 8 }} />
-          <label>
-            Role
-            <select
-              className="su-select"
-              value={form.role}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, role: e.target.value }))
-              }
-            >
-              <option value="ADMIN">ADMIN</option>
-              <option value="EDITOR">EDITOR</option>
-              <option value="VIEWER">VIEWER</option>
-            </select>
-          </label>
-          <div style={{ height: 12 }} />
-          <button className="su-btn primary" type="submit">
-            Create user
-          </button>
-          {error && (
-            <div style={{ marginTop: 8, color: 'var(--su-danger)' }}>
-              {error}
-            </div>
-          )}
-        </form>
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold mb-1">Users</h1>
+        <p className="text-sm text-gray-600">
+          Manage admin users and their roles. Roles map to the values you define in the
+          Roles Manager and are synced into Supabase Auth.
+        </p>
       </div>
 
-      <div className="su-card">
-        <h2>Users</h2>
-        <div style={{ marginBottom: 8 }}>
-          <input
-            className="su-input"
-            placeholder="Search by email…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
+      {error && (
+        <div className="su-card" style={{ borderColor: '#fecaca', background: '#fef2f2' }}>
+          <div style={{ color: '#991b1b', fontSize: 13 }}>{error}</div>
+        </div>
+      )}
+
+      <div className="su-grid cols-2">
+        {/* New User form */}
+        <div className="su-card">
+          <h2 style={{ marginTop: 0, marginBottom: 8 }}>New User</h2>
+          <form onSubmit={createUser}>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <label style={{ fontSize: 13 }}>
+                Email
+                <input
+                  className="su-input"
+                  type="email"
+                  value={form.email}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, email: e.target.value }))
+                  }
+                />
+              </label>
+              <label style={{ fontSize: 13 }}>
+                Name
+                <input
+                  className="su-input"
+                  value={form.name}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, name: e.target.value }))
+                  }
+                />
+              </label>
+              <label style={{ fontSize: 13 }}>
+                Password
+                <input
+                  className="su-input"
+                  type="password"
+                  value={form.password}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, password: e.target.value }))
+                  }
+                />
+              </label>
+              <label style={{ fontSize: 13 }}>
+                Role
+                <select
+                  className="su-select"
+                  value={form.role}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, role: e.target.value }))
+                  }
+                >
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.slug}>
+                      {r.label} ({r.slug})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div style={{ height: 12 }} />
+            <button
+              className="su-btn primary"
+              type="submit"
+              disabled={saving}
+            >
+              {saving ? 'Creating…' : 'Create user'}
+            </button>
+          </form>
         </div>
 
-        <table className="su-table">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Name</th>
-              <th>Role</th>
-              <th style={{ width: 80 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredUsers().map((u) => (
-              <tr key={u.id}>
-                <td>{u.email}</td>
-                <td>
-                  <input
-                    className="su-input"
-                    value={u.name || ''}
-                    onChange={(e) =>
-                      setUsers((prev) =>
-                        prev.map((x) =>
-                          x.id === u.id ? { ...x, name: e.target.value } : x
-                        )
-                      )
-                    }
-                    onBlur={(e) =>
-                      updateUser(u.id, { name: e.target.value })
-                    }
-                  />
-                </td>
-                <td>
-                  <select
-                    className="su-select"
-                    value={u.role || 'VIEWER'}
-                    onChange={(e) =>
-                      updateUser(u.id, { role: e.target.value })
-                    }
-                  >
-                    <option value="ADMIN">ADMIN</option>
-                    <option value="EDITOR">EDITOR</option>
-                    <option value="VIEWER">VIEWER</option>
-                  </select>
-                </td>
-                <td>
-                  <button
-                    className="su-btn"
-                    type="button"
-                    onClick={() => removeUser(u.id)}
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {filteredUsers().length === 0 && (
-              <tr>
-                <td colSpan={4} style={{ padding: '12px 0', opacity: 0.75 }}>
-                  No users found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        {/* Users list */}
+        <div className="su-card">
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 8,
+            }}
+          >
+            <h2 style={{ margin: 0 }}>Users</h2>
+            <input
+              className="su-input"
+              placeholder="Search by email or name…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ maxWidth: 260 }}
+            />
+          </div>
+
+          {loading ? (
+            <p style={{ fontSize: 13, opacity: 0.75 }}>Loading users…</p>
+          ) : (
+            <table className="su-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Name</th>
+                  <th style={{ width: 140 }}>Role</th>
+                  <th style={{ width: 80 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers().map((u) => (
+                  <tr key={u.id}>
+                    <td>{u.email}</td>
+                    <td>{u.name}</td>
+                    <td>
+                      <select
+                        className="su-select"
+                        value={u.role || 'VIEWER'}
+                        onChange={(e) =>
+                          updateUser(u.id, { role: e.target.value })
+                        }
+                      >
+                        {roles.map((r) => (
+                          <option key={r.id} value={r.slug}>
+                            {r.label} ({r.slug})
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="su-btn"
+                        style={{
+                          fontSize: 12,
+                          borderColor: '#fecaca',
+                          background: '#fef2f2',
+                          color: '#b91c1c',
+                        }}
+                        onClick={() => deleteUser(u.id)}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {filteredUsers().length === 0 && !loading && (
+                  <tr>
+                    <td colSpan={4} style={{ padding: '12px 0', opacity: 0.75 }}>
+                      No users found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );

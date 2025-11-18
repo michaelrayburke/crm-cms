@@ -1,191 +1,522 @@
-import React, { useEffect, useState } from 'react';
+// admin/src/pages/Content/Editor.jsx
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 
-/**
- * Minimal generic editor bound to entries.data.
- * - Uses /api/content/:slug and /api/content/:slug/:id
- * - Assumes backend returns { id, data, ... }
- */
-export default function TypeEditor() {
+function slugify(value) {
+  return (value || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export default function Editor() {
+  const { typeSlug, entryId } = useParams();
   const navigate = useNavigate();
-  const { typeSlug, id } = useParams();
-  const isNew = id === 'new';
-  const [dataState, setDataState] = useState({}); // maps to entries.data
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Load existing entry (or initialize new)
+  const [title, setTitle] = useState('');
+  const [slug, setSlug] = useState('');
+  const [status, setStatus] = useState('draft');
+
+  // everything that lives in entries.data
+  const [data, setData] = useState({});
+
+  // extra helper state for adding new custom fields
+  const [newFieldKey, setNewFieldKey] = useState('');
+  const [newFieldValue, setNewFieldValue] = useState('');
+
+  // ---- Load entry ----
   useEffect(() => {
-    (async () => {
-      if (isNew) {
-        setDataState({ status: 'draft' });
+    async function load() {
+      // if we're making a brand new one, don't fetch
+      if (entryId === 'new') {
         setLoading(false);
         return;
       }
+
       setLoading(true);
       setError('');
       try {
-        // ✅ GET /api/content/:slug/:id -> entry row
-        const entry = await api.get(`/api/content/${typeSlug}/${id}`);
-        setDataState(entry?.data || {});
-      } catch (e) {
-        console.error(e);
-        setError('Unable to load entry.');
+        const res = await api.get(`/api/content/${typeSlug}/${entryId}`);
+        if (res && res.ok === false) {
+          throw new Error(res.error || res.detail || 'Failed to load entry');
+        }
+        const entry = res.entry || res.data || res;
+
+        setTitle(entry.title || '');
+        setSlug(entry.slug || '');
+        setStatus(entry.status || 'draft');
+        setData(entry.data || {});
+      } catch (err) {
+        console.error('Failed to load entry', err);
+        setError(err.message || 'Failed to load entry');
       } finally {
         setLoading(false);
       }
-    })();
-  }, [typeSlug, id, isNew]);
+    }
 
-  const bind = (key) => (e) =>
-    setDataState((prev) => ({ ...prev, [key]: e.target.value }));
+    load();
+  }, [typeSlug, entryId]);
 
-  async function save() {
-    setSaving(true);
+  // ---- Handlers for custom fields ----
+
+  function updateCustomField(key, rawValue) {
+    setData((prev) => {
+      const next = { ...(prev || {}) };
+      const current = next[key];
+
+      // If current value is a simple string, keep treating it as a string.
+      if (typeof current === 'string' || typeof current === 'undefined') {
+        next[key] = rawValue;
+        return next;
+      }
+
+      // For non-string values, try to parse JSON so we can handle arrays/objects/bools/numbers.
+      try {
+        if (rawValue === '') {
+          next[key] = null;
+        } else {
+          next[key] = JSON.parse(rawValue);
+        }
+      } catch {
+        // Fallback: store raw string if JSON parse fails
+        next[key] = rawValue;
+      }
+      return next;
+    });
+  }
+
+  function handleAddField(e) {
+    e.preventDefault();
+    const key = newFieldKey.trim();
+    if (!key) return;
+
+    setData((prev) => {
+      const next = { ...(prev || {}) };
+      if (next[key] === undefined) {
+        next[key] = newFieldValue;
+      }
+      return next;
+    });
+
+    setNewFieldKey('');
+    setNewFieldValue('');
+  }
+
+  function handleRemoveField(key) {
+    if (!window.confirm(`Remove field "${key}" from this entry?`)) return;
+    setData((prev) => {
+      const next = { ...(prev || {}) };
+      delete next[key];
+      return next;
+    });
+  }
+
+  // ---- Save / Delete ----
+
+  async function handleSave(e) {
+    e.preventDefault();
     setError('');
+
+    if (!title.trim()) {
+      setError('Title is required.');
+      return;
+    }
+
+    const finalSlug = slug.trim() || slugify(title);
+
     try {
-      const payload = { data: dataState };
-      let saved;
+      setSaving(true);
+      const payload = {
+        title: title.trim(),
+        slug: finalSlug,
+        status,
+        data,
+      };
 
-      if (isNew) {
-        // ✅ POST /api/content/:slug  { data: {...} }
-        saved = await api.post(`/api/content/${typeSlug}`, payload);
-      } else if (typeof api.put === 'function') {
-        // ✅ PUT /api/content/:slug/:id  { data: {...} }
-        saved = await api.put(`/api/content/${typeSlug}/${id}`, payload);
-      } else {
-        // fallback if api.put isn't defined
-        saved = await api.post(`/api/content/${typeSlug}/${id}`, payload);
+      const method = entryId === 'new' ? api.post : api.patch;
+      const url =
+        entryId === 'new'
+          ? `/api/content/${typeSlug}`
+          : `/api/content/${typeSlug}/${entryId}`;
+
+      const res = await method(url, payload);
+      if (res && res.ok === false) {
+        throw new Error(res.error || res.detail || 'Failed to save entry');
       }
 
-      const newId = saved.id || saved._id || id;
-      if (isNew && newId) {
-        navigate(`/admin/content/${typeSlug}/${newId}`, { replace: true });
-      } else {
-        setDataState(saved.data || dataState);
-      }
-    } catch (e) {
-      console.error(e);
-      setError('Error saving entry.');
+      // after save, go back to list for now
+      navigate(`/content/${typeSlug}`);
+    } catch (err) {
+      console.error('Failed to save entry', err);
+      setError(err.message || 'Failed to save entry');
     } finally {
       setSaving(false);
     }
   }
 
-  async function remove() {
-    if (isNew) {
-      navigate(`/admin/content/${typeSlug}`);
+  async function handleDelete() {
+    if (entryId === 'new') {
+      navigate(-1);
       return;
     }
-    const confirmed = window.confirm('Delete this entry permanently?');
-    if (!confirmed) return;
+
+    if (!window.confirm('Delete this entry? This cannot be undone.')) {
+      return;
+    }
 
     try {
-      // ✅ DELETE /api/content/:slug/:id
-      if (typeof api.del === 'function') {
-        await api.del(`/api/content/${typeSlug}/${id}`);
-      } else if (typeof api.delete === 'function') {
-        await api.delete(`/api/content/${typeSlug}/${id}`);
-      } else {
-        await api.post(`/api/content/${typeSlug}/${id}/delete`, {});
+      setSaving(true);
+      const res = await api.del(`/api/content/${typeSlug}/${entryId}`);
+      if (res && res.ok === false) {
+        throw new Error(res.error || res.detail || 'Failed to delete entry');
       }
-      navigate(`/admin/content/${typeSlug}`);
-    } catch (e) {
-      console.error(e);
-      setError('Error deleting entry.');
+      navigate(`/content/${typeSlug}`);
+    } catch (err) {
+      console.error('Failed to delete entry', err);
+      setError(err.message || 'Failed to delete entry');
+    } finally {
+      setSaving(false);
     }
   }
 
-  if (loading) {
-    return <div className="su-card">Loading entry…</div>;
+  const previewData = useMemo(
+    () => ({
+      ...data,
+      title,
+      slug,
+      status,
+    }),
+    [data, title, slug, status],
+  );
+
+  function prettyValue(v) {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      return String(v);
+    }
+    if (Array.isArray(v)) {
+      if (!v.length) return '';
+      if (v.every((x) => typeof x === 'string' || typeof x === 'number')) {
+        return v.join(', ');
+      }
+      return JSON.stringify(v);
+    }
+    if (typeof v === 'object') {
+      // simple label/value objects
+      if (v.label && (typeof v.value === 'string' || typeof v.value === 'number')) {
+        return `${v.label} (${v.value})`;
+      }
+      if (v.label && !v.value) return String(v.label);
+      return JSON.stringify(v);
+    }
+    return String(v);
   }
+
+  const customFieldEntries = Object.entries(data || {});
 
   return (
     <div className="su-grid cols-2">
+      {/* LEFT: Editor card */}
       <div className="su-card">
-        <h2>
-          {isNew ? 'New' : 'Edit'} {typeSlug}
+        <h2 style={{ marginTop: 0, marginBottom: 12 }}>
+          {loading
+            ? 'Edit entry'
+            : entryId === 'new'
+            ? `New ${typeSlug} entry`
+            : `Edit ${typeSlug}`}
         </h2>
 
         {error && (
-          <div className="su-alert su-error" style={{ marginBottom: 8 }}>
+          <div
+            style={{
+              marginBottom: 12,
+              padding: '8px 10px',
+              borderRadius: 10,
+              border: '1px solid #fecaca',
+              background: '#fef2f2',
+              color: '#991b1b',
+              fontSize: 13,
+            }}
+          >
             {error}
           </div>
         )}
 
-        <label>
-          Title
-          <input
-            className="su-input"
-            value={dataState.title || ''}
-            onChange={bind('title')}
-          />
-        </label>
-        <div style={{ height: 8 }} />
-        <label>
-          Slug
-          <input
-            className="su-input"
-            value={dataState.slug || ''}
-            onChange={bind('slug')}
-          />
-        </label>
-        <div style={{ height: 8 }} />
-        <label>
-          Status
-          <select
-            className="su-select"
-            value={dataState.status || 'draft'}
-            onChange={bind('status')}
-          >
-            <option value="draft">Draft</option>
-            <option value="published">Published</option>
-            <option value="archived">Archived</option>
-          </select>
-        </label>
-        <div style={{ height: 12 }} />
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            className="su-btn primary"
-            onClick={save}
-            disabled={saving}
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button className="su-btn" onClick={() => navigate(-1)}>
-            Back
-          </button>
-          {!isNew && (
-            <button
-              className="su-btn danger"
-              onClick={remove}
-              type="button"
+        {loading && (
+          <p style={{ fontSize: 13, opacity: 0.7 }}>Loading entry…</p>
+        )}
+
+        <form onSubmit={handleSave}>
+          {/* Core fields */}
+          <div style={{ display: 'grid', gap: 12, marginBottom: 20 }}>
+            <label style={{ fontSize: 13 }}>
+              Title
+              <input
+                className="su-input"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="My great entry"
+              />
+            </label>
+
+            <label style={{ fontSize: 13 }}>
+              Slug
+              <input
+                className="su-input"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder={slugify(title || 'my-entry')}
+              />
+            </label>
+
+            <label style={{ fontSize: 13 }}>
+              Status
+              <select
+                className="su-select"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+          </div>
+
+          {/* Custom fields editor */}
+          <div style={{ marginBottom: 16 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 8,
+              }}
             >
-              Delete
+              <h3 style={{ margin: 0, fontSize: 14 }}>Custom fields</h3>
+              <span style={{ fontSize: 11, opacity: 0.7 }}>
+                Stored in <code>entries.data</code>
+              </span>
+            </div>
+
+            {customFieldEntries.length === 0 && (
+              <p style={{ fontSize: 12, opacity: 0.7 }}>
+                No fields yet. Add one below.
+              </p>
+            )}
+
+            <div style={{ display: 'grid', gap: 10 }}>
+              {customFieldEntries.map(([key, value]) => {
+                const isSimpleString =
+                  typeof value === 'string' ||
+                  typeof value === 'number' ||
+                  typeof value === 'boolean' ||
+                  value === null;
+                const displayValue = isSimpleString
+                  ? String(value ?? '')
+                  : JSON.stringify(value, null, 2);
+
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      border: '1px solid var(--su-border)',
+                      borderRadius: 10,
+                      padding: 10,
+                      background: 'var(--su-surface)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 6,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{key}</div>
+                      <button
+                        type="button"
+                        className="su-btn"
+                        onClick={() => handleRemoveField(key)}
+                        style={{ fontSize: 11, paddingInline: 8 }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    {isSimpleString ? (
+                      <input
+                        className="su-input"
+                        value={displayValue}
+                        onChange={(e) => updateCustomField(key, e.target.value)}
+                      />
+                    ) : (
+                      <textarea
+                        className="su-textarea"
+                        rows={3}
+                        value={displayValue}
+                        onChange={(e) => updateCustomField(key, e.target.value)}
+                        style={{
+                          fontFamily:
+                            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                        }}
+                      />
+                    )}
+
+                    {!isSimpleString && (
+                      <p style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
+                        Parsed as JSON (arrays / objects / booleans / numbers).
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Add field */}
+            <div
+              style={{
+                marginTop: 12,
+                paddingTop: 10,
+                borderTop: '1px solid var(--su-border)',
+                display: 'grid',
+                gap: 8,
+              }}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '160px minmax(0,1fr)',
+                  gap: 8,
+                }}
+              >
+                <input
+                  className="su-input"
+                  placeholder="field_key"
+                  value={newFieldKey}
+                  onChange={(e) => setNewFieldKey(e.target.value)}
+                />
+                <input
+                  className="su-input"
+                  placeholder='Plain text or JSON (e.g. ["tag-1","tag-2"])'
+                  value={newFieldValue}
+                  onChange={(e) => setNewFieldValue(e.target.value)}
+                />
+              </div>
+              <button
+                className="su-btn primary"
+                type="button"
+                onClick={handleAddField}
+              >
+                Add custom field
+              </button>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button className="su-btn primary" type="submit" disabled={saving}>
+              {saving ? 'Saving…' : 'Save entry'}
             </button>
-          )}
-        </div>
+            <button
+              className="su-btn"
+              type="button"
+              onClick={() => navigate(-1)}
+              disabled={saving}
+            >
+              Back
+            </button>
+            {entryId !== 'new' && (
+              <button
+                className="su-btn"
+                type="button"
+                onClick={handleDelete}
+                disabled={saving}
+                style={{
+                  borderColor: '#fecaca',
+                  background: '#fef2f2',
+                  color: '#b91c1c',
+                }}
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        </form>
       </div>
 
+      {/* RIGHT: Preview card */}
       <div className="su-card">
-        <h3>Preview (entries.data)</h3>
-        <pre
+        <h2 style={{ marginTop: 0, marginBottom: 12 }}>Preview</h2>
+
+        {/* "Physical" preview */}
+        <div
           style={{
-            maxHeight: 300,
-            overflow: 'auto',
-            fontSize: 12,
-            background: 'var(--su-surface-subtle)',
-            padding: 8,
+            borderRadius: 10,
+            border: '1px solid var(--su-border)',
+            padding: 12,
+            marginBottom: 16,
           }}
         >
-          {JSON.stringify(dataState, null, 2)}
-        </pre>
-        <div style={{ opacity: 0.7, marginTop: 8 }}>
-          Later we’ll swap this out with the full Quick Builder fields + rich
-          preview, but everything here already maps 1:1 to entries.data.
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>
+              {title || '(untitled entry)'}
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>
+              /{slug || slugify(title || 'my-entry')} ·{' '}
+              <span style={{ textTransform: 'uppercase' }}>{status}</span>
+            </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--su-border)', paddingTop: 8 }}>
+            {customFieldEntries.length === 0 && (
+              <p style={{ fontSize: 12, opacity: 0.7 }}>No custom fields yet.</p>
+            )}
+            {customFieldEntries.map(([key, value]) => (
+              <div
+                key={key}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '120px minmax(0,1fr)',
+                  gap: 8,
+                  padding: '4px 0',
+                  fontSize: 13,
+                }}
+              >
+                <div style={{ opacity: 0.7 }}>{key}</div>
+                <div>{prettyValue(value)}</div>
+              </div>
+            ))}
+          </div>
         </div>
+
+        {/* JSON preview */}
+        <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 14 }}>
+          Raw JSON (<code>entries.data</code>)
+        </h3>
+        <pre
+          style={{
+            fontSize: 11,
+            background: '#0b1120',
+            color: '#d1fae5',
+            borderRadius: 10,
+            padding: 10,
+            maxHeight: 480,
+            overflow: 'auto',
+            fontFamily:
+              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+          }}
+        >
+          {JSON.stringify(previewData, null, 2)}
+        </pre>
       </div>
     </div>
   );
