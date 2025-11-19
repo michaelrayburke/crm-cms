@@ -50,13 +50,31 @@ export default function Editor() {
           throw new Error(res.error || res.detail || 'Failed to load entry');
         }
         const entry = res.entry || res.data || res;
-
         if (cancelled) return;
 
-        setTitle(entry.title || '');
-        setSlug(entry.slug || '');
-        setStatus(entry.status || 'draft');
-        setData(entry.data || {});
+        const entryData = entry.data || {};
+
+        // Prefer top-level fields, but gracefully fall back to data.*
+        const loadedTitle =
+          entry.title ??
+          entryData.title ??
+          entryData._title ??
+          '';
+        const loadedSlug =
+          entry.slug ??
+          entryData.slug ??
+          entryData._slug ??
+          '';
+        const loadedStatus =
+          entry.status ??
+          entryData.status ??
+          entryData._status ??
+          'draft';
+
+        setTitle(loadedTitle);
+        setSlug(loadedSlug);
+        setStatus(loadedStatus);
+        setData(entryData);
       } catch (err) {
         console.error('Failed to load entry', err);
         if (!cancelled) {
@@ -158,11 +176,24 @@ export default function Editor() {
 
     try {
       setSaving(true);
+
+      // Mirror core fields into data so they survive even if the API
+      // mostly persists JSON in entries.data.
+      const mergedData = {
+        ...(data || {}),
+        title: title.trim(),
+        slug: finalSlug,
+        status,
+        _title: title.trim(),
+        _slug: finalSlug,
+        _status: status,
+      };
+
       const payload = {
         title: title.trim(),
         slug: finalSlug,
         status,
-        data,
+        data: mergedData,
       };
 
       if (isNew) {
@@ -172,18 +203,47 @@ export default function Editor() {
           throw new Error(res.error || res.detail || 'Failed to create entry');
         }
         const created = res.entry || res.data || res;
-        // navigate to the newly created entry so further edits are PATCH
+
+        // If API returns back the entry, hydrate from that; otherwise keep our state.
         if (created && created.id) {
           navigate(`/content/${typeSlug}/${created.id}`, { replace: true });
         } else {
-          // fallback: go back to list
           navigate(`/content/${typeSlug}`);
         }
       } else {
         // UPDATE
-        const res = await api.put(`/api/content/${typeSlug}/${entryId}`, payload);
+        const res = await api.put(
+          `/api/content/${typeSlug}/${entryId}`,
+          payload
+        );
         if (res && res.ok === false) {
           throw new Error(res.error || res.detail || 'Failed to save entry');
+        }
+
+        // Optionally hydrate from response if present
+        const updated = res.entry || res.data || res;
+        if (updated) {
+          const entryData = updated.data || mergedData;
+          const loadedTitle =
+            updated.title ??
+            entryData.title ??
+            entryData._title ??
+            title;
+          const loadedSlug =
+            updated.slug ??
+            entryData.slug ??
+            entryData._slug ??
+            finalSlug;
+          const loadedStatus =
+            updated.status ??
+            entryData.status ??
+            entryData._status ??
+            status;
+
+          setTitle(loadedTitle);
+          setSlug(loadedSlug);
+          setStatus(loadedStatus);
+          setData(entryData);
         }
       }
     } catch (err) {
