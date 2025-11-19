@@ -327,7 +327,58 @@ app.get('/api/content/:slug', async (req, res) => {
   }
 });
 
-app.post('/api/content/:slug', authMiddleware, async (req, res) => {
+app.post('/api/content/:slug', requireAuth, async (req, res) => {
+  const typeSlug = req.params.slug;
+  const { title, slug, status, data } = req.body || {};
+
+  // Basic slugify helper so backend is safe even if frontend changes
+  function slugify(str) {
+    return (str || '')
+      .toString()
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  try {
+    const { rows: ctRows } = await pool.query(
+      'select id from content_types where slug = $1 limit 1',
+      [typeSlug]
+    );
+    if (!ctRows.length) {
+      return res.status(404).json({ error: 'Content type not found' });
+    }
+    const type = ctRows[0];
+
+    const safeTitle =
+      typeof title === 'string' && title.trim() ? title.trim() : null;
+    const finalSlug =
+      typeof slug === 'string' && slug.trim()
+        ? slug.trim()
+        : safeTitle
+        ? slugify(safeTitle)
+        : null;
+    const finalStatus =
+      typeof status === 'string' && status.trim()
+        ? status.trim()
+        : 'draft';
+
+    const { rows } = await pool.query(
+      `insert into entries (content_type_id, title, slug, status, data)
+       values ($1, $2, $3, $4, $5)
+       returning id, content_type_id, title, slug, status, data, created_at, updated_at`,
+      [type.id, safeTitle, finalSlug, finalStatus, data || {}]
+    );
+
+    const entry = rows[0];
+    res.status(201).json(entry);
+  } catch (err) {
+    console.error('[POST /api/content/:slug] error', err);
+    res.status(500).json({ error: 'Failed to create entry' });
+  }
+});
+
   const { slug } = req.params;
   const { data } = req.body || {};
   if (typeof data !== 'object') return res.status(400).json({ error: 'Data must be an object' });
@@ -371,7 +422,41 @@ app.get('/api/content/:slug/:id', async (req, res) => {
   }
 });
 
-app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
+app.put('/api/content/:slug/:id', requireAuth, async (req, res) => {
+  const typeSlug = req.params.slug;
+  const { id } = req.params;
+  const { data } = req.body || {};
+
+  try {
+    const { rows: ctRows } = await pool.query(
+      'select id from content_types where slug = $1 limit 1',
+      [typeSlug]
+    );
+    if (!ctRows.length) {
+      return res.status(404).json({ error: 'Content type not found' });
+    }
+    const type = ctRows[0];
+
+    const { rows } = await pool.query(
+      `update entries
+       set data = $1, updated_at = now()
+       where id = $2 and content_type_id = $3
+       returning id, content_type_id, data, status, created_at, updated_at`,
+      [data || {}, id, type.id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Entry not found' });
+    }
+
+    const entry = rows[0];
+    res.json(entry);
+  } catch (err) {
+    console.error('[PUT /api/content/:slug/:id] error', err);
+    res.status(500).json({ error: 'Failed to update entry' });
+  }
+});
+
   const { slug, id } = req.params;
   const { data } = req.body || {};
   if (typeof data !== 'object') return res.status(400).json({ error: 'Data must be an object' });

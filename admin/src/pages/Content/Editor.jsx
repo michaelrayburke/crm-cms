@@ -181,7 +181,7 @@ export default function Editor() {
         }
       } else {
         // UPDATE
-        const res = await api.patch(`/api/content/${typeSlug}/${entryId}`, payload);
+        const res = await api.put(`/api/content/${typeSlug}/${entryId}`, payload);
         if (res && res.ok === false) {
           throw new Error(res.error || res.detail || 'Failed to save entry');
         }
