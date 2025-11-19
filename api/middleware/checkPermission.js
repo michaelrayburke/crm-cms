@@ -2,8 +2,8 @@
 import { pool } from '../dbPool.js';
 
 /**
- * Simple cache in memory so we don’t hit DB on every request.
- * You can clear this on redeploy; it’s fine.
+ * Simple in-memory cache so we don’t hit DB on every request.
+ * Safe to clear on redeploy.
  */
 const rolePermCache = new Map();
 let lastCacheLoad = 0;
@@ -13,36 +13,41 @@ async function loadPermissionsIntoCache() {
   const now = Date.now();
   if (now - lastCacheLoad < CACHE_TTL_MS) return;
 
-  const { rows } = await pool.query(
-    'select role_slug, permission_slug, allowed from public.role_permissions'
-  );
-  const map = new Map();
-
-  for (const row of rows) {
-    const key = `${row.role_slug}:${row.permission_slug}`;
-    map.set(key, row.allowed === true);
-  }
+  const { rows } = await pool.query(`
+    select role_slug, permission_slug, allowed
+    from public.role_permissions
+  `);
 
   rolePermCache.clear();
-  for (const [k, v] of map.entries()) {
-    rolePermCache.set(k, v);
+  for (const row of rows) {
+    const key = `${row.role_slug.toUpperCase()}::${row.permission_slug}`;
+    rolePermCache.set(key, !!row.allowed);
   }
   lastCacheLoad = now;
 }
 
+/**
+ * Single-permission guard.
+ * Example: router.get('/api/users', auth, checkPermission('roles.manage'), handler)
+ */
 export function checkPermission(permissionSlug) {
   return async function (req, res, next) {
     try {
-      const user = req.user;
-      if (!user) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      if (!req.user) {
+        return res.status(401).json({ error: 'Unauthenticated' });
       }
 
-      const role = user.role || 'VIEWER';
+      const role = (req.user.role || '').toUpperCase();
+
+      // 🔓 SUPERUSER BYPASS
+      // ADMIN can do everything, even if role_permissions table is empty.
+      if (role === 'ADMIN') {
+        return next();
+      }
 
       await loadPermissionsIntoCache();
 
-      const key = `${role}:${permissionSlug}`;
+      const key = `${role}::${permissionSlug}`;
       const allowed = rolePermCache.get(key);
 
       if (!allowed) {
@@ -59,22 +64,40 @@ export function checkPermission(permissionSlug) {
   };
 }
 
-// Optional helper: require ANY of several permissions
+/**
+ * Multi-permission guard – allow if the user has *any* of the given permissions.
+ * Example: checkAnyPermission(['entries.manage', 'entries.edit:movie'])
+ */
 export function checkAnyPermission(permissionSlugs = []) {
   return async function (req, res, next) {
     try {
-      const user = req.user;
-      if (!user) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      if (!req.user) {
+        return res.status(401).json({ error: 'Unauthenticated' });
       }
-      const role = user.role || 'VIEWER';
+
+      const role = (req.user.role || '').toUpperCase();
+
+      // 🔓 SUPERUSER BYPASS
+      if (role === 'ADMIN') {
+        return next();
+      }
+
+      if (!permissionSlugs.length) {
+        return res
+          .status(500)
+          .json({ error: 'Permission check misconfigured (no permissions provided)' });
+      }
 
       await loadPermissionsIntoCache();
 
-      const ok = permissionSlugs.some((slug) => {
-        const key = `${role}:${slug}`;
-        return rolePermCache.get(key) === true;
-      });
+      let ok = false;
+      for (const slug of permissionSlugs) {
+        const key = `${role}::${slug}`;
+        if (rolePermCache.get(key)) {
+          ok = true;
+          break;
+        }
+      }
 
       if (!ok) {
         return res.status(403).json({
