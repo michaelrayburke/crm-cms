@@ -16,7 +16,9 @@ export default function Editor() {
   const { typeSlug, entryId } = useParams();
   const navigate = useNavigate();
 
-  const [loading, setLoading] = useState(true);
+  const isNew = !entryId || entryId === 'new';
+
+  const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -27,19 +29,19 @@ export default function Editor() {
   // everything that lives in entries.data
   const [data, setData] = useState({});
 
-  // extra helper state for adding new custom fields
+  // helper state for adding new custom fields
   const [newFieldKey, setNewFieldKey] = useState('');
   const [newFieldValue, setNewFieldValue] = useState('');
 
-  // ---- Load entry ----
+  // ---------------------------------------------------------------------------
+  // Load existing entry (edit mode only)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    async function load() {
-      // if we're making a brand new one, don't fetch
-      if (entryId === 'new') {
-        setLoading(false);
-        return;
-      }
+    if (isNew) return;
 
+    let cancelled = false;
+
+    async function load() {
       setLoading(true);
       setError('');
       try {
@@ -49,30 +51,51 @@ export default function Editor() {
         }
         const entry = res.entry || res.data || res;
 
+        if (cancelled) return;
+
         setTitle(entry.title || '');
         setSlug(entry.slug || '');
         setStatus(entry.status || 'draft');
         setData(entry.data || {});
       } catch (err) {
         console.error('Failed to load entry', err);
-        setError(err.message || 'Failed to load entry');
+        if (!cancelled) {
+          setError(err.message || 'Failed to load entry');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     load();
-  }, [typeSlug, entryId]);
 
-  // ---- Handlers for custom fields ----
+    return () => {
+      cancelled = true;
+    };
+  }, [isNew, typeSlug, entryId]);
+
+  // ---------------------------------------------------------------------------
+  // Custom fields
+  // ---------------------------------------------------------------------------
+
+  const customFieldEntries = useMemo(
+    () => Object.entries(data || {}),
+    [data]
+  );
 
   function updateCustomField(key, rawValue) {
-    setData((prev) => {
+    setData(prev => {
       const next = { ...(prev || {}) };
       const current = next[key];
 
-      // If current value is a simple string, keep treating it as a string.
-      if (typeof current === 'string' || typeof current === 'undefined') {
+      // If current value is a simple primitive, keep as simple string.
+      if (
+        typeof current === 'string' ||
+        typeof current === 'number' ||
+        typeof current === 'boolean' ||
+        current === null ||
+        typeof current === 'undefined'
+      ) {
         next[key] = rawValue;
         return next;
       }
@@ -97,9 +120,9 @@ export default function Editor() {
     const key = newFieldKey.trim();
     if (!key) return;
 
-    setData((prev) => {
+    setData(prev => {
       const next = { ...(prev || {}) };
-      if (next[key] === undefined) {
+      if (typeof next[key] === 'undefined') {
         next[key] = newFieldValue;
       }
       return next;
@@ -111,14 +134,16 @@ export default function Editor() {
 
   function handleRemoveField(key) {
     if (!window.confirm(`Remove field "${key}" from this entry?`)) return;
-    setData((prev) => {
+    setData(prev => {
       const next = { ...(prev || {}) };
       delete next[key];
       return next;
     });
   }
 
-  // ---- Save / Delete ----
+  // ---------------------------------------------------------------------------
+  // Save / Delete
+  // ---------------------------------------------------------------------------
 
   async function handleSave(e) {
     e.preventDefault();
@@ -140,19 +165,27 @@ export default function Editor() {
         data,
       };
 
-      const method = entryId === 'new' ? api.post : api.patch;
-      const url =
-        entryId === 'new'
-          ? `/api/content/${typeSlug}`
-          : `/api/content/${typeSlug}/${entryId}`;
-
-      const res = await method(url, payload);
-      if (res && res.ok === false) {
-        throw new Error(res.error || res.detail || 'Failed to save entry');
+      if (isNew) {
+        // CREATE
+        const res = await api.post(`/api/content/${typeSlug}`, payload);
+        if (res && res.ok === false) {
+          throw new Error(res.error || res.detail || 'Failed to create entry');
+        }
+        const created = res.entry || res.data || res;
+        // navigate to the newly created entry so further edits are PATCH
+        if (created && created.id) {
+          navigate(`/content/${typeSlug}/${created.id}`, { replace: true });
+        } else {
+          // fallback: go back to list
+          navigate(`/content/${typeSlug}`);
+        }
+      } else {
+        // UPDATE
+        const res = await api.patch(`/api/content/${typeSlug}/${entryId}`, payload);
+        if (res && res.ok === false) {
+          throw new Error(res.error || res.detail || 'Failed to save entry');
+        }
       }
-
-      // after save, go back to list for now
-      navigate(`/content/${typeSlug}`);
     } catch (err) {
       console.error('Failed to save entry', err);
       setError(err.message || 'Failed to save entry');
@@ -162,8 +195,9 @@ export default function Editor() {
   }
 
   async function handleDelete() {
-    if (entryId === 'new') {
-      navigate(-1);
+    if (isNew) {
+      // nothing persisted yet, just go back
+      navigate(`/content/${typeSlug}`);
       return;
     }
 
@@ -186,6 +220,10 @@ export default function Editor() {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Preview helpers
+  // ---------------------------------------------------------------------------
+
   const previewData = useMemo(
     () => ({
       ...data,
@@ -193,7 +231,7 @@ export default function Editor() {
       slug,
       status,
     }),
-    [data, title, slug, status],
+    [data, title, slug, status]
   );
 
   function prettyValue(v) {
@@ -203,7 +241,7 @@ export default function Editor() {
     }
     if (Array.isArray(v)) {
       if (!v.length) return '';
-      if (v.every((x) => typeof x === 'string' || typeof x === 'number')) {
+      if (v.every(x => typeof x === 'string' || typeof x === 'number')) {
         return v.join(', ');
       }
       return JSON.stringify(v);
@@ -219,7 +257,9 @@ export default function Editor() {
     return String(v);
   }
 
-  const customFieldEntries = Object.entries(data || {});
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <div className="su-grid cols-2">
@@ -228,7 +268,7 @@ export default function Editor() {
         <h2 style={{ marginTop: 0, marginBottom: 12 }}>
           {loading
             ? 'Edit entry'
-            : entryId === 'new'
+            : isNew
             ? `New ${typeSlug} entry`
             : `Edit ${typeSlug}`}
         </h2>
@@ -249,7 +289,7 @@ export default function Editor() {
           </div>
         )}
 
-        {loading && (
+        {loading && !isNew && (
           <p style={{ fontSize: 13, opacity: 0.7 }}>Loading entry…</p>
         )}
 
@@ -261,7 +301,7 @@ export default function Editor() {
               <input
                 className="su-input"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={e => setTitle(e.target.value)}
                 placeholder="My great entry"
               />
             </label>
@@ -271,7 +311,7 @@ export default function Editor() {
               <input
                 className="su-input"
                 value={slug}
-                onChange={(e) => setSlug(e.target.value)}
+                onChange={e => setSlug(e.target.value)}
                 placeholder={slugify(title || 'my-entry')}
               />
             </label>
@@ -281,7 +321,7 @@ export default function Editor() {
               <select
                 className="su-select"
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
+                onChange={e => setStatus(e.target.value)}
               >
                 <option value="draft">Draft</option>
                 <option value="published">Published</option>
@@ -314,12 +354,12 @@ export default function Editor() {
 
             <div style={{ display: 'grid', gap: 10 }}>
               {customFieldEntries.map(([key, value]) => {
-                const isSimpleString =
+                const isSimple =
                   typeof value === 'string' ||
                   typeof value === 'number' ||
                   typeof value === 'boolean' ||
                   value === null;
-                const displayValue = isSimpleString
+                const displayValue = isSimple
                   ? String(value ?? '')
                   : JSON.stringify(value, null, 2);
 
@@ -352,18 +392,18 @@ export default function Editor() {
                       </button>
                     </div>
 
-                    {isSimpleString ? (
+                    {isSimple ? (
                       <input
                         className="su-input"
                         value={displayValue}
-                        onChange={(e) => updateCustomField(key, e.target.value)}
+                        onChange={e => updateCustomField(key, e.target.value)}
                       />
                     ) : (
                       <textarea
                         className="su-textarea"
                         rows={3}
                         value={displayValue}
-                        onChange={(e) => updateCustomField(key, e.target.value)}
+                        onChange={e => updateCustomField(key, e.target.value)}
                         style={{
                           fontFamily:
                             'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
@@ -371,7 +411,7 @@ export default function Editor() {
                       />
                     )}
 
-                    {!isSimpleString && (
+                    {!isSimple && (
                       <p style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
                         Parsed as JSON (arrays / objects / booleans / numbers).
                       </p>
@@ -402,13 +442,13 @@ export default function Editor() {
                   className="su-input"
                   placeholder="field_key"
                   value={newFieldKey}
-                  onChange={(e) => setNewFieldKey(e.target.value)}
+                  onChange={e => setNewFieldKey(e.target.value)}
                 />
                 <input
                   className="su-input"
                   placeholder='Plain text or JSON (e.g. ["tag-1","tag-2"])'
                   value={newFieldValue}
-                  onChange={(e) => setNewFieldValue(e.target.value)}
+                  onChange={e => setNewFieldValue(e.target.value)}
                 />
               </div>
               <button
@@ -424,7 +464,7 @@ export default function Editor() {
           {/* Actions */}
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button className="su-btn primary" type="submit" disabled={saving}>
-              {saving ? 'Saving…' : 'Save entry'}
+              {saving ? 'Saving…' : isNew ? 'Create entry' : 'Save entry'}
             </button>
             <button
               className="su-btn"
@@ -434,21 +474,19 @@ export default function Editor() {
             >
               Back
             </button>
-            {entryId !== 'new' && (
-              <button
-                className="su-btn"
-                type="button"
-                onClick={handleDelete}
-                disabled={saving}
-                style={{
-                  borderColor: '#fecaca',
-                  background: '#fef2f2',
-                  color: '#b91c1c',
-                }}
-              >
-                Delete
-              </button>
-            )}
+            <button
+              className="su-btn"
+              type="button"
+              onClick={handleDelete}
+              disabled={saving}
+              style={{
+                borderColor: '#fecaca',
+                background: '#fef2f2',
+                color: '#b91c1c',
+              }}
+            >
+              {isNew ? 'Cancel' : 'Delete'}
+            </button>
           </div>
         </form>
       </div>
@@ -476,7 +514,12 @@ export default function Editor() {
             </div>
           </div>
 
-          <div style={{ borderTop: '1px solid var(--su-border)', paddingTop: 8 }}>
+          <div
+            style={{
+              borderTop: '1px solid var(--su-border)',
+              paddingTop: 8,
+            }}
+          >
             {customFieldEntries.length === 0 && (
               <p style={{ fontSize: 12, opacity: 0.7 }}>No custom fields yet.</p>
             )}
