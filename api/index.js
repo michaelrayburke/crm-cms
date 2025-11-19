@@ -404,7 +404,49 @@ app.post('/api/content/:slug', requireAuth, async (req, res) => {
   }
 });
 
-app.get('/api/content/:slug/:id', async (req, res) => {
+// ---------------------------------------------------------------------------
+// GET single entry
+// ---------------------------------------------------------------------------
+app.get('/api/content/:slug/:id', requireAuth, async (req, res) => {
+  const { slug: typeSlug, id } = req.params;
+
+  try {
+    const { rows: ctRows } = await pool.query(
+      'select id from content_types where slug = $1 limit 1',
+      [typeSlug]
+    );
+    if (!ctRows.length) {
+      return res.status(404).json({ error: 'Content type not found' });
+    }
+    const type = ctRows[0];
+
+    const { rows } = await pool.query(
+      `select 
+         id, 
+         content_type_id, 
+         title,
+         slug,
+         status,
+         data,
+         created_at, 
+         updated_at
+       from entries
+       where id = $1 and content_type_id = $2
+       limit 1`,
+      [id, type.id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Entry not found' });
+    }
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[GET /api/content/:slug/:id] error', err);
+    res.status(500).json({ error: 'Failed to fetch entry' });
+  }
+});
+
   const { slug, id } = req.params;
   try {
     const typeRes = await pool.query('SELECT id FROM content_types WHERE slug = $1 LIMIT 1', [slug]);
