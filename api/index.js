@@ -313,26 +313,32 @@ app.put('/api/content-types/:slug/fields/:fieldId', authMiddleware, async (req, 
 // List entries for a content type
 app.get('/api/content/:slug', async (req, res) => {
   const { slug } = req.params;
+
   try {
-    const typeRes = await pool.query(
+    const { rows: typeRows } = await pool.query(
       'SELECT id FROM content_types WHERE slug = $1 LIMIT 1',
       [slug]
     );
-    if (!typeRes.rows.length) {
+
+    if (!typeRows.length) {
       return res.status(404).json({ error: 'Content type not found' });
     }
-    const typeId = typeRes.rows[0].id;
-    const entriesRes = await pool.query(
-      `SELECT id, content_type_id, title, slug, status, data, created_at, updated_at
-       FROM entries
-       WHERE content_type_id = $1
-       ORDER BY created_at DESC`,
+
+    const typeId = typeRows[0].id;
+
+    // Use SELECT * to avoid issues if columns change
+    const { rows: entries } = await pool.query(
+      'SELECT * FROM entries WHERE content_type_id = $1 ORDER BY created_at DESC',
       [typeId]
     );
-    res.json(entriesRes.rows);
+
+    res.json(entries);
   } catch (err) {
-    console.error('[GET /api/content/:slug]', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('[GET /api/content/:slug] error', err);
+    res.status(500).json({
+      error: 'Server error listing entries',
+      detail: err.message,
+    });
   }
 });
 
@@ -358,6 +364,7 @@ app.post('/api/content/:slug', authMiddleware, async (req, res) => {
     if (!ctRows.length) {
       return res.status(404).json({ error: 'Content type not found' });
     }
+
     const typeId = ctRows[0].id;
 
     const safeTitle =
@@ -365,30 +372,32 @@ app.post('/api/content/:slug', authMiddleware, async (req, res) => {
     if (!safeTitle) {
       return res.status(400).json({ error: 'Title is required' });
     }
+
     const finalSlug =
       typeof slug === 'string' && slug.trim()
         ? slug.trim()
         : slugify(safeTitle);
+
     const finalStatus =
       typeof status === 'string' && status.trim()
         ? status.trim()
         : 'draft';
 
-    const fieldsRes = await pool.query(
+    const { rows: fieldsRows } = await pool.query(
       'SELECT key, type FROM fields WHERE content_type_id = $1',
       [typeId]
     );
-    const normalizedData = normalizeEntryData(fieldsRes.rows, data || {});
+
+    const normalizedData = normalizeEntryData(fieldsRows, data || {});
 
     const { rows } = await pool.query(
       `INSERT INTO entries (content_type_id, title, slug, status, data)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, content_type_id, title, slug, status, data, created_at, updated_at`,
+       RETURNING *`,
       [typeId, safeTitle, finalSlug, finalStatus, normalizedData]
     );
 
-    const entry = rows[0];
-    res.status(201).json(entry);
+    res.status(201).json(rows[0]);
   } catch (err) {
     console.error('[POST /api/content/:slug] error', err);
     res.status(500).json({ error: 'Failed to create entry' });
@@ -407,15 +416,17 @@ app.get('/api/content/:slug/:id', authMiddleware, async (req, res) => {
     if (!ctRows.length) {
       return res.status(404).json({ error: 'Content type not found' });
     }
+
     const typeId = ctRows[0].id;
 
     const { rows } = await pool.query(
-      `SELECT id, content_type_id, title, slug, status, data, created_at, updated_at
+      `SELECT *
        FROM entries
        WHERE id = $1 AND content_type_id = $2
        LIMIT 1`,
       [id, typeId]
     );
+
     if (!rows.length) {
       return res.status(404).json({ error: 'Entry not found' });
     }
@@ -429,8 +440,7 @@ app.get('/api/content/:slug/:id', authMiddleware, async (req, res) => {
 
 // Update entry
 app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
-  const typeSlug = req.params.slug;
-  const { id } = req.params;
+  const { slug: typeSlug, id } = req.params;
   const { title, slug, status, data } = req.body || {};
 
   function slugify(str) {
@@ -450,6 +460,7 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
     if (!ctRows.length) {
       return res.status(404).json({ error: 'Content type not found' });
     }
+
     const typeId = ctRows[0].id;
 
     const safeTitle =
@@ -457,20 +468,22 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
     if (!safeTitle) {
       return res.status(400).json({ error: 'Title is required' });
     }
+
     const finalSlug =
       typeof slug === 'string' && slug.trim()
         ? slug.trim()
         : slugify(safeTitle);
+
     const finalStatus =
       typeof status === 'string' && status.trim()
         ? status.trim()
         : 'draft';
 
-    const fieldsRes = await pool.query(
+    const { rows: fieldsRows } = await pool.query(
       'SELECT key, type FROM fields WHERE content_type_id = $1',
       [typeId]
     );
-    const normalizedData = normalizeEntryData(fieldsRes.rows, data || {});
+    const normalizedData = normalizeEntryData(fieldsRows, data || {});
 
     const { rows } = await pool.query(
       `UPDATE entries
@@ -480,7 +493,7 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
            data = $4,
            updated_at = now()
        WHERE id = $5 AND content_type_id = $6
-       RETURNING id, content_type_id, title, slug, status, data, created_at, updated_at`,
+       RETURNING *`,
       [safeTitle, finalSlug, finalStatus, normalizedData, id, typeId]
     );
 
@@ -488,13 +501,14 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Entry not found' });
     }
 
-    const entry = rows[0];
-    res.json(entry);
+    res.json(rows[0]);
   } catch (err) {
     console.error('[PUT /api/content/:slug/:id] error', err);
     res.status(500).json({ error: 'Failed to update entry' });
   }
 });
+
+
 
 /* ----------------------- Deletes ----------------------------------- */
 app.delete('/api/content-types/:slug', authMiddleware, async (req, res) => {
