@@ -67,3 +67,54 @@ button { cursor: pointer; }
   .su-layout.collapsed { grid-template-columns: 72px 1fr; }
   .su-layout.collapsed .su-sidebar { width: 72px; overflow: hidden; }
 }
+
+/* Base layout: sidebar visible on desktop */
+.su-sidebar {
+  width: 260px;
+}
+
+/* Hide mobile close button by default */
+.su-sidebar-close {
+  display: none;
+}
+
+/* Hamburger default hidden on big screens */
+.su-topbar-hamburger {
+  display: none;
+}
+
+/* Mobile / tablet: sidebar becomes overlay with slide-in */
+@media (max-width: 1024px) {
+  .su-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 260px;
+    background: var(--su-surface, #111827);
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease-out;
+    z-index: 1000;
+  }
+
+  body.su-sidebar-open .su-sidebar {
+    transform: translateX(0);
+  }
+
+  .su-sidebar-close {
+    display: block;
+    margin-bottom: 12px;
+    width: 100%;
+    text-align: left;
+  }
+
+  .su-topbar-hamburger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+    padding-inline: 10px;
+  }
+}
+
