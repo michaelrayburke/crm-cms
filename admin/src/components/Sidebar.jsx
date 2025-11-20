@@ -1,4 +1,3 @@
-// admin/src/components/Sidebar.jsx
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
@@ -6,13 +5,14 @@ import { useAuth } from '../context/AuthContext';
 
 const navItemBaseClass = 'su-btn su-nav-link';
 
-const NavItem = ({ to, children }) => (
+const NavItem = ({ to, children, onClick }) => (
   <NavLink
     to={to}
     className={({ isActive }) =>
       `${navItemBaseClass}${isActive ? ' primary' : ''}`
     }
     style={{ display: 'block', marginBottom: 8 }}
+    onClick={onClick}
   >
     {children}
   </NavLink>
@@ -44,6 +44,14 @@ function isNavItemVisibleForRole(item, role) {
   return roles.includes(String(role).toUpperCase());
 }
 
+function closeSidebarIfMobile() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  // Only auto-close on smaller screens
+  if (window.innerWidth <= 1024) {
+    document.body.classList.remove('su-sidebar-open');
+  }
+}
+
 export default function Sidebar() {
   const { settings } = useSettings();
   const { user } = useAuth();
@@ -62,11 +70,30 @@ export default function Sidebar() {
     isNavItemVisibleForRole(item, role)
   );
 
+  const handleNavClick = () => {
+    closeSidebarIfMobile();
+  };
+
+  const handleCloseClick = () => {
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('su-sidebar-open');
+    }
+  };
+
   return (
-    <aside className="su-sidebar">
-      <div style={{ padding: 16 }}>
+    <aside id="su-sidebar" className="su-sidebar">
+      <div className="su-sidebar-inner" style={{ padding: 16 }}>
+        {/* Mobile-only close button (CSS will hide on desktop) */}
+        <button
+          type="button"
+          className="su-btn ghost su-sidebar-close"
+          onClick={handleCloseClick}
+        >
+          ✕ Close
+        </button>
+
         {visibleNavItems.map((item) => (
-          <NavItem key={item.to} to={item.to}>
+          <NavItem key={item.to} to={item.to} onClick={handleNavClick}>
             {item.label}
           </NavItem>
         ))}
@@ -82,7 +109,10 @@ export default function Sidebar() {
             type="button"
             className="su-btn"
             style={{ width: '100%' }}
-            onClick={() => navigate('/admin/settings#navigation')}
+            onClick={() => {
+              navigate('/admin/settings#navigation');
+              closeSidebarIfMobile();
+            }}
           >
             ✏️ Edit navigation
           </button>
