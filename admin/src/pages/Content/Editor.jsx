@@ -1,4 +1,3 @@
-// admin/src/pages/Content/Editor.jsx
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
@@ -21,6 +20,7 @@ export default function Editor() {
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
 
   const [title, setTitle] = useState('');
   const [slug, setSlug] = useState('');
@@ -44,6 +44,7 @@ export default function Editor() {
     async function load() {
       setLoading(true);
       setError('');
+      setSaveMessage('');
       try {
         const res = await api.get(`/api/content/${typeSlug}/${entryId}`);
         if (res && res.ok === false) {
@@ -166,6 +167,7 @@ export default function Editor() {
   async function handleSave(e) {
     e.preventDefault();
     setError('');
+    setSaveMessage('');
 
     if (!title.trim()) {
       setError('Title is required.');
@@ -202,13 +204,23 @@ export default function Editor() {
         if (res && res.ok === false) {
           throw new Error(res.error || res.detail || 'Failed to create entry');
         }
+
         const created = res.entry || res.data || res;
 
-        // If API returns back the entry, hydrate from that; otherwise keep our state.
-        if (created && created.id) {
-          navigate(`/content/${typeSlug}/${created.id}`, { replace: true });
+        // Try hard to find an ID from whatever the API returns
+        const newId =
+          created?.id ??
+          created?.entry?.id ??
+          created?.data?.id ??
+          null;
+
+        if (newId) {
+          // Navigate to the new entry editor but keep user "on the entry"
+          navigate(`/content/${typeSlug}/${newId}`, { replace: true });
+          setSaveMessage('Entry created.');
         } else {
-          navigate(`/content/${typeSlug}`);
+          // No ID found; don't bounce them away, just show a message
+          setSaveMessage('Entry created (reload list to see it).');
         }
       } else {
         // UPDATE
@@ -245,6 +257,8 @@ export default function Editor() {
           setStatus(loadedStatus);
           setData(entryData);
         }
+
+        setSaveMessage('Entry saved.');
       }
     } catch (err) {
       console.error('Failed to save entry', err);
@@ -267,6 +281,7 @@ export default function Editor() {
 
     try {
       setSaving(true);
+      setSaveMessage('');
       const res = await api.del(`/api/content/${typeSlug}/${entryId}`);
       if (res && res.ok === false) {
         throw new Error(res.error || res.detail || 'Failed to delete entry');
@@ -346,6 +361,22 @@ export default function Editor() {
             }}
           >
             {error}
+          </div>
+        )}
+
+        {saveMessage && !error && (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: '8px 10px',
+              borderRadius: 10,
+              border: '1px solid #bbf7d0',
+              background: '#ecfdf3',
+              color: '#166534',
+              fontSize: 13,
+            }}
+          >
+            {saveMessage}
           </div>
         )}
 
