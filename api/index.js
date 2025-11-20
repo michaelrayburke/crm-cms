@@ -10,7 +10,6 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import permissionsRouter from './routes/permissions.js';
 import settingsRouter from './routes/settings.js';
-import { requireAuth } from './middleware/checkPermission.js';
 
 dotenv.config();
 
@@ -338,7 +337,7 @@ app.get('/api/content/:slug', async (req, res) => {
 });
 
 // Create entry
-app.post('/api/content/:slug', requireAuth, async (req, res) => {
+app.post('/api/content/:slug', authMiddleware, async (req, res) => {
   const typeSlug = req.params.slug;
   const { title, slug, status, data } = req.body || {};
 
@@ -397,7 +396,7 @@ app.post('/api/content/:slug', requireAuth, async (req, res) => {
 });
 
 // Get single entry
-app.get('/api/content/:slug/:id', requireAuth, async (req, res) => {
+app.get('/api/content/:slug/:id', authMiddleware, async (req, res) => {
   const { slug: typeSlug, id } = req.params;
 
   try {
@@ -429,7 +428,7 @@ app.get('/api/content/:slug/:id', requireAuth, async (req, res) => {
 });
 
 // Update entry
-app.put('/api/content/:slug/:id', requireAuth, async (req, res) => {
+app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
   const typeSlug = req.params.slug;
   const { id } = req.params;
   const { title, slug, status, data } = req.body || {};
