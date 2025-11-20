@@ -400,7 +400,21 @@ app.post('/api/content/:slug', authMiddleware, async (req, res) => {
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('[POST /api/content/:slug] error', err);
-    res.status(500).json({ error: 'Failed to create entry' });
+
+    // Handle unique slug errors nicely
+    if (err.code === '23505') {
+      return res.status(409).json({
+        error: 'Slug already exists for this content type',
+        code: err.code,
+        detail: err.detail || err.message,
+      });
+    }
+
+    res.status(500).json({
+      error: 'Failed to create entry',
+      code: err.code || null,
+      detail: err.message,
+    });
   }
 });
 
@@ -504,7 +518,20 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     console.error('[PUT /api/content/:slug/:id] error', err);
-    res.status(500).json({ error: 'Failed to update entry' });
+
+    if (err.code === '23505') {
+      return res.status(409).json({
+        error: 'Slug already exists for this content type',
+        code: err.code,
+        detail: err.detail || err.message,
+      });
+    }
+
+    res.status(500).json({
+      error: 'Failed to update entry',
+      code: err.code || null,
+      detail: err.message,
+    });
   }
 });
 
