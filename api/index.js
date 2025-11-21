@@ -10,6 +10,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import permissionsRouter from './routes/permissions.js';
 import settingsRouter from './routes/settings.js';
+import dashboardRouter from "./routes/dashboard.js";
+
 
 dotenv.config();
 
@@ -673,6 +675,8 @@ app.use('/api/taxonomies', taxonomiesRouter);
 app.use('/api/roles', authMiddleware, rolesRouter);
 app.use('/api/permissions', authMiddleware, permissionsRouter);
 app.use('/api/settings', settingsRouter);
+app.use("/api/dashboard", authMiddleware, dashboardRouter);
+
 
 // Simple redirects for old paths
 app.get('/content-types', (_req, res) => res.redirect(301, '/api/content-types'));
