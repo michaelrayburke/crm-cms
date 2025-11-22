@@ -103,22 +103,30 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold mb-1">Users</h1>
-        <p className="text-sm text-gray-600">
-          Manage admin users and their roles. Roles map to the values you define in the
-          Roles Manager and are synced into Supabase Auth.
-        </p>
+    <div className="su-page su-page--users">
+      {/* Header */}
+      <div className="su-page__header">
+        <div>
+          <h1 className="su-page__title">Users</h1>
+          <p className="su-page__subtitle">
+            Manage admin users and their roles. Roles map to the values you define in
+            the Roles Manager and are synced into Supabase Auth.
+          </p>
+        </div>
       </div>
 
+      {/* Error notice */}
       {error && (
-        <div className="su-card" style={{ borderColor: '#fecaca', background: '#fef2f2' }}>
+        <div
+          className="su-card"
+          style={{ borderColor: '#fecaca', background: '#fef2f2', marginBottom: 16 }}
+        >
           <div style={{ color: '#991b1b', fontSize: 13 }}>{error}</div>
         </div>
       )}
 
-      <div className="su-grid cols-2">
+      {/* Content */}
+      <div className="su-page__content su-grid cols-2">
         {/* New User form */}
         <div className="su-card">
           <h2 style={{ marginTop: 0, marginBottom: 8 }}>New User</h2>
