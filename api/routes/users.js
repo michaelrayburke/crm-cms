@@ -3,7 +3,6 @@ import { Router } from 'express';
 import { pool } from '../dbPool.js';
 import bcrypt from 'bcryptjs';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
-import { checkPermission } from '../middleware/checkPermission.js';
 
 const router = Router();
 
@@ -39,7 +38,6 @@ async function syncRoleToSupabase(userRow) {
 // GET /api/users?q=search
 router.get(
   '/',
-  checkPermission('users.manage'),
   async (req, res) => {
     try {
       const q = (req.query.q || '').trim();
@@ -67,7 +65,6 @@ router.get(
 // POST /api/users
 router.post(
   '/',
-  checkPermission('users.manage'),
   async (req, res) => {
     const { email, name, password, role = 'EDITOR' } = req.body || {};
     if (!email || !password) {
@@ -137,7 +134,6 @@ router.post(
 // PATCH /api/users/:id
 router.patch(
   '/:id',
-  checkPermission('users.manage'),
   async (req, res) => {
     const { id } = req.params;
     const { email, name, password, role, status } = req.body || {};
@@ -197,7 +193,6 @@ router.patch(
 // DELETE /api/users/:id
 router.delete(
   '/:id',
-  checkPermission('users.manage'),
   async (req, res) => {
     const { id } = req.params;
     try {
