@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { useDashboard } from "../../hooks/useDashboard";
+import { useDashboardWidgets as useDashboard } from "../../hooks/useDashboard";
 
 // Small helper for generating local IDs for new links, etc.
 function makeId() {
