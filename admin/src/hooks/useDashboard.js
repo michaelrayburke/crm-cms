@@ -26,7 +26,7 @@ export function useDashboard() {
     setError("");
     try {
       // API returns either an array or an object with .layout
-      const resp = await api.get("/dashboard");
+      const resp = await api.get("/api/dashboard");
       let layout = [];
 
       if (Array.isArray(resp)) {
@@ -53,7 +53,7 @@ export function useDashboard() {
     setSaving(true);
     setError("");
     try {
-      await api.post("/dashboard", { layout: nextLayout });
+      await api.post("/api/dashboard", { layout: nextLayout });
     } catch (e) {
       console.error("[useDashboard] Failed to save layout", e);
       setError(e?.message || "Failed to save dashboard layout");

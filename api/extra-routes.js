@@ -37,3 +37,81 @@ export default function mountExtraRoutes(app) {
     });
   });
 }
+
+import pg from 'pg';
+import jwt from 'jsonwebtoken';
+
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { require: true, rejectUnauthorized: false },
+});
+
+const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
+
+function authMiddleware(req, res, next) {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'No token provided' });
+  const token = auth.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+export default function mountExtraRoutes(app) {
+  // ...keep any existing extra routes above...
+
+  // ROLE-BASED DASHBOARD GET
+  app.get('/api/dashboard', authMiddleware, async (req, res) => {
+    try {
+      const role = (req.user?.role || 'ADMIN').toUpperCase();
+
+      const { rows } = await pool.query(
+        'select layout from dashboard_settings where id = $1 limit 1',
+        [role]
+      );
+
+      if (!rows.length || !rows[0].layout) {
+        // no layout for this role yet
+        return res.json({ layout: [] });
+      }
+
+      res.json({ layout: rows[0].layout });
+    } catch (err) {
+      console.error('[GET /api/dashboard]', err);
+      res.status(500).json({ error: 'Failed to load dashboard layout' });
+    }
+  });
+
+  // ROLE-BASED DASHBOARD SAVE
+  app.post('/api/dashboard', authMiddleware, async (req, res) => {
+    try {
+      const role = (req.user?.role || 'ADMIN').toUpperCase();
+      const layout = req.body?.layout || [];
+      const json = JSON.stringify(layout);
+
+      const { rows } = await pool.query(
+        `
+        insert into dashboard_settings (id, layout)
+        values ($1, $2)
+        on conflict (id) do update
+          set layout = excluded.layout,
+              updated_at = now()
+        returning id, layout, updated_at
+      `,
+        [role, json]
+      );
+
+      res.json(rows[0]);
+    } catch (err) {
+      console.error('[POST /api/dashboard]', err);
+      res.status(500).json({ error: 'Failed to save dashboard layout' });
+    }
+  });
+
+  // ...keep any other extra routes below...
+}
+
