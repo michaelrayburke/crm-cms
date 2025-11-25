@@ -374,14 +374,12 @@ export default function QuickBuilderPage() {
                         : "hover:bg-gray-50")
                     }
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span>{t.label_plural}</span>
-                      <span
-                        className="text-[11px] uppercase tracking-wide opacity-70"
-                      >
-                        {t.slug}
-                      </span>
-                    </div>
+                    <div className="flex flex-col gap-[2px]">
+						<span>{t.label_plural || t.slug}</span>
+							<span className="text-[11px] opacity-70">
+							{t.slug}
+						</span>
+					</div>
                   </button>
                 </li>
               ))}

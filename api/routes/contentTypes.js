@@ -62,6 +62,51 @@ router.post("/", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    // Use plural label as the legacy "name" column so old code stays happy.
+    const legacyName = label_plural;
+
+    const insertSql = `
+      INSERT INTO content_types
+        (slug, type, label_singular, label_plural, description, icon, is_system, name)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *;
+    `;
+
+    const { rows } = await pool.query(insertSql, [
+      slug,
+      type,
+      label_singular,
+      label_plural,
+      description,
+      icon,
+      is_system,
+      legacyName,
+    ]);
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error("Error creating content type", err);
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "Slug already exists" });
+    }
+    res.status(500).json({ error: "Failed to create content type" });
+  }
+});
+  try {
+    const {
+      slug,
+      type = "content",
+      label_singular,
+      label_plural,
+      description = "",
+      icon = null,
+      is_system = false,
+    } = req.body || {};
+
+    if (!slug || !label_singular || !label_plural) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
     const insertSql = `
       INSERT INTO content_types
         (slug, type, label_singular, label_plural, description, icon, is_system)
