@@ -13,7 +13,6 @@ import settingsRouter from './routes/settings.js';
 import dashboardRouter from "./routes/dashboard.js";
 import contentTypesRouter from './routes/contentTypes.js';
 
-
 dotenv.config();
 
 const app = express();
@@ -177,139 +176,6 @@ function authMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Invalid token' });
   }
 }
-
-/* ----------------------- Content Types ----------------------------- */
-app.get('/api/content-types', async (_req, res) => {
-  try {
-    const { rows } = await pool.query('SELECT * FROM content_types ORDER BY created_at');
-    res.json(rows);
-  } catch (err) {
-    console.error('[GET /api/content-types]', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.post('/api/content-types', authMiddleware, async (req, res) => {
-  const { slug, name, fields } = req.body || {};
-  if (!slug || !name || !Array.isArray(fields)) {
-    return res.status(400).json({ error: 'Invalid body' });
-  }
-  try {
-    const result = await pool.query(
-      'INSERT INTO content_types (slug, name) VALUES ($1, $2) RETURNING *',
-      [slug, name]
-    );
-    const ctype = result.rows[0];
-
-    for (const field of fields) {
-      const { key, label, type, required = false, sort = 0, options = null } = field;
-      await pool.query(
-        `INSERT INTO fields (content_type_id, key, label, type, required, sort, options)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [ctype.id, key, label, type, !!required, Number.isFinite(sort) ? sort : 0, options ? JSON.stringify(options) : null]
-      );
-    }
-
-    const fieldsRes = await pool.query(
-      'SELECT * FROM fields WHERE content_type_id = $1 ORDER BY sort, id',
-      [ctype.id]
-    );
-    res.status(201).json({ ...ctype, fields: fieldsRes.rows });
-  } catch (err) {
-    console.error('[POST /api/content-types]', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.get('/api/content-types/:slug', async (req, res) => {
-  const { slug } = req.params;
-  try {
-    const { rows } = await pool.query('SELECT * FROM content_types WHERE slug = $1 LIMIT 1', [slug]);
-    if (!rows.length) return res.status(404).json({ error: 'Not found' });
-    const ctype = rows[0];
-    const fieldsRes = await pool.query(
-      'SELECT * FROM fields WHERE content_type_id = $1 ORDER BY sort, id',
-      [ctype.id]
-    );
-    res.json({ ...ctype, fields: fieldsRes.rows });
-  } catch (err) {
-    console.error('[GET /api/content-types/:slug]', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.put('/api/content-types/:slug', authMiddleware, async (req, res) => {
-  const { slug } = req.params;
-  const { slug: newSlug, name } = req.body || {};
-  try {
-    const result = await pool.query(
-      'UPDATE content_types SET slug = $1, name = $2 WHERE slug = $3 RETURNING *',
-      [newSlug || slug, name, slug]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error('[PUT /api/content-types/:slug]', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.post('/api/content-types/:slug/fields', authMiddleware, async (req, res) => {
-  const { slug } = req.params;
-  const { key, label, type, required = false, sort = 0, options = null } = req.body || {};
-
-  try {
-    const ctRes = await pool.query('SELECT id FROM content_types WHERE slug = $1 LIMIT 1', [slug]);
-    if (!ctRes.rows.length) return res.status(404).json({ error: 'Not found' });
-    const ctId = ctRes.rows[0].id;
-
-    const insertRes = await pool.query(
-      `INSERT INTO fields (content_type_id, key, label, type, required, sort, options)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, content_type_id, key, label, type, required, sort, options`,
-      [ctId, key, label, type, !!required, Number.isFinite(sort) ? sort : 0, options ? JSON.stringify(options) : null]
-    );
-
-    res.json(insertRes.rows[0]);
-  } catch (err) {
-    console.error('[POST /api/content-types/:slug/fields]', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.put('/api/content-types/:slug/fields/:fieldId', authMiddleware, async (req, res) => {
-  const { fieldId } = req.params;
-  const { key, label, type, required, sort, options } = req.body || {};
-
-  try {
-    const updateRes = await pool.query(
-      `UPDATE fields
-       SET key = COALESCE($1, key),
-           label = COALESCE($2, label),
-           type = COALESCE($3, type),
-           required = COALESCE($4, required),
-           sort = COALESCE($5, sort),
-           options = COALESCE($6, options)
-       WHERE id = $7
-       RETURNING id, content_type_id, key, label, type, required, sort, options`,
-      [
-        key ?? null,
-        label ?? null,
-        type ?? null,
-        typeof required === 'boolean' ? required : null,
-        Number.isFinite(sort) ? sort : null,
-        options !== undefined ? (options ? JSON.stringify(options) : null) : null,
-        fieldId
-      ]
-    );
-
-    if (!updateRes.rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(updateRes.rows[0]);
-  } catch (err) {
-    console.error('[PUT /api/content-types/:slug/fields/:fieldId]', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
 
 /* ----------------------- Entries ----------------------------------- */
 
@@ -538,44 +404,7 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
   }
 });
 
-
-
 /* ----------------------- Deletes ----------------------------------- */
-app.delete('/api/content-types/:slug', authMiddleware, async (req, res) => {
-  const { slug } = req.params;
-  try {
-    const { rows } = await pool.query('SELECT id FROM content_types WHERE slug = $1 LIMIT 1', [slug]);
-    if (!rows.length) return res.status(404).json({ error: 'Not found' });
-    const typeId = rows[0].id;
-
-    await pool.query('DELETE FROM entry_versions WHERE entry_id IN (SELECT id FROM entries WHERE content_type_id = $1)', [typeId]);
-    await pool.query('DELETE FROM entries WHERE content_type_id = $1', [typeId]);
-    await pool.query('DELETE FROM fields WHERE content_type_id = $1', [typeId]);
-    await pool.query('DELETE FROM content_types WHERE id = $1', [typeId]);
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[DELETE /api/content-types/:slug]', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.delete('/api/content-types/:slug/fields/:fieldId', authMiddleware, async (req, res) => {
-  const { slug, fieldId } = req.params;
-  try {
-    const { rows } = await pool.query('SELECT id FROM content_types WHERE slug = $1 LIMIT 1', [slug]);
-    if (!rows.length) return res.status(404).json({ error: 'Not found' });
-    const typeId = rows[0].id;
-
-    const del = await pool.query('DELETE FROM fields WHERE id = $1 AND content_type_id = $2 RETURNING id', [fieldId, typeId]);
-    if (!del.rows.length) return res.status(404).json({ error: 'Not found' });
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[DELETE /api/content-types/:slug/fields/:fieldId]', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
 
 app.delete('/api/content/:slug/:id', authMiddleware, async (req, res) => {
   const { slug, id } = req.params;
@@ -596,44 +425,6 @@ app.delete('/api/content/:slug/:id', authMiddleware, async (req, res) => {
 });
 
 /* ----------------------- Legacy delete aliases --------------------- */
-app.delete('/api/content/type/:id', authMiddleware, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const t = await pool.query('SELECT id FROM content_types WHERE id = $1 LIMIT 1', [id]);
-    if (!t.rows.length) return res.status(404).json({ error: 'Not found' });
-    const typeId = t.rows[0].id;
-
-    await pool.query('DELETE FROM entry_versions WHERE entry_id IN (SELECT id FROM entries WHERE content_type_id = $1)', [typeId]);
-    await pool.query('DELETE FROM entries WHERE content_type_id = $1', [typeId]);
-    await pool.query('DELETE FROM fields WHERE content_type_id = $1', [typeId]);
-    await pool.query('DELETE FROM content_types WHERE id = $1', [typeId]);
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[DELETE /api/content/type/:id]', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.delete('/api/content-type/:id', authMiddleware, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const t = await pool.query('SELECT id FROM content_types WHERE id = $1 LIMIT 1', [id]);
-    if (!t.rows.length) return res.status(404).json({ error: 'Not found' });
-    const typeId = t.rows[0].id;
-
-    await pool.query('DELETE FROM entry_versions WHERE entry_id IN (SELECT id FROM entries WHERE content_type_id = $1)', [typeId]);
-    await pool.query('DELETE FROM entries WHERE content_type_id = $1', [typeId]);
-    await pool.query('DELETE FROM fields WHERE content_type_id = $1', [typeId]);
-    await pool.query('DELETE FROM content_types WHERE id = $1', [typeId]);
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[DELETE /api/content-type/:id]', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
 app.delete('/api/content/:id', authMiddleware, async (req, res) => {
   const { id } = req.params;
   try {
@@ -671,13 +462,13 @@ app.post('/settings', (req, res) => {
 });
 
 /* ----------------------- Routers ----------------------------------- */
+app.use('/api/content-types', authMiddleware, contentTypesRouter);
 app.use('/api/users', authMiddleware, usersRouter);
 app.use('/api/taxonomies', taxonomiesRouter);
 app.use('/api/roles', authMiddleware, rolesRouter);
 app.use('/api/permissions', authMiddleware, permissionsRouter);
 app.use('/api/settings', settingsRouter);
 app.use("/api/dashboard", authMiddleware, dashboardRouter);
-
 
 // Simple redirects for old paths
 app.get('/content-types', (_req, res) => res.redirect(301, '/api/content-types'));
