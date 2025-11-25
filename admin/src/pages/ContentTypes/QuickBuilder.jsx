@@ -177,7 +177,88 @@ export default function QuickBuilderPage() {
     setFields((prev) => prev.filter((_, i) => i !== index));
   }
 
-  async function saveType(e) {
+async function saveType(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  setError("");
+  setSaveMessage("");
+
+  // Auto-fill plural if missing
+  let { slug, label_singular, label_plural, type, description, icon, id } =
+    editingType;
+
+  const trimmedSingular = (label_singular || "").trim();
+  let trimmedPlural = (label_plural || "").trim();
+
+  if (!trimmedPlural && trimmedSingular) {
+    // naive pluralization: add "s"
+    trimmedPlural = trimmedSingular.endsWith("s")
+      ? trimmedSingular
+      : `${trimmedSingular}s`;
+  }
+
+  // Auto-generate slug if missing but we have a label
+  let finalSlug = (slug || "").trim();
+  if (!finalSlug && trimmedPlural) {
+    finalSlug = trimmedPlural
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  }
+
+  if (!finalSlug || !trimmedSingular || !trimmedPlural) {
+    setError("Slug, singular label, and plural label are required.");
+    return;
+  }
+
+  try {
+    setSavingType(true);
+
+    let saved;
+    if (isNewType || !id) {
+      saved = await api.post("/api/content-types", {
+        slug: finalSlug,
+        type: type || "content",
+        label_singular: trimmedSingular,
+        label_plural: trimmedPlural,
+        description: description || "",
+        icon: icon || "",
+      });
+    } else {
+      saved = await api.put(`/api/content-types/${id}`, {
+        slug: finalSlug,
+        type: type || "content",
+        label_singular: trimmedSingular,
+        label_plural: trimmedPlural,
+        description: description || "",
+        icon: icon || "",
+      });
+    }
+
+    // Refresh list
+    const all = await api.get("/api/content-types");
+    setTypes(all || []);
+
+    setEditingType((prev) => ({
+      ...prev,
+      id: saved.id,
+      slug: saved.slug,
+      label_singular: saved.label_singular,
+      label_plural: saved.label_plural,
+      description: saved.description || "",
+      icon: saved.icon || "",
+      type: saved.type || "content",
+    }));
+    setSelectedTypeId(saved.id);
+    setIsNewType(false);
+    setSaveMessage("Content type saved.");
+  } catch (err) {
+    console.error(err);
+    setError(err.message || "Failed to save content type");
+  } finally {
+    setSavingType(false);
+  }
+}
+
     if (e && e.preventDefault) e.preventDefault();
     setError("");
     setSaveMessage("");
