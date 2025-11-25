@@ -11,6 +11,7 @@ import jwt from 'jsonwebtoken';
 import permissionsRouter from './routes/permissions.js';
 import settingsRouter from './routes/settings.js';
 import dashboardRouter from "./routes/dashboard.js";
+import contentTypesRouter from './routes/contentTypes.js';
 
 
 dotenv.config();
