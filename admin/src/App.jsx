@@ -10,12 +10,12 @@ import MenusPage from './pages/Menus';
 import HeadersPage from './pages/Headers';
 import FootersPage from './pages/Footers';
 import RolesPage from './pages/Settings/Roles';
+import SettingsDashboardsPage from "./pages/Settings/Dashboards";
 import UsersPage from './pages/Users';
 import TaxonomiesPage from './pages/Taxonomies';
 import ContentIndex from './pages/Content';
 import TypeList from './pages/Content/TypeList';
 import TypeEditor from './pages/Content/Editor';
-import SettingsDashboardsPage from "./pages/Settings/Dashboards.jsx";
 import QuickBuilderShim from './quickbuilder/QuickBuilderShim';
 import LoginPage from './pages/Login';
 import PermissionsPage from './pages/Settings/Permissions';
@@ -172,6 +172,19 @@ function App() {
             }
           />
 
+		 <Route
+            path="/admin/settings/dashboards"
+            element={
+              <RequireAuth>
+                <RequirePermission slug="roles.manage">
+                  <AdminLayout>
+                    <SettingsDashboardsPage />
+                  </AdminLayout>
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+
           <Route
             path="/admin/settings/permissions"
             element={
@@ -184,9 +197,6 @@ function App() {
               </RequireAuth>
             }
           />
-
-		<Route path="/admin/settings/dashboards" element={<SettingsDashboardsPage />} />
-
 
           {/* Quick builder bridge (also behind auth) */}
           <Route
