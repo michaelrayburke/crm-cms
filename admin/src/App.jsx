@@ -185,7 +185,7 @@ function App() {
             }
           />
 
-		<Route path="/settings/dashboards" element={<SettingsDashboardsPage />} />
+		<Route path="/admin/settings/dashboards" element={<SettingsDashboardsPage />} />
 
 
           {/* Quick builder bridge (also behind auth) */}
