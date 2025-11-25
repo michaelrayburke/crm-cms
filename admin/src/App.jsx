@@ -20,6 +20,8 @@ import QuickBuilderShim from './quickbuilder/QuickBuilderShim';
 import LoginPage from './pages/Login';
 import PermissionsPage from './pages/Settings/Permissions';
 import RequirePermission from './components/RequirePermission';
+import QuickBuilderPage from "./pages/ContentTypes/QuickBuilder";
+
 
 
 function RequireAuth({ children }) {
@@ -198,14 +200,15 @@ function App() {
             }
           />
 
-          {/* Quick builder bridge (also behind auth) */}
           <Route
-            path="/quick-builder/*"
+            path="admin/quick-builder"
             element={
-              <RequireAuth>
-                <AdminLayout>
-                  <QuickBuilderShim />
-                </AdminLayout>
+               <RequireAuth>
+                <RequirePermission slug="roles.manage">
+                  <AdminLayout>
+					<QuickBuilderPage  />
+				  </AdminLayout>
+                </RequirePermission>
               </RequireAuth>
             }
           />
