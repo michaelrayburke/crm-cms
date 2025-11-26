@@ -21,6 +21,34 @@ function parseJson(str) {
   }
 }
 
+// Build builderFields from content type + an optional config
+function buildBuilderFromTypeAndConfig(contentType, config) {
+  if (!contentType || !Array.isArray(contentType.fields)) return [];
+
+  const fields = contentType.fields;
+  const section = config?.sections?.[0];
+  const cfgFields = Array.isArray(section?.fields) ? section.fields : [];
+
+  const orderMap = new Map();
+  cfgFields.forEach((f, idx) => {
+    if (f?.key) orderMap.set(f.key, idx);
+  });
+
+  const builder = fields.map((f, idx) => {
+    const key = f.key;
+    const inConfig = orderMap.has(key);
+    const order = inConfig ? orderMap.get(key) : cfgFields.length + idx;
+    return {
+      key,
+      label: f.label || f.name || f.key,
+      visible: inConfig || cfgFields.length === 0, // if no config, all visible
+      order,
+    };
+  });
+
+  return builder.sort((a, b) => a.order - b.order);
+}
+
 export default function EntryViews() {
   const [contentTypes, setContentTypes] = useState([]);
   const [selectedTypeId, setSelectedTypeId] = useState(null);
@@ -28,11 +56,14 @@ export default function EntryViews() {
 
   const [role, setRole] = useState("ADMIN");
 
-  const [viewMeta, setViewMeta] = useState(null);
+  const [views, setViews] = useState([]); // list of views for this type+role
+  const [activeSlug, setActiveSlug] = useState(null);
+
+  const activeView = views.find((v) => v.slug === activeSlug) || null;
+
   const [configText, setConfigText] = useState("{}");
   const [originalConfigText, setOriginalConfigText] = useState("{}");
-
-  const [builderFields, setBuilderFields] = useState([]); // visual layout
+  const [builderFields, setBuilderFields] = useState([]);
 
   const [loadingTypes, setLoadingTypes] = useState(true);
   const [loadingConfig, setLoadingConfig] = useState(false);
@@ -43,7 +74,7 @@ export default function EntryViews() {
   const dirty = configText !== originalConfigText;
 
   // ------------------------------------------------------------
-  // Load content types (basic list)
+  // Load content types list
   // ------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
@@ -73,7 +104,90 @@ export default function EntryViews() {
   }, []);
 
   // ------------------------------------------------------------
-  // Helper: regenerate config JSON from builderFields
+  // Load full content type + all views for role
+  // ------------------------------------------------------------
+  useEffect(() => {
+    if (!selectedTypeId || !role) return;
+    let cancelled = false;
+
+    (async () => {
+      setLoadingConfig(true);
+      setError("");
+      setSaveMessage("");
+
+      try {
+        // 1) Full content type with fields
+        const ctRes = await api.get(`/api/content-types/${selectedTypeId}`);
+        const ct = ctRes?.data || ctRes || null;
+        if (!cancelled) {
+          setSelectedType(ct);
+        }
+
+        // 2) All editor views for this type + role
+        const viewsRes = await api.get(
+          `/api/content-types/${selectedTypeId}/editor-views?role=${encodeURIComponent(
+            role
+          )}`
+        );
+        const list = Array.isArray(viewsRes?.views)
+          ? viewsRes.views
+          : Array.isArray(viewsRes)
+          ? viewsRes
+          : [];
+
+        if (!cancelled) {
+          setViews(list);
+
+          let initialView = null;
+          if (list.length) {
+            initialView =
+              list.find((v) => v.is_default) !== undefined
+                ? list.find((v) => v.is_default)
+                : list[0];
+          }
+
+          if (initialView) {
+            setActiveSlug(initialView.slug);
+            const text = prettyJson(initialView.config || {});
+            setConfigText(text);
+            setOriginalConfigText(text);
+            setBuilderFields(
+              buildBuilderFromTypeAndConfig(ct, initialView.config || {})
+            );
+          } else {
+            // No saved views yet: show empty config and all fields in order
+            setActiveSlug("default");
+            const emptyCfg = {};
+            const text = prettyJson(emptyCfg);
+            setConfigText(text);
+            setOriginalConfigText(text);
+            setBuilderFields(buildBuilderFromTypeAndConfig(ct, emptyCfg));
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || "Failed to load editor views");
+          // Fallback: no views, but we can still show fields
+          setViews([]);
+          setActiveSlug("default");
+          const emptyCfg = {};
+          const text = prettyJson(emptyCfg);
+          setConfigText(text);
+          setOriginalConfigText(text);
+          setBuilderFields(buildBuilderFromTypeAndConfig(selectedType, emptyCfg));
+        }
+      } finally {
+        if (!cancelled) setLoadingConfig(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTypeId, role]);
+
+  // ------------------------------------------------------------
+  // Sync config JSON from visual builder
   // ------------------------------------------------------------
   function syncConfigFromBuilder(nextBuilderFields) {
     const visible = nextBuilderFields
@@ -97,89 +211,6 @@ export default function EntryViews() {
   }
 
   // ------------------------------------------------------------
-  // Helper: initialize builderFields from selectedType (all fields)
-  // ------------------------------------------------------------
-  function initBuilderFromType(ct) {
-    if (!ct || !Array.isArray(ct.fields)) {
-      setBuilderFields([]);
-      return;
-    }
-    const initial = ct.fields.map((f, idx) => ({
-      key: f.key,
-      label: f.label || f.name || f.key,
-      visible: true,
-      order: idx,
-    }));
-    setBuilderFields(initial);
-    // don't immediately override JSON from server; we only sync
-    // when user starts changing visual layout
-  }
-
-  // ------------------------------------------------------------
-  // Load full content type + current view config when
-  // selectedTypeId or role changes
-  // ------------------------------------------------------------
-  useEffect(() => {
-    if (!selectedTypeId || !role) return;
-    let cancelled = false;
-
-    (async () => {
-      setLoadingConfig(true);
-      setError("");
-      setSaveMessage("");
-
-      try {
-        // 1) Full content type with fields
-        const ctRes = await api.get(`/api/content-types/${selectedTypeId}`);
-        const ct = ctRes?.data || ctRes || null;
-        if (!cancelled) {
-          setSelectedType(ct);
-          initBuilderFromType(ct);
-        }
-
-        // 2) Editor view config for this type + role
-        const viewRes = await api.get(
-          `/api/content-types/${selectedTypeId}/editor-view?role=${encodeURIComponent(
-            role
-          )}`
-        );
-
-        const cfg = viewRes?.config || {};
-        const meta = {
-          slug: viewRes?.slug || "default",
-          label: viewRes?.label || "Default editor",
-          role: viewRes?.role || role,
-        };
-
-        if (!cancelled) {
-          const text = prettyJson(cfg);
-          setViewMeta(meta);
-          setConfigText(text);
-          setOriginalConfigText(text);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err.message || "Failed to load editor view");
-          setViewMeta({
-            slug: "default",
-            label: "Default editor",
-            role,
-          });
-          setConfigText("{}");
-          setOriginalConfigText("{}");
-          initBuilderFromType(selectedType);
-        }
-      } finally {
-        if (!cancelled) setLoadingConfig(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedTypeId, role]);
-
-  // ------------------------------------------------------------
   // Visual builder interactions
   // ------------------------------------------------------------
   function handleToggleVisible(index) {
@@ -201,7 +232,6 @@ export default function EntryViews() {
       copy[index] = copy[target];
       copy[target] = tmp;
 
-      // recompute order
       const withOrder = copy.map((f, idx) => ({ ...f, order: idx }));
       syncConfigFromBuilder(withOrder);
       return withOrder;
@@ -209,11 +239,139 @@ export default function EntryViews() {
   }
 
   // ------------------------------------------------------------
-  // Save JSON config
+  // Handle switching between views
+  // ------------------------------------------------------------
+  function handleSelectView(slug) {
+    const view = views.find((v) => v.slug === slug);
+    setActiveSlug(slug);
+    if (view) {
+      const text = prettyJson(view.config || {});
+      setConfigText(text);
+      setOriginalConfigText(text);
+      setBuilderFields(
+        buildBuilderFromTypeAndConfig(selectedType, view.config || {})
+      );
+    } else {
+      // If it's a synthetic "default" with no row yet
+      const emptyCfg = {};
+      const text = prettyJson(emptyCfg);
+      setConfigText(text);
+      setOriginalConfigText(text);
+      setBuilderFields(buildBuilderFromTypeAndConfig(selectedType, emptyCfg));
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Create a new named view
+  // ------------------------------------------------------------
+  async function handleNewView() {
+    if (!selectedTypeId) return;
+    const label = window.prompt(
+      "Name for this view (e.g. SEO details, Minimal editor):"
+    );
+    if (!label) return;
+
+    // Simple slugify
+    const baseSlug = label
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-_]/g, "")
+      .replace(/\s+/g, "-");
+    let slug = baseSlug || "view";
+
+    // Ensure uniqueness client-side (SERVER WILL VALIDATE TOO)
+    const existingSlugs = new Set(views.map((v) => v.slug));
+    let i = 2;
+    while (existingSlugs.has(slug)) {
+      slug = `${baseSlug || "view"}-${i++}`;
+    }
+
+    let cfg;
+    try {
+      cfg = parseJson(configText);
+    } catch {
+      cfg = {};
+    }
+
+    setSaving(true);
+    setError("");
+    setSaveMessage("");
+    try {
+      const res = await api.put(
+        `/api/content-types/${selectedTypeId}/editor-view`,
+        {
+          slug,
+          label,
+          role,
+          is_default: false,
+          config: cfg,
+        }
+      );
+      const saved = res?.view || res;
+
+      const nextViews = [...views, saved];
+      setViews(nextViews);
+      setActiveSlug(saved.slug);
+      setOriginalConfigText(prettyJson(saved.config || {}));
+      setSaveMessage("New view created.");
+    } catch (err) {
+      setError(err.message || "Failed to create view");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Mark active view as default
+  // ------------------------------------------------------------
+  async function handleMakeDefault() {
+    if (!selectedTypeId || !activeView) return;
+
+    let cfg;
+    try {
+      cfg = parseJson(configText);
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSaveMessage("");
+    try {
+      const res = await api.put(
+        `/api/content-types/${selectedTypeId}/editor-view`,
+        {
+          slug: activeView.slug,
+          label: activeView.label,
+          role,
+          is_default: true,
+          config: cfg,
+        }
+      );
+      const saved = res?.view || res;
+
+      const nextViews = views.map((v) =>
+        v.slug === saved.slug
+          ? { ...v, ...saved }
+          : { ...v, is_default: false }
+      );
+      setViews(nextViews);
+      setOriginalConfigText(prettyJson(saved.config || {}));
+      setSaveMessage("Set as default editor view for this role.");
+    } catch (err) {
+      setError(err.message || "Failed to update default view");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Save JSON config for active view
   // ------------------------------------------------------------
   async function handleSave(e) {
     e.preventDefault();
-    if (!selectedTypeId || !viewMeta) return;
+    if (!selectedTypeId || !activeSlug) return;
 
     setError("");
     setSaveMessage("");
@@ -225,14 +383,33 @@ export default function EntryViews() {
       return;
     }
 
+    const base = activeView || {
+      slug: activeSlug,
+      label: "Default editor",
+      role,
+      is_default: false,
+      config: {},
+    };
+
     setSaving(true);
     try {
-      await api.put(`/api/content-types/${selectedTypeId}/editor-view`, {
-        slug: viewMeta.slug || "default",
-        label: viewMeta.label || "Default editor",
-        role,
-        config: parsed,
-      });
+      const res = await api.put(
+        `/api/content-types/${selectedTypeId}/editor-view`,
+        {
+          slug: base.slug,
+          label: base.label,
+          role,
+          is_default: base.is_default,
+          config: parsed,
+        }
+      );
+      const saved = res?.view || res;
+
+      const nextViews = [
+        ...views.filter((v) => v.slug !== saved.slug),
+        saved,
+      ];
+      setViews(nextViews);
       setOriginalConfigText(configText);
       setSaveMessage("Editor view saved.");
     } catch (err) {
@@ -300,11 +477,66 @@ export default function EntryViews() {
               <option value="CLIENT">Client</option>
             </select>
           </div>
+
+          {/* View chips */}
+          <div style={{ marginTop: 24 }}>
+            <label className="su-label">Views for this role</label>
+            <div className="su-vertical-list" style={{ gap: 6 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 6,
+                  alignItems: "center",
+                }}
+              >
+                {views.map((v) => (
+                  <button
+                    key={v.slug}
+                    type="button"
+                    className={
+                      "su-pill-button" +
+                      (v.slug === activeSlug ? " su-pill-button--active" : "")
+                    }
+                    onClick={() => handleSelectView(v.slug)}
+                  >
+                    {v.label}
+                    {v.is_default ? " ⭐" : ""}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="su-pill-button su-pill-button--ghost"
+                  onClick={handleNewView}
+                >
+                  + New view
+                </button>
+              </div>
+              {activeView && !activeView.is_default && (
+                <button
+                  type="button"
+                  className="su-button su-button-secondary small"
+                  style={{ marginTop: 8 }}
+                  onClick={handleMakeDefault}
+                  disabled={saving}
+                >
+                  Make “{activeView.label}” default for {role}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* RIGHT: visual builder + JSON */}
         <div className="su-card">
-          <h2 className="su-card-title">Editor Layout</h2>
+          <h2 className="su-card-title">
+            Editor Layout{" "}
+            {activeView ? (
+              <span style={{ fontSize: 13, opacity: 0.8 }}>
+                – {activeView.label}
+              </span>
+            ) : null}
+          </h2>
           <p className="su-help-text">
             Use the visual layout to choose and order fields, or edit the JSON
             directly for advanced layouts.
@@ -382,7 +614,7 @@ export default function EntryViews() {
 
           {/* JSON editor */}
           {loadingConfig ? (
-            <p>Loading view…</p>
+            <p>Loading views…</p>
           ) : (
             <>
               <h3 className="su-card-subtitle" style={{ marginTop: 8 }}>
