@@ -51,9 +51,12 @@ export default function ListViewsSettings() {
     (async () => {
       try {
         setLoadingTypes(true);
-        const res = await api.get("/api/content-types");
+
+        // api.get already returns data, not { data }
+        const listRaw = await api.get("/api/content-types");
         if (cancelled) return;
-        const list = res.data || [];
+
+        const list = Array.isArray(listRaw) ? [...listRaw] : [];
 
         // predictable sort
         list.sort((a, b) => {
@@ -79,7 +82,7 @@ export default function ListViewsSettings() {
     return () => {
       cancelled = true;
     };
-  }, []); // run once on mount :contentReference[oaicite:0]{index=0}
+  }, []); // run once on mount
 
   // ---------------------------------------------
   // Build available fields = builtins + CT fields
@@ -115,7 +118,8 @@ export default function ListViewsSettings() {
         setSaveMessage("");
         setDirty(false);
 
-        const [ctRes, viewsRes] = await Promise.all([
+        // Both calls return data directly
+        const [ct, viewsRes] = await Promise.all([
           api.get(`/api/content-types/${selectedTypeId}`),
           api.get(`/api/content-types/${selectedTypeId}/list-views`, {
             params: { role },
@@ -124,13 +128,12 @@ export default function ListViewsSettings() {
 
         if (cancelled) return;
 
-        const ct = ctRes.data;
         setContentTypeDetail(ct);
 
         const av = computeAvailableFields(ct);
         setAvailableFields(av);
 
-        const loadedViews = (viewsRes.data && viewsRes.data.views) || [];
+        const loadedViews = (viewsRes && viewsRes.views) || [];
         setViews(loadedViews);
 
         if (loadedViews.length === 0) {
@@ -324,11 +327,13 @@ export default function ListViewsSettings() {
         is_default: isDefault,
         config: { columns },
       };
-      const res = await api.put(
+
+      // api.put returns data directly
+      const resp = await api.put(
         `/api/content-types/${selectedTypeId}/list-view`,
         payload
       );
-      const saved = res.data.view || res.data;
+      const saved = resp.view || resp;
 
       setViews((prev) => {
         const idx = prev.findIndex((v) => v.slug === saved.slug);
