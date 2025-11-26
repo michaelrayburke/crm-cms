@@ -20,9 +20,19 @@ const BUILTIN_COLUMNS = [
   { key: "updated_at", label: "Updated" },
 ];
 
+// Fallback roles if /api/roles is empty/unavailable
+const FALLBACK_ROLES = [
+  { id: "ADMIN", label: "Admin" },
+  { id: "EDITOR", label: "Editor" },
+  { id: "AUTHOR", label: "Author" },
+  { id: "VIEWER", label: "Viewer" },
+];
+
 export default function ListViewsSettings() {
   const [contentTypes, setContentTypes] = useState([]);
   const [selectedTypeId, setSelectedTypeId] = useState("");
+
+  const [roles, setRoles] = useState(FALLBACK_ROLES);
   const [role, setRole] = useState("ADMIN");
 
   const [contentTypeDetail, setContentTypeDetail] = useState(null);
@@ -51,16 +61,30 @@ export default function ListViewsSettings() {
       try {
         setLoadingTypes(true);
         const res = await api.get("/api/content-types");
+
+        // Be defensive about response shape
+        let list = [];
+        if (Array.isArray(res)) {
+          list = res;
+        } else if (Array.isArray(res?.data)) {
+          list = res.data;
+        } else if (Array.isArray(res?.contentTypes)) {
+          list = res.contentTypes;
+        } else if (Array.isArray(res?.data?.contentTypes)) {
+          list = res.data.contentTypes;
+        }
+
         if (cancelled) return;
-        const list = res.data || [];
-        setContentTypes(list);
-        if (list.length && !selectedTypeId) {
+        setContentTypes(list || []);
+
+        if (list && list.length && !selectedTypeId) {
           setSelectedTypeId(list[0].id);
         }
       } catch (err) {
         console.error("[ListViews] failed to load content types", err);
         if (!cancelled) {
           setError("Failed to load content types");
+          setContentTypes([]);
         }
       } finally {
         if (!cancelled) setLoadingTypes(false);
@@ -69,7 +93,58 @@ export default function ListViewsSettings() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, []); // run once on mount
+
+  // ---------------------------------------------
+  // Load roles so you can use custom roles
+  // ---------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get("/api/roles");
+        let list = [];
+        if (Array.isArray(res)) {
+          list = res;
+        } else if (Array.isArray(res?.data)) {
+          list = res.data;
+        } else if (Array.isArray(res?.roles)) {
+          list = res.roles;
+        } else if (Array.isArray(res?.data?.roles)) {
+          list = res.data.roles;
+        }
+
+        if (cancelled) return;
+
+        if (list && list.length) {
+          const mapped = list.map((r) => ({
+            id: r.slug || r.name || r.id,
+            label: r.name || r.slug || r.id,
+          }));
+          setRoles(mapped);
+
+          // If current role isn't in new list, default to first
+          if (!mapped.find((r) => r.id === role)) {
+            setRole(mapped[0].id);
+          }
+        } else {
+          // keep fallback roles
+          if (!FALLBACK_ROLES.find((r) => r.id === role)) {
+            setRole(FALLBACK_ROLES[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("[ListViews] failed to load roles", err);
+        // keep fallback roles
+        if (!FALLBACK_ROLES.find((r) => r.id === role)) {
+          setRole(FALLBACK_ROLES[0].id);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []); // once on mount
 
   // ---------------------------------------------
   // Build available fields = builtins + CT fields
@@ -116,13 +191,14 @@ export default function ListViewsSettings() {
 
         if (cancelled) return;
 
-        const ct = ctRes.data;
+        const ct = ctRes.data || ctRes;
         setContentTypeDetail(ct);
 
         const av = computeAvailableFields(ct);
         setAvailableFields(av);
 
-        const loadedViews = (viewsRes.data && viewsRes.data.views) || [];
+        const loadedViews =
+          (viewsRes.data && viewsRes.data.views) || viewsRes.views || [];
         setViews(loadedViews);
 
         if (loadedViews.length === 0) {
@@ -148,7 +224,6 @@ export default function ListViewsSettings() {
           if (cfg.length) {
             setColumns(cfg);
           } else {
-            // fallback if somehow empty
             const defaultCols = [
               { key: "title", label: "Title" },
               { key: "status", label: "Status" },
@@ -161,6 +236,7 @@ export default function ListViewsSettings() {
         console.error("[ListViews] load views error", err);
         if (!cancelled) {
           setError("Failed to load list views");
+          setViews([]);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -316,7 +392,7 @@ export default function ListViewsSettings() {
         `/api/content-types/${selectedTypeId}/list-view`,
         payload
       );
-      const saved = res.data.view || res.data;
+      const saved = res.data?.view || res.view || res;
 
       // Merge into local views
       setViews((prev) => {
@@ -369,6 +445,9 @@ export default function ListViewsSettings() {
               onChange={handleSelectType}
               disabled={loadingTypes}
             >
+              {!contentTypes.length && (
+                <option value="">No content types found</option>
+              )}
               {contentTypes.map((ct) => (
                 <option key={ct.id} value={ct.id}>
                   {ct.name || ct.slug}
@@ -384,10 +463,11 @@ export default function ListViewsSettings() {
               value={role}
               onChange={handleSelectRole}
             >
-              <option value="ADMIN">Admin</option>
-              <option value="EDITOR">Editor</option>
-              <option value="AUTHOR">Author</option>
-              <option value="VIEWER">Viewer</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -450,7 +530,9 @@ export default function ListViewsSettings() {
             </div>
 
             <div className="su-mt-md su-text-xs su-text-muted">
-              <div>Slug: <code>{activeViewSlug || "(auto)"}</code></div>
+              <div>
+                Slug: <code>{activeViewSlug || "(auto)"}</code>
+              </div>
             </div>
 
             <div className="su-mt-lg">
@@ -458,7 +540,9 @@ export default function ListViewsSettings() {
                 type="button"
                 className="su-btn su-btn-primary"
                 onClick={handleSave}
-                disabled={loading || !selectedTypeId || !role || !columns.length}
+                disabled={
+                  loading || !selectedTypeId || !role || !columns.length
+                }
               >
                 {loading ? "Saving…" : "Save view"}
               </button>
@@ -501,7 +585,9 @@ export default function ListViewsSettings() {
                       onClick={() => handleAddColumn(f.key)}
                     >
                       <span>{f.label}</span>
-                      <code className="su-badge su-badge-soft">{f.key}</code>
+                      <code className="su-badge su-badge-soft">
+                        {f.key}
+                      </code>
                     </button>
                   </li>
                 ))}
@@ -515,7 +601,7 @@ export default function ListViewsSettings() {
           <div className="su-card-header">
             <h2 className="su-card-title">Visible columns (order)</h2>
             <p className="su-card-subtitle">
-              Drag & drop would be nice later; for now use the arrows.
+              Drag &amp; drop would be nice later; for now use the arrows.
             </p>
           </div>
           <div className="su-card-body su-list-scroll">
@@ -527,7 +613,10 @@ export default function ListViewsSettings() {
             )}
             <ul className="su-list">
               {columns.map((c, idx) => (
-                <li key={c.key} className="su-list-item su-flex su-items-center su-gap-sm">
+                <li
+                  key={c.key}
+                  className="su-list-item su-flex su-items-center su-gap-sm"
+                >
                   <div className="su-flex-1">
                     <div>{c.label}</div>
                     <div className="su-text-xs su-text-muted">
