@@ -15,8 +15,6 @@ import contentTypesRouter from './routes/contentTypes.js';
 import editorViewsRouter from './routes/editorViews.js';
 import listViewsRouter from './routes/listViews.js';
 
-
-
 dotenv.config();
 
 const app = express();
@@ -473,11 +471,10 @@ app.use('/api/roles', authMiddleware, rolesRouter);
 app.use('/api/permissions', authMiddleware, permissionsRouter);
 app.use('/api/settings', settingsRouter);
 app.use("/api/dashboard", authMiddleware, dashboardRouter);
-app.use('/api', corsMiddleware, jsonParser, editorViewsRouter);
-app.use('/api', corsMiddleware, jsonParser, listViewsRouter);
 
-
-
+// NEW: editor + list views routers, no corsMiddleware/jsonParser needed here
+app.use('/api', editorViewsRouter);
+app.use('/api', listViewsRouter);
 
 // Simple redirects for old paths
 app.get('/content-types', (_req, res) => res.redirect(301, '/api/content-types'));
