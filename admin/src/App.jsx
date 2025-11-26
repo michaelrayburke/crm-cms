@@ -223,7 +223,7 @@ function App() {
 		    <RequireAuth>
                 <RequirePermission slug="roles.manage">
 				    <AdminLayout>
-					    <ListViewsSettings />
+						<ListViewsSettings />
 					</AdminLayout>
 				</RequirePermission>
 		    </RequireAuth>

@@ -20,19 +20,19 @@ const BUILTIN_COLUMNS = [
   { key: "updated_at", label: "Updated" },
 ];
 
-// Fallback roles if /api/roles is empty/unavailable
-const FALLBACK_ROLES = [
-  { id: "ADMIN", label: "Admin" },
-  { id: "EDITOR", label: "Editor" },
-  { id: "AUTHOR", label: "Author" },
-  { id: "VIEWER", label: "Viewer" },
+// Fallback roles in case /api/roles is not available yet
+const DEFAULT_ROLES = [
+  { id: "ADMIN", name: "Admin" },
+  { id: "EDITOR", name: "Editor" },
+  { id: "AUTHOR", name: "Author" },
+  { id: "VIEWER", name: "Viewer" },
 ];
 
 export default function ListViewsSettings() {
   const [contentTypes, setContentTypes] = useState([]);
   const [selectedTypeId, setSelectedTypeId] = useState("");
 
-  const [roles, setRoles] = useState(FALLBACK_ROLES);
+  const [roles, setRoles] = useState(DEFAULT_ROLES);
   const [role, setRole] = useState("ADMIN");
 
   const [contentTypeDetail, setContentTypeDetail] = useState(null);
@@ -48,186 +48,93 @@ export default function ListViewsSettings() {
 
   const [loading, setLoading] = useState(false);
   const [loadingTypes, setLoadingTypes] = useState(true);
+  const [loadingRoles, setLoadingRoles] = useState(false);
   const [error, setError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [dirty, setDirty] = useState(false);
 
   // ---------------------------------------------
+  // Load roles (so you can use custom roles)
+  // ---------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRoles() {
+      try {
+        setLoadingRoles(true);
+        const res = await api.get("/api/roles");
+        if (cancelled) return;
+
+        const serverRoles = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.roles)
+          ? res.data.roles
+          : [];
+
+        if (serverRoles.length) {
+          const mapped = serverRoles.map((r) => ({
+            id: r.id || r.slug || r.code || r.name,
+            name: r.name || r.label || r.slug || r.id,
+          }));
+          setRoles(mapped);
+
+          // If current role isn't in the list, pick the first one
+          const hasCurrent = mapped.some((r) => r.id === role);
+          if (!hasCurrent) {
+            setRole(mapped[0].id);
+          }
+        }
+      } catch (err) {
+        console.warn(
+          "[ListViews] failed to load roles, falling back to defaults",
+          err
+        );
+      } finally {
+        if (!cancelled) setLoadingRoles(false);
+      }
+    }
+
+    loadRoles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []); // run once
+
+  // ---------------------------------------------
   // Load content types on mount
   // ---------------------------------------------
-useEffect(() => {
-  if (!selectedTypeId || !role) return;
-  let cancelled = false;
-
-  (async () => {
-    try {
-      setLoading(true);
-      setError("");
-      setSaveMessage("");
-      setDirty(false);
-
-      // Fetch both content-type details and list views
-      const [ctRes, viewsRes] = await Promise.all([
-        api.get(`/api/content-types/${selectedTypeId}`),
-        api
-          .get(`/api/content-types/${selectedTypeId}/list-views`, {
-            params: { role },
-          })
-          .catch((err) => {
-            console.warn("List views endpoint failed:", err);
-            return { data: { views: [] } }; // graceful fallback
-          }),
-      ]);
-
-      if (cancelled) return;
-
-      const ct = ctRes.data;
-      setContentTypeDetail(ct);
-
-      const av = computeAvailableFields(ct);
-      setAvailableFields(av);
-
-      // Ensure we always have an array
-      const loadedViews = Array.isArray(viewsRes.data?.views)
-        ? viewsRes.data.views
-        : [];
-
-      setViews(loadedViews);
-
-      if (loadedViews.length === 0) {
-        // FIRST-TIME DEFAULT
-        const defaultCols = [
-          { key: "title", label: "Title" },
-          { key: "status", label: "Status" },
-          { key: "updated_at", label: "Updated" },
-        ];
-
-        setActiveViewSlug("default");
-        setCurrentLabel("Default list");
-        setIsDefault(true);
-        setColumns(defaultCols);
-        setDirty(false);
-      } else {
-        // Load saved view
-        const def = loadedViews.find((v) => v.is_default) || loadedViews[0];
-
-        setActiveViewSlug(def.slug);
-        setCurrentLabel(def.label);
-        setIsDefault(!!def.is_default);
-
-        const cfg =
-          def.config?.columns && Array.isArray(def.config.columns)
-            ? def.config.columns
-            : [];
-
-        setColumns(cfg.length ? cfg : [
-          { key: "title", label: "Title" },
-          { key: "status", label: "Status" },
-          { key: "updated_at", label: "Updated" },
-        ]);
-      }
-    } catch (err) {
-      console.error("[ListViews] load views error", err);
-      if (!cancelled) setError("Failed to load list views");
-    } finally {
-      if (!cancelled) setLoading(false);
-    }
-  })();
-
-  return () => {
-    cancelled = true;
-  };
-}, [selectedTypeId, role]);
-
+  useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    async function loadContentTypes() {
       try {
         setLoadingTypes(true);
         const res = await api.get("/api/content-types");
-
-        // Be defensive about response shape
-        let list = [];
-        if (Array.isArray(res)) {
-          list = res;
-        } else if (Array.isArray(res?.data)) {
-          list = res.data;
-        } else if (Array.isArray(res?.contentTypes)) {
-          list = res.contentTypes;
-        } else if (Array.isArray(res?.data?.contentTypes)) {
-          list = res.data.contentTypes;
-        }
-
         if (cancelled) return;
-        setContentTypes(list || []);
 
-        if (list && list.length && !selectedTypeId) {
+        const list = res.data || [];
+        setContentTypes(list);
+
+        if (list.length && !selectedTypeId) {
           setSelectedTypeId(list[0].id);
         }
       } catch (err) {
         console.error("[ListViews] failed to load content types", err);
         if (!cancelled) {
           setError("Failed to load content types");
-          setContentTypes([]);
         }
       } finally {
         if (!cancelled) setLoadingTypes(false);
       }
-    })();
+    }
+
+    loadContentTypes();
+
     return () => {
       cancelled = true;
     };
-  }, []); // run once on mount
-
-  // ---------------------------------------------
-  // Load roles so you can use custom roles
-  // ---------------------------------------------
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await api.get("/api/roles");
-        let list = [];
-        if (Array.isArray(res)) {
-          list = res;
-        } else if (Array.isArray(res?.data)) {
-          list = res.data;
-        } else if (Array.isArray(res?.roles)) {
-          list = res.roles;
-        } else if (Array.isArray(res?.data?.roles)) {
-          list = res.data.roles;
-        }
-
-        if (cancelled) return;
-
-        if (list && list.length) {
-          const mapped = list.map((r) => ({
-            id: r.slug || r.name || r.id,
-            label: r.name || r.slug || r.id,
-          }));
-          setRoles(mapped);
-
-          // If current role isn't in new list, default to first
-          if (!mapped.find((r) => r.id === role)) {
-            setRole(mapped[0].id);
-          }
-        } else {
-          // keep fallback roles
-          if (!FALLBACK_ROLES.find((r) => r.id === role)) {
-            setRole(FALLBACK_ROLES[0].id);
-          }
-        }
-      } catch (err) {
-        console.error("[ListViews] failed to load roles", err);
-        // keep fallback roles
-        if (!FALLBACK_ROLES.find((r) => r.id === role)) {
-          setRole(FALLBACK_ROLES[0].id);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []); // once on mount
+  }, [selectedTypeId]);
 
   // ---------------------------------------------
   // Build available fields = builtins + CT fields
@@ -257,7 +164,7 @@ useEffect(() => {
     if (!selectedTypeId || !role) return;
     let cancelled = false;
 
-    (async () => {
+    async function loadForTypeAndRole() {
       try {
         setLoading(true);
         setError("");
@@ -274,18 +181,17 @@ useEffect(() => {
 
         if (cancelled) return;
 
-        const ct = ctRes.data || ctRes;
+        const ct = ctRes.data;
         setContentTypeDetail(ct);
 
         const av = computeAvailableFields(ct);
         setAvailableFields(av);
 
-        const loadedViews =
-          (viewsRes.data && viewsRes.data.views) || viewsRes.views || [];
+        const loadedViews = (viewsRes.data && viewsRes.data.views) || [];
         setViews(loadedViews);
 
         if (loadedViews.length === 0) {
-          // No views yet: synthesize a default config
+          // No views yet: synthesize a default config (not saved until user clicks Save)
           const defaultCols = [
             { key: "title", label: "Title" },
             { key: "status", label: "Status" },
@@ -319,12 +225,13 @@ useEffect(() => {
         console.error("[ListViews] load views error", err);
         if (!cancelled) {
           setError("Failed to load list views");
-          setViews([]);
         }
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    }
+
+    loadForTypeAndRole();
 
     return () => {
       cancelled = true;
@@ -338,6 +245,12 @@ useEffect(() => {
     if (!views || !views.length) return null;
     return views.find((v) => v.slug === activeViewSlug) || null;
   }, [views, activeViewSlug]);
+
+  // Track which keys are already selected as columns
+  const selectedColumnKeys = useMemo(
+    () => new Set((columns || []).map((c) => c.key)),
+    [columns]
+  );
 
   // ---------------------------------------------
   // Handlers
@@ -420,7 +333,7 @@ useEffect(() => {
   const handleAddColumn = (fieldKey) => {
     const field = availableFields.find((f) => f.key === fieldKey);
     if (!field) return;
-    if (columns.find((c) => c.key === field.key)) return;
+    if (selectedColumnKeys.has(field.key)) return;
     setColumns((prev) => [...prev, { key: field.key, label: field.label }]);
     setDirty(true);
   };
@@ -475,7 +388,7 @@ useEffect(() => {
         `/api/content-types/${selectedTypeId}/list-view`,
         payload
       );
-      const saved = res.data?.view || res.view || res;
+      const saved = res.data.view || res.data;
 
       // Merge into local views
       setViews((prev) => {
@@ -500,16 +413,6 @@ useEffect(() => {
     }
   };
 
-const availableNotSelected = useMemo(() => {
-  if (!Array.isArray(availableFields)) return [];
-  const selectedKeys = new Set(columns?.map((c) => c.key) || []);
-  return availableFields.filter((f) => !selectedKeys.has(f.key));
-}, [availableFields, columns]);
-
-    const selectedKeys = new Set((columns || []).map((c) => c.key));
-    return (availableFields || []).filter((f) => !selectedKeys.has(f.key));
-  }, [availableFields, columns]);
-
   // ---------------------------------------------
   // Render
   // ---------------------------------------------
@@ -533,8 +436,8 @@ const availableNotSelected = useMemo(() => {
               onChange={handleSelectType}
               disabled={loadingTypes}
             >
-              {!contentTypes.length && (
-                <option value="">No content types found</option>
+              {contentTypes.length === 0 && (
+                <option value="">No content types yet</option>
               )}
               {contentTypes.map((ct) => (
                 <option key={ct.id} value={ct.id}>
@@ -550,10 +453,11 @@ const availableNotSelected = useMemo(() => {
               className="su-input"
               value={role}
               onChange={handleSelectRole}
+              disabled={loadingRoles}
             >
               {roles.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.label}
+                  {r.name}
                 </option>
               ))}
             </select>
@@ -628,9 +532,7 @@ const availableNotSelected = useMemo(() => {
                 type="button"
                 className="su-btn su-btn-primary"
                 onClick={handleSave}
-                disabled={
-                  loading || !selectedTypeId || !role || !columns.length
-                }
+                disabled={loading || !selectedTypeId || !role || !columns.length}
               >
                 {loading ? "Saving…" : "Save view"}
               </button>
@@ -661,24 +563,37 @@ const availableNotSelected = useMemo(() => {
             </p>
           </div>
           <div className="su-card-body su-list-scroll">
-            {availableNotSelected.length === 0 ? (
-              <p className="su-text-muted">All fields are already in use.</p>
+            {!availableFields || availableFields.length === 0 ? (
+              <p className="su-text-muted">
+                No fields available for this content type yet.
+              </p>
             ) : (
               <ul className="su-list">
-                {availableNotSelected.map((f) => (
-                  <li key={f.key} className="su-list-item">
-                    <button
-                      type="button"
-                      className="su-btn su-btn-ghost su-btn-sm su-w-full su-justify-between"
-                      onClick={() => handleAddColumn(f.key)}
-                    >
-                      <span>{f.label}</span>
-                      <code className="su-badge su-badge-soft">
-                        {f.key}
-                      </code>
-                    </button>
-                  </li>
-                ))}
+                {availableFields.map((f) => {
+                  const inUse = selectedColumnKeys.has(f.key);
+                  return (
+                    <li key={f.key} className="su-list-item">
+                      <button
+                        type="button"
+                        className="su-btn su-btn-ghost su-btn-sm su-w-full su-justify-between"
+                        onClick={() => handleAddColumn(f.key)}
+                        disabled={inUse}
+                      >
+                        <span>{f.label}</span>
+                        <span className="su-flex su-gap-xs su-items-center">
+                          <code className="su-badge su-badge-soft">
+                            {f.key}
+                          </code>
+                          {inUse && (
+                            <span className="su-text-xs su-text-muted">
+                              in view
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
