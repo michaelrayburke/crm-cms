@@ -21,6 +21,8 @@ import LoginPage from './pages/Login';
 import PermissionsPage from './pages/Settings/Permissions';
 import RequirePermission from './components/RequirePermission';
 import QuickBuilderPage from "./pages/ContentTypes/QuickBuilder";
+import EntryViews from "./pages/Settings/EntryViews.jsx";
+
 
 
 
@@ -194,6 +196,19 @@ function App() {
                 <RequirePermission slug="roles.manage">
                   <AdminLayout>
                     <PermissionsPage />
+                  </AdminLayout>
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/admin/settings/entry-views"
+            element={
+              <RequireAuth>
+                <RequirePermission slug="roles.manage">
+                  <AdminLayout>
+                    <EntryViews  />
                   </AdminLayout>
                 </RequirePermission>
               </RequireAuth>
