@@ -222,7 +222,9 @@ function App() {
 		  element={
 		    <RequireAuth>
                 <RequirePermission slug="roles.manage">
-				    <ListViewsSettings />
+				    <AdminLayout>
+					    <ListViewsSettings />
+					</AdminLayout>
 				</RequirePermission>
 		    </RequireAuth>
 		  }
