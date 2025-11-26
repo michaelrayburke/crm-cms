@@ -55,7 +55,90 @@ export default function ListViewsSettings() {
   // ---------------------------------------------
   // Load content types on mount
   // ---------------------------------------------
-  useEffect(() => {
+useEffect(() => {
+  if (!selectedTypeId || !role) return;
+  let cancelled = false;
+
+  (async () => {
+    try {
+      setLoading(true);
+      setError("");
+      setSaveMessage("");
+      setDirty(false);
+
+      // Fetch both content-type details and list views
+      const [ctRes, viewsRes] = await Promise.all([
+        api.get(`/api/content-types/${selectedTypeId}`),
+        api
+          .get(`/api/content-types/${selectedTypeId}/list-views`, {
+            params: { role },
+          })
+          .catch((err) => {
+            console.warn("List views endpoint failed:", err);
+            return { data: { views: [] } }; // graceful fallback
+          }),
+      ]);
+
+      if (cancelled) return;
+
+      const ct = ctRes.data;
+      setContentTypeDetail(ct);
+
+      const av = computeAvailableFields(ct);
+      setAvailableFields(av);
+
+      // Ensure we always have an array
+      const loadedViews = Array.isArray(viewsRes.data?.views)
+        ? viewsRes.data.views
+        : [];
+
+      setViews(loadedViews);
+
+      if (loadedViews.length === 0) {
+        // FIRST-TIME DEFAULT
+        const defaultCols = [
+          { key: "title", label: "Title" },
+          { key: "status", label: "Status" },
+          { key: "updated_at", label: "Updated" },
+        ];
+
+        setActiveViewSlug("default");
+        setCurrentLabel("Default list");
+        setIsDefault(true);
+        setColumns(defaultCols);
+        setDirty(false);
+      } else {
+        // Load saved view
+        const def = loadedViews.find((v) => v.is_default) || loadedViews[0];
+
+        setActiveViewSlug(def.slug);
+        setCurrentLabel(def.label);
+        setIsDefault(!!def.is_default);
+
+        const cfg =
+          def.config?.columns && Array.isArray(def.config.columns)
+            ? def.config.columns
+            : [];
+
+        setColumns(cfg.length ? cfg : [
+          { key: "title", label: "Title" },
+          { key: "status", label: "Status" },
+          { key: "updated_at", label: "Updated" },
+        ]);
+      }
+    } catch (err) {
+      console.error("[ListViews] load views error", err);
+      if (!cancelled) setError("Failed to load list views");
+    } finally {
+      if (!cancelled) setLoading(false);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [selectedTypeId, role]);
+
     let cancelled = false;
     (async () => {
       try {
@@ -417,7 +500,12 @@ export default function ListViewsSettings() {
     }
   };
 
-  const availableNotSelected = useMemo(() => {
+const availableNotSelected = useMemo(() => {
+  if (!Array.isArray(availableFields)) return [];
+  const selectedKeys = new Set(columns?.map((c) => c.key) || []);
+  return availableFields.filter((f) => !selectedKeys.has(f.key));
+}, [availableFields, columns]);
+
     const selectedKeys = new Set((columns || []).map((c) => c.key));
     return (availableFields || []).filter((f) => !selectedKeys.has(f.key));
   }, [availableFields, columns]);
