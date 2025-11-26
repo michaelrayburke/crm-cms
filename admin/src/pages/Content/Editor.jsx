@@ -101,91 +101,28 @@ export default function Editor() {
   const overallLoading = loadingEntry || loadingType;
 
   // ---------------------------------------------------------------------------
-  // Load content type + editor view
+  // Load content type (with fields) + editor view
   // ---------------------------------------------------------------------------
-useEffect(() => {
-  let cancelled = false;
-
-  async function loadTypeAndView() {
-    setLoadingType(true);
-    setError("");
-
-    try {
-      // 1) Get list of content types
-      const res = await api.get("/api/content-types");
-      const list = Array.isArray(res) ? res : res?.data || [];
-
-      const basicCt =
-        list.find(
-          (t) =>
-            t.slug === typeSlug ||
-            t.slug?.toLowerCase() === typeSlug?.toLowerCase()
-        ) || null;
-
-      if (!basicCt) {
-        if (!cancelled) {
-          setError(`Content type "${typeSlug}" not found.`);
-        }
-        return;
-      }
-
-      if (cancelled) return;
-
-      // 2) Get FULL definition (including fields)
-      const full = await api.get(`/api/content-types/${basicCt.id}`);
-      const ct = full || basicCt;
-
-      if (cancelled) return;
-      setContentType(ct);
-
-      // 3) Load editor view config (optional; falls back to auto layout)
-      try {
-        const viewRes = await api.get(
-          `/api/content-types/${ct.id}/editor-view`
-        );
-        const cfg = viewRes?.config || {};
-        if (!cancelled) {
-          setEditorViewConfig(cfg);
-        }
-      } catch (err) {
-        console.error("Failed to load editor view", err);
-        if (!cancelled) {
-          setEditorViewConfig({});
-        }
-      }
-    } catch (err) {
-      console.error("Failed to load content types", err);
-      if (!cancelled) {
-        setError(err.message || "Failed to load content type");
-      }
-    } finally {
-      if (!cancelled) setLoadingType(false);
-    }
-  }
-
-  loadTypeAndView();
-
-  return () => {
-    cancelled = true;
-  };
-}, [typeSlug]);
+  useEffect(() => {
     let cancelled = false;
 
     async function loadTypeAndView() {
       setLoadingType(true);
       setError("");
+
       try {
-        // Load all content types and find the one by slug
+        // 1) Load all content types and find the one by slug
         const res = await api.get("/api/content-types");
         const list = Array.isArray(res) ? res : res?.data || [];
-        const ct =
+
+        const basicCt =
           list.find(
             (t) =>
               t.slug === typeSlug ||
               t.slug?.toLowerCase() === typeSlug?.toLowerCase()
           ) || null;
 
-        if (!ct) {
+        if (!basicCt) {
           if (!cancelled) {
             setError(`Content type "${typeSlug}" not found.`);
           }
@@ -194,12 +131,27 @@ useEffect(() => {
 
         if (cancelled) return;
 
-        setContentType(ct);
+        // 2) Load the full definition (including fields) by ID
+        let fullCt;
+        try {
+          const fullRes = await api.get(`/api/content-types/${basicCt.id}`);
+          fullCt = fullRes?.data || fullRes || basicCt;
+        } catch (e) {
+          console.warn(
+            "Failed to load full content type, falling back to basic",
+            e
+          );
+          fullCt = basicCt;
+        }
 
-        // Load editor view config (no role param yet; default layout)
+        if (cancelled) return;
+
+        setContentType(fullCt);
+
+        // 3) Load editor view config (no explicit role yet; default layout)
         try {
           const viewRes = await api.get(
-            `/api/content-types/${ct.id}/editor-view`
+            `/api/content-types/${basicCt.id}/editor-view`
           );
           const cfg = viewRes?.config || {};
           if (!cancelled) {
