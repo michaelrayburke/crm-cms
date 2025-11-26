@@ -12,7 +12,8 @@ const router = express.Router();
  */
 router.get(
   '/content-types/:id/editor-view',
-  authMiddleware,
+  // You can tighten these permission strings later if you like
+  checkPermission('content_types:view'),
   async (req, res) => {
     const { id } = req.params;
     const role = req.query.role || null;
@@ -26,7 +27,8 @@ router.get(
       `;
 
       if (role) {
-        sql += ' and (role = $2 or role is null) order by role nulls last limit 1';
+        sql +=
+          ' and (role = $2 or role is null) order by role nulls last limit 1';
         params.push(role);
       } else {
         sql += ' and role is null limit 1';
@@ -40,7 +42,7 @@ router.get(
           role: role,
           slug: 'default',
           label: 'Default editor',
-          config: {},   // frontend will auto-generate layout
+          config: {}, // frontend will auto-generate layout
         });
       }
 
@@ -63,15 +65,18 @@ router.get(
 /**
  * PUT /api/content-types/:id/editor-view
  * Upserts a view for this content type + role.
- * For now we’ll gate this to admins.
  */
 router.put(
   '/content-types/:id/editor-view',
-  authMiddleware,
-  requireAdmin,
+  checkPermission('content_types:edit'),
   async (req, res) => {
     const { id } = req.params;
-    const { slug = 'default', label = 'Default editor', role = null, config = {} } = req.body || {};
+    const {
+      slug = 'default',
+      label = 'Default editor',
+      role = null,
+      config = {},
+    } = req.body || {};
 
     try {
       const { rows } = await pool.query(
