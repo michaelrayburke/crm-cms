@@ -2,17 +2,66 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 
-const FIELD_TYPES = [
-  { value: "text", label: "Text" },
-  { value: "rich_text", label: "Rich text" },
-  { value: "number", label: "Number" },
-  { value: "boolean", label: "Toggle" },
-  { value: "date", label: "Date" },
-  { value: "datetime", label: "Date & time" },
-  { value: "media", label: "Media" },
-  { value: "relationship", label: "Relationship" },
-  { value: "tags", label: "Tags" },
+// All field types (from old QuickBuilder shim)
+const RAW_FIELD_TYPES = [
+  "text",
+  "textarea",
+  "number",
+  "boolean",
+  "date",
+  "json",
+  "radio",
+  "dropdown",
+  "checkbox",
+  "relationship",
+  "email",
+  "phone",
+  "url",
+  "address",
+  "rich_text",
+  "name",
+  "datetime",
+  "daterange",
+  "time",
+  "price",
+  "image",
+  "file",
+  "video",
+  "color",
+  "video_embed",
+  "iframe_embed",
+  "tags",
+  "relation_user",
+  "taxonomy",
 ];
+
+function labelFromFieldType(type) {
+  switch (type) {
+    case "rich_text":
+      return "Rich text";
+    case "boolean":
+      return "Toggle";
+    case "datetime":
+      return "Date & time";
+    case "daterange":
+      return "Date range";
+    case "video_embed":
+      return "Video embed";
+    case "iframe_embed":
+      return "Iframe embed";
+    case "relation_user":
+      return "User relation";
+    default:
+      return type
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (m) => m.toUpperCase());
+  }
+}
+
+const FIELD_TYPES = RAW_FIELD_TYPES.map((t) => ({
+  value: t,
+  label: labelFromFieldType(t),
+}));
 
 const EMPTY_TYPE = {
   id: null,
@@ -177,7 +226,6 @@ export default function QuickBuilderPage() {
     setFields((prev) => prev.filter((_, i) => i !== index));
   }
 
-  // 🔧 FIXED: smarter saveType that auto-fills plural + slug if missing
   async function saveType(e) {
     if (e && e.preventDefault) e.preventDefault();
     setError("");
@@ -208,7 +256,7 @@ export default function QuickBuilderPage() {
     if (!finalSlug && trimmedPlural) {
       finalSlug = trimmedPlural
         .toLowerCase()
-        .replace(/[^A-Z0-9]+/g, "_")
+        .replace(/[^a-z0-9]+/g, "_")
         .replace(/^_+|_+$/g, "");
     }
 
@@ -306,13 +354,50 @@ export default function QuickBuilderPage() {
   const combinedSaving = savingType || savingFields;
   const hasSelectedType = isNewType || !!editingType.id;
 
+  const contentTypes = types.filter((t) => !t.type || t.type === "content");
+  const taxonomyTypes = types.filter((t) => t.type === "taxonomy");
+
+  const renderTypeButton = (t) => {
+    const isActive = !isNewType && t.id === selectedTypeId;
+    const mainLabel = t.label_plural || t.label_singular || t.slug;
+    const isTaxonomy = t.type === "taxonomy";
+
+    return (
+      <li key={t.id}>
+        <button
+          type="button"
+          onClick={() => {
+            setIsNewType(false);
+            setSelectedTypeId(t.id);
+            setSaveMessage("");
+            setError("");
+          }}
+          className={
+            "w-full text-left px-2 py-1 rounded text-sm " +
+            (isActive ? "bg-blue-50 text-blue-700" : "hover:bg-gray-50")
+          }
+        >
+          <div className="flex flex-col gap-[2px]">
+            <span>
+              {mainLabel}
+              {isTaxonomy ? " · Taxonomy" : ""}
+            </span>
+            {t.slug && (
+              <span className="text-[11px] opacity-70">{t.slug}</span>
+            )}
+          </div>
+        </button>
+      </li>
+    );
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-semibold mb-1">QuickBuilder 2.0</h1>
         <p className="text-sm text-gray-600">
-          Define your content types and their fields. These definitions power entry lists,
-          editors, and relationships throughout ServiceUp.
+          Define your content types and their fields. These definitions power
+          entry lists, editors, and relationships throughout ServiceUp.
         </p>
       </div>
 
@@ -356,34 +441,30 @@ export default function QuickBuilderPage() {
               <strong>New type</strong>.
             </div>
           ) : (
-            <ul className="space-y-1" style={{ listStyle: "none", padding: 0 }}>
-              {types.map((t) => (
-                <li key={t.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsNewType(false);
-                      setSelectedTypeId(t.id);
-                      setSaveMessage("");
-                      setError("");
-                    }}
-                    className={
-                      "w-full text-left px-2 py-1 rounded text-sm " +
-                      (t.id === selectedTypeId && !isNewType
-                        ? "bg-blue-50 text-blue-700"
-                        : "hover:bg-gray-50")
-                    }
-                  >
-                    <div className="flex flex-col gap-[2px]">
-						<span>{t.label_plural || t.slug}</span>
-							<span className="text-[11px] opacity-70">
-							{t.slug}
-						</span>
-					</div>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              {contentTypes.length > 0 && (
+                <ul
+                  className="space-y-1"
+                  style={{ listStyle: "none", padding: 0 }}
+                >
+                  {contentTypes.map(renderTypeButton)}
+                </ul>
+              )}
+
+              {taxonomyTypes.length > 0 && (
+                <>
+                  <div className="mt-4 mb-1 text-[11px] uppercase tracking-wide text-gray-500">
+                    Taxonomies
+                  </div>
+                    <ul
+                      className="space-y-1"
+                      style={{ listStyle: "none", padding: 0 }}
+                    >
+                      {taxonomyTypes.map(renderTypeButton)}
+                    </ul>
+                </>
+              )}
+            </>
           )}
         </div>
 
@@ -502,13 +583,15 @@ export default function QuickBuilderPage() {
 
             {!hasSelectedType ? (
               <div className="text-sm text-gray-600">
-                Create and save a content type first, then you can define its fields.
+                Create and save a content type first, then you can define its
+                fields.
               </div>
             ) : loadingFields && !isNewType ? (
               <div className="text-sm text-gray-600">Loading fields...</div>
             ) : !fields.length ? (
               <div className="text-sm text-gray-600">
-                No fields yet. Click <strong>Add field</strong> to define your first field.
+                No fields yet. Click <strong>Add field</strong> to define your
+                first field.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -526,7 +609,10 @@ export default function QuickBuilderPage() {
                   </thead>
                   <tbody>
                     {fields.map((field, index) => (
-                      <tr key={index} className="border-b border-gray-100 align-top">
+                      <tr
+                        key={index}
+                        className="border-b border-gray-100 align-top"
+                      >
                         <td className="py-1 pr-2">
                           <input
                             type="text"
@@ -553,7 +639,7 @@ export default function QuickBuilderPage() {
                         </td>
                         <td className="py-1 pr-2">
                           <select
-                            className="su-input su-input-sm"
+                            className="su-input su-input-sm min-w-[180px]"
                             value={field.type}
                             onChange={(e) =>
                               updateFieldRow(index, { type: e.target.value })
