@@ -27,7 +27,7 @@ export default function EntryViews() {
   const [selectedTypeId, setSelectedTypeId] = useState(null);
   const [role, setRole] = useState("ADMIN");
 
-  const [viewMeta, setViewMeta] = useState(null); // slug, label, role
+  const [viewMeta, setViewMeta] = useState(null);
   const [configText, setConfigText] = useState("{}");
   const [originalConfigText, setOriginalConfigText] = useState("{}");
 
@@ -44,11 +44,13 @@ export default function EntryViews() {
       setLoadingTypes(true);
       setError("");
       try {
-        const res = await api.get("/content-types");
+        // NOTE: /api prefix so it hits Express correctly
+        const res = await api.get("/api/content-types");
+        const list = Array.isArray(res) ? res : res?.data || [];
         if (!cancelled) {
-          setContentTypes(res || []);
-          if (res && res.length && !selectedTypeId) {
-            setSelectedTypeId(res[0].id);
+          setContentTypes(list);
+          if (list.length && !selectedTypeId) {
+            setSelectedTypeId(list[0].id);
           }
         }
       } catch (err) {
@@ -73,8 +75,9 @@ export default function EntryViews() {
       setError("");
       setSaveMessage("");
       try {
+        // NOTE: /api prefix here too
         const res = await api.get(
-          `/content-types/${selectedTypeId}/editor-view?role=${encodeURIComponent(
+          `/api/content-types/${selectedTypeId}/editor-view?role=${encodeURIComponent(
             role
           )}`
         );
@@ -131,7 +134,8 @@ export default function EntryViews() {
 
     setSaving(true);
     try {
-      await api.put(`/content-types/${selectedTypeId}/editor-view`, {
+      // NOTE: /api prefix for the PUT as well
+      await api.put(`/api/content-types/${selectedTypeId}/editor-view`, {
         slug: viewMeta.slug || "default",
         label: viewMeta.label || "Default editor",
         role,
@@ -166,7 +170,6 @@ export default function EntryViews() {
       )}
 
       <div className="su-two-column">
-        {/* Left: content type + role selector */}
         <div className="su-card">
           <h2 className="su-card-title">Select Content Type</h2>
           {loadingTypes ? (
@@ -206,7 +209,6 @@ export default function EntryViews() {
           </div>
         </div>
 
-        {/* Right: JSON editor */}
         <div className="su-card">
           <h2 className="su-card-title">Editor Layout JSON</h2>
           <p className="su-help-text">

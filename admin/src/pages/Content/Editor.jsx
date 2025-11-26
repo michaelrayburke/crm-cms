@@ -103,7 +103,72 @@ export default function Editor() {
   // ---------------------------------------------------------------------------
   // Load content type + editor view
   // ---------------------------------------------------------------------------
-  useEffect(() => {
+useEffect(() => {
+  let cancelled = false;
+
+  async function loadTypeAndView() {
+    setLoadingType(true);
+    setError("");
+
+    try {
+      // 1) Get list of content types
+      const res = await api.get("/api/content-types");
+      const list = Array.isArray(res) ? res : res?.data || [];
+
+      const basicCt =
+        list.find(
+          (t) =>
+            t.slug === typeSlug ||
+            t.slug?.toLowerCase() === typeSlug?.toLowerCase()
+        ) || null;
+
+      if (!basicCt) {
+        if (!cancelled) {
+          setError(`Content type "${typeSlug}" not found.`);
+        }
+        return;
+      }
+
+      if (cancelled) return;
+
+      // 2) Get FULL definition (including fields)
+      const full = await api.get(`/api/content-types/${basicCt.id}`);
+      const ct = full || basicCt;
+
+      if (cancelled) return;
+      setContentType(ct);
+
+      // 3) Load editor view config (optional; falls back to auto layout)
+      try {
+        const viewRes = await api.get(
+          `/api/content-types/${ct.id}/editor-view`
+        );
+        const cfg = viewRes?.config || {};
+        if (!cancelled) {
+          setEditorViewConfig(cfg);
+        }
+      } catch (err) {
+        console.error("Failed to load editor view", err);
+        if (!cancelled) {
+          setEditorViewConfig({});
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load content types", err);
+      if (!cancelled) {
+        setError(err.message || "Failed to load content type");
+      }
+    } finally {
+      if (!cancelled) setLoadingType(false);
+    }
+  }
+
+  loadTypeAndView();
+
+  return () => {
+    cancelled = true;
+  };
+}, [typeSlug]);
     let cancelled = false;
 
     async function loadTypeAndView() {
