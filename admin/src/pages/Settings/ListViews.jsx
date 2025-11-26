@@ -55,7 +55,7 @@ export default function ListViewsSettings() {
         if (cancelled) return;
         const list = res.data || [];
 
-        // simple sort by name/slug so it's predictable
+        // predictable sort
         list.sort((a, b) => {
           const an = (a.name || a.slug || "").toLowerCase();
           const bn = (b.name || b.slug || "").toLowerCase();
@@ -79,7 +79,7 @@ export default function ListViewsSettings() {
     return () => {
       cancelled = true;
     };
-  }, []); // run once on mount
+  }, []); // run once on mount :contentReference[oaicite:0]{index=0}
 
   // ---------------------------------------------
   // Build available fields = builtins + CT fields
@@ -92,7 +92,6 @@ export default function ListViewsSettings() {
           label: f.label || f.name || f.key,
         }))
       : [];
-    // Avoid duplicates by key
     const all = [...BUILTIN_COLUMNS];
     for (const f of ctFields) {
       if (!all.find((x) => x.key === f.key)) {
