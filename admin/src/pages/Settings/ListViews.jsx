@@ -112,19 +112,29 @@ export default function ListViewsSettings() {
     let cancelled = false;
 
     (async () => {
-      try {
-        setLoading(true);
-        setError("");
-        setSaveMessage("");
-        setDirty(false);
+      setLoading(true);
+      setError("");
+      setSaveMessage("");
+      setDirty(false);
 
-        // Both calls return data directly
-        const [ct, viewsRes] = await Promise.all([
-          api.get(`/api/content-types/${selectedTypeId}`),
-          api.get(`/api/content-types/${selectedTypeId}/list-views`, {
-            params: { role },
-          }),
-        ]);
+      try {
+        // 1) Always load the content type (with fields)
+        const ct = await api.get(`/api/content-types/${selectedTypeId}`);
+
+        // 2) Try to load list views; if it fails, treat as "no views yet"
+        let viewsRes;
+        try {
+          viewsRes = await api.get(
+            `/api/content-types/${selectedTypeId}/list-views`,
+            { params: { role } }
+          );
+        } catch (viewsErr) {
+          console.warn(
+            "[ListViews] list-views fetch failed, treating as no views",
+            viewsErr
+          );
+          viewsRes = { views: [] };
+        }
 
         if (cancelled) return;
 
@@ -168,7 +178,7 @@ export default function ListViewsSettings() {
           }
         }
       } catch (err) {
-        console.error("[ListViews] load views error", err);
+        console.error("[ListViews] load views/CT error", err);
         if (!cancelled) {
           setError("Failed to load list views");
         }
@@ -220,7 +230,7 @@ export default function ListViewsSettings() {
         { key: "status", label: "Status" },
         { key: "updated_at", label: "Updated" },
       ];
-      setColumns(defaultCols);
+        setColumns(defaultCols);
     }
     setDirty(false);
     setSaveMessage("");
