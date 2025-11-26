@@ -1,7 +1,7 @@
 // api/routes/editorViews.js
 import express from 'express';
 import { pool } from '../dbPool.js';
-import { authMiddleware, requireAdmin } from '../middleware/auth.js';
+import { checkPermission } from '../middleware/checkPermission.js';
 
 const router = express.Router();
 
