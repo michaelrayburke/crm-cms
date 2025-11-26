@@ -128,7 +128,7 @@ export default function EntryViews() {
       setError("");
       setSaveMessage("");
 
-      try:
+      try {
         // 1) Full content type with fields
         const ctRes = await api.get(`/api/content-types/${selectedTypeId}`);
         const ct = ctRes?.data || ctRes || null;
