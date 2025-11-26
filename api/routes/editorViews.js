@@ -1,6 +1,6 @@
 // api/routes/editorViews.js
 import express from 'express';
-import { pool } from '../db.js';           // same as your other routers
+import { pool } from '../dbPool.js';
 import { authMiddleware, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
