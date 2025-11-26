@@ -13,6 +13,8 @@ import settingsRouter from './routes/settings.js';
 import dashboardRouter from "./routes/dashboard.js";
 import contentTypesRouter from './routes/contentTypes.js';
 import editorViewsRouter from './routes/editorViews.js';
+import listViewsRouter from './routes/listViews.js';
+
 
 
 dotenv.config();
@@ -471,7 +473,10 @@ app.use('/api/roles', authMiddleware, rolesRouter);
 app.use('/api/permissions', authMiddleware, permissionsRouter);
 app.use('/api/settings', settingsRouter);
 app.use("/api/dashboard", authMiddleware, dashboardRouter);
-app.use('/api', editorViewsRouter);
+app.use('/api', corsMiddleware, jsonParser, editorViewsRouter);
+app.use('/api', corsMiddleware, jsonParser, listViewsRouter);
+
+
 
 
 // Simple redirects for old paths
