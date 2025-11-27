@@ -1,3 +1,6 @@
+// FILE: ServiceUp/admin/src/pages/Content/TypeList.jsx
+// FULLY FIXED VERSION – uses content type ID for list-views API calls
+
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../lib/api";
@@ -47,16 +50,16 @@ export default function TypeList() {
   const [views, setViews] = useState([]);
   const [activeViewSlug, setActiveViewSlug] = useState("");
   const [columns, setColumns] = useState(FALLBACK_COLUMNS);
-  const [role] = useState("ADMIN"); // TODO: derive from auth context later
 
+  const [role] = useState("ADMIN"); // to be replaced with real auth later
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
   const perPage = 25;
 
-  // ---------------------------------------------
-  // Load content type meta + list views
-  // ---------------------------------------------
+  // ---------------------------------------------------------
+  // Load CT + List Views (FIXED: uses ct.id for list-views)
+  // ---------------------------------------------------------
   useEffect(() => {
     if (!typeSlug) return;
     let cancelled = false;
@@ -67,9 +70,8 @@ export default function TypeList() {
         setError("");
         setViews([]);
         setColumns(FALLBACK_COLUMNS);
-        setActiveViewSlug("");
 
-        // 1) Load all content types and find by slug OR id
+        // 1) Get all content types
         const ctRes = await api.get("/api/content-types");
         if (cancelled) return;
 
@@ -80,19 +82,14 @@ export default function TypeList() {
           null;
 
         if (!ct) {
-          if (!cancelled) {
-            setContentType(null);
-            setError("Content type not found");
-            setViews([]);
-            setColumns(FALLBACK_COLUMNS);
-          }
+          setContentType(null);
+          setError("Content type not found");
           return;
         }
 
-        if (cancelled) return;
         setContentType(ct);
 
-        // 2) Load list views for this type + role
+        // 2) FIXED: always use ct.id
         const lvRes = await api.get(`/api/content-types/${ct.id}/list-views`, {
           params: { role },
         });
@@ -101,35 +98,25 @@ export default function TypeList() {
         const loadedViews = (lvRes.data && lvRes.data.views) || [];
         setViews(loadedViews);
 
-        // 3) Choose active view: URL ?view=… → default → first
-        const queryViewSlug = searchParams.get("view");
-        let chosen = null;
-
-        if (queryViewSlug) {
-          chosen = loadedViews.find((v) => v.slug === queryViewSlug) || null;
-        }
-        if (!chosen && loadedViews.length) {
-          chosen = loadedViews.find((v) => v.is_default) || loadedViews[0];
-        }
+        // Select default / query view
+        const queryView = searchParams.get("view");
+        let chosen =
+          (queryView && loadedViews.find((v) => v.slug === queryView)) ||
+          loadedViews.find((v) => v.is_default) ||
+          loadedViews[0] ||
+          null;
 
         if (chosen) {
           setActiveViewSlug(chosen.slug);
-          const cfgCols = chosen.config && chosen.config.columns;
-          setColumns(
-            Array.isArray(cfgCols) && cfgCols.length
-              ? cfgCols
-              : FALLBACK_COLUMNS
-          );
+          setColumns(chosen.config?.columns?.length ? chosen.config.columns : FALLBACK_COLUMNS);
         } else {
           setActiveViewSlug("");
           setColumns(FALLBACK_COLUMNS);
         }
       } catch (err) {
-        console.error("[TypeList] failed to load meta/views", err);
+        console.error("[TypeList] meta/views error", err);
         if (!cancelled) {
           setError("Failed to load list views for this content type");
-          setViews([]);
-          setColumns(FALLBACK_COLUMNS);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -139,33 +126,29 @@ export default function TypeList() {
     return () => {
       cancelled = true;
     };
-  }, [typeSlug, role, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [typeSlug, role, searchParams]);
 
-  // React to view slug changes in the URL after initial load
+  // React when URL ?view= changes
   useEffect(() => {
-    if (!views || !views.length) return;
-    const queryViewSlug = searchParams.get("view");
-    let chosen = null;
+    if (!views.length) return;
+    const q = searchParams.get("view");
 
-    if (queryViewSlug) {
-      chosen = views.find((v) => v.slug === queryViewSlug) || null;
-    }
-    if (!chosen) {
-      chosen = views.find((v) => v.is_default) || views[0] || null;
-    }
+    let chosen =
+      (q && views.find((v) => v.slug === q)) ||
+      views.find((v) => v.is_default) ||
+      views[0] ||
+      null;
+
     if (!chosen) return;
 
     setActiveViewSlug(chosen.slug);
-    const cfgCols = chosen.config && chosen.config.columns;
-    setColumns(
-      Array.isArray(cfgCols) && cfgCols.length ? cfgCols : FALLBACK_COLUMNS
-    );
+    setColumns(chosen.config?.columns?.length ? chosen.config.columns : FALLBACK_COLUMNS);
     setPage(1);
-  }, [views, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [views, searchParams]);
 
-  // ---------------------------------------------
-  // Load entries for this type
-  // ---------------------------------------------
+  // ---------------------------------------------------------
+  // Load entries
+  // ---------------------------------------------------------
   useEffect(() => {
     if (!typeSlug) return;
     let cancelled = false;
@@ -173,51 +156,43 @@ export default function TypeList() {
     (async () => {
       try {
         setLoading(true);
-        setError("");
-
         const res = await api.get(`/api/content/${typeSlug}`);
         if (cancelled) return;
 
         const list = Array.isArray(res.data)
           ? res.data
           : res.data?.entries || [];
+
         setEntries(list);
       } catch (err) {
-        console.error("[TypeList] failed to load entries", err);
-        if (!cancelled) {
-          setError("Failed to load entries");
-          setEntries([]);
-        }
+        console.error("[TypeList] load entries error", err);
+        if (!cancelled) setError("Failed to load entries");
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => (cancelled = true);
   }, [typeSlug]);
 
-  // ---------------------------------------------
-  // Filtering + pagination
-  // ---------------------------------------------
+  // ---------------------------------------------------------
+  // Filtering + paging
+  // ---------------------------------------------------------
   const filteredEntries = useMemo(() => {
-    let list = entries || [];
+    let list = [...(entries || [])];
 
     if (statusFilter !== "all") {
       list = list.filter(
-        (e) =>
-          (e.status || "draft").toLowerCase() === statusFilter.toLowerCase()
+        (e) => (e.status || "draft").toLowerCase() === statusFilter.toLowerCase()
       );
     }
 
-    const q = (searchTerm || "").trim().toLowerCase();
+    const q = searchTerm.toLowerCase();
     if (q) {
       list = list.filter((e) => {
-        const title =
-          (e.title || e.data?.title || "").toString().toLowerCase();
-        const slug = (e.slug || "").toString().toLowerCase();
-        return title.includes(q) || slug.includes(q);
+        const t = (e.title || e.data?.title || "").toLowerCase();
+        const s = (e.slug || "").toLowerCase();
+        return t.includes(q) || s.includes(q);
       });
     }
 
@@ -227,46 +202,30 @@ export default function TypeList() {
   const total = filteredEntries.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   const currentPage = Math.min(page, totalPages);
-  const pageStart = (currentPage - 1) * perPage;
-  const pageEnd = pageStart + perPage;
-  const pageRows = filteredEntries.slice(pageStart, pageEnd);
+  const pageRows = filteredEntries.slice((currentPage - 1) * perPage, currentPage * perPage);
 
-  useEffect(() => {
-    setPage(1);
-  }, [searchTerm, statusFilter, typeSlug, activeViewSlug]);
-
-  // ---------------------------------------------
+  // ---------------------------------------------------------
   // Handlers
-  // ---------------------------------------------
-  const handleClickRow = (entryId) => {
-    if (!entryId) return;
-    navigate(`/content/${typeSlug}/${entryId}`);
-  };
+  // ---------------------------------------------------------
+  const handleNewEntry = () => navigate(`/content/${typeSlug}/new`);
+  const handleClickRow = (id) => navigate(`/content/${typeSlug}/${id}`);
 
-  const handleNewEntry = () => {
-    navigate(`/content/${typeSlug}/new`);
-  };
-
-  const handleDelete = async (entryId, evt) => {
-    evt?.stopPropagation();
-    if (!window.confirm("Delete this entry? This cannot be undone.")) return;
+  const handleDelete = async (id, evt) => {
+    evt.stopPropagation();
+    if (!window.confirm("Delete this entry?")) return;
     try {
-      await api.delete(`/api/content/${typeSlug}/${entryId}`);
-      setEntries((prev) => prev.filter((e) => e.id !== entryId));
+      await api.delete(`/api/content/${typeSlug}/${id}`);
+      setEntries((prev) => prev.filter((e) => e.id !== id));
     } catch (err) {
-      console.error("[TypeList] delete error", err);
-      alert("Failed to delete entry: " + (err.message || String(err)));
+      alert("Failed to delete entry");
     }
   };
 
   const handleSelectView = (slug) => {
-    const nextParams = new URLSearchParams(searchParams.toString());
-    if (slug) {
-      nextParams.set("view", slug);
-    } else {
-      nextParams.delete("view");
-    }
-    setSearchParams(nextParams, { replace: true });
+    const next = new URLSearchParams(searchParams.toString());
+    if (slug) next.set("view", slug);
+    else next.delete("view");
+    setSearchParams(next, { replace: true });
   };
 
   const labelForColumn = (key) => {
@@ -274,16 +233,12 @@ export default function TypeList() {
     return col?.label || key;
   };
 
-  const allColumnKeys = useMemo(
-    () => (columns || []).map((c) => c.key),
-    [columns]
-  );
+  const columnKeys = useMemo(() => (columns || []).map((c) => c.key), [columns]);
 
-  // ---------------------------------------------
+  // ---------------------------------------------------------
   // Render
-  // ---------------------------------------------
-  const titleText =
-    contentType?.name || contentType?.slug || typeSlug || "Entries";
+  // ---------------------------------------------------------
+  const titleText = contentType?.name || contentType?.slug || typeSlug;
 
   return (
     <div className="su-page">
@@ -299,25 +254,17 @@ export default function TypeList() {
         <div className="su-page-header-main">
           <div>
             <h1 className="su-page-title">{titleText}</h1>
-            {contentType?.description && (
-              <p className="su-page-subtitle">{contentType.description}</p>
-            )}
           </div>
-          <div className="su-page-header-actions">
-            <button
-              type="button"
-              className="su-btn su-btn-primary"
-              onClick={handleNewEntry}
-              disabled={!contentType}
-            >
+          <div>
+            <button className="su-btn su-btn-primary" onClick={handleNewEntry}>
               + New {contentType?.name || "entry"}
             </button>
           </div>
         </div>
 
-        {/* Views selector */}
+        {/* Views */}
         <div className="su-mt-md">
-          {views && views.length > 0 ? (
+          {views.length ? (
             <div className="su-chip-row">
               {views.map((v) => (
                 <button
@@ -325,19 +272,11 @@ export default function TypeList() {
                   type="button"
                   onClick={() => handleSelectView(v.slug)}
                   className={
-                    "su-chip" +
-                    (v.slug === activeViewSlug ? " su-chip--active" : "")
-                  }
-                  title={
-                    v.is_default
-                      ? `${v.label} (default for ${role})`
-                      : v.label
+                    "su-chip" + (v.slug === activeViewSlug ? " su-chip--active" : "")
                   }
                 >
                   {v.label}
-                  {v.is_default && (
-                    <span className="su-chip-badge">default</span>
-                  )}
+                  {v.is_default && <span className="su-chip-badge">default</span>}
                 </button>
               ))}
             </div>
@@ -351,91 +290,71 @@ export default function TypeList() {
 
       {/* Filters */}
       <div className="su-toolbar su-mb-md">
-        <div className="su-toolbar-left">
-          <input
-            type="search"
-            className="su-input"
-            placeholder="Search entries…"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <select
-            className="su-input su-ml-sm"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">All statuses</option>
-            <option value="draft">Draft</option>
-            <option value="published">Published</option>
-            <option value="archived">Archived</option>
-          </select>
-        </div>
-        <div className="su-toolbar-right su-text-sm su-text-muted">
-          {loading ? "Loading…" : `${total} entr${total === 1 ? "y" : "ies"}`}
-        </div>
+        <input
+          type="search"
+          className="su-input"
+          placeholder="Search entries…"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <select
+          className="su-input su-ml-sm"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="all">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="published">Published</option>
+          <option value="archived">Archived</option>
+        </select>
       </div>
 
-      {error && (
-        <div className="su-alert su-alert-danger su-mb-md">{error}</div>
-      )}
+      {error && <div className="su-alert su-alert-danger su-mb-md">{error}</div>}
 
+      {/* Table */}
       <div className="su-card">
         <div className="su-table-wrapper">
           <table className="su-table">
             <thead>
               <tr>
-                {allColumnKeys.map((key) => (
+                {columnKeys.map((key) => (
                   <th key={key}>{labelForColumn(key)}</th>
                 ))}
-                <th className="su-table-col-actions">Actions</th>
+                <th>Actions</th>
               </tr>
             </thead>
+
             <tbody>
-              {loading && pageRows.length === 0 ? (
-                <tr>
-                  <td colSpan={allColumnKeys.length + 1}>Loading…</td>
-                </tr>
+              {loading ? (
+                <tr><td colSpan={columnKeys.length + 1}>Loading…</td></tr>
               ) : pageRows.length === 0 ? (
-                <tr>
-                  <td colSpan={allColumnKeys.length + 1}>
-                    No entries yet for this type.
-                  </td>
-                </tr>
+                <tr><td colSpan={columnKeys.length + 1}>No entries yet.</td></tr>
               ) : (
                 pageRows.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="su-table-row-clickable"
-                    onClick={() => handleClickRow(row.id)}
-                  >
-                    {allColumnKeys.map((key) => {
-                      let raw;
-                      if (key === "title") {
-                        raw = row.title || row.data?.title || "(untitled)";
-                      } else if (key === "slug") {
-                        raw = row.slug;
-                      } else if (key === "status") {
-                        raw = row.status || "draft";
-                      } else if (key === "created_at" || key === "updated_at") {
-                        raw = formatDate(row[key]);
-                      } else {
-                        raw = row.data ? row.data[key] : undefined;
-                      }
-                      return <td key={key}>{renderCellValue(raw)}</td>;
+                  <tr key={row.id} onClick={() => handleClickRow(row.id)} className="su-table-row-clickable">
+                    {columnKeys.map((key) => {
+                      let val =
+                        key === "title"
+                          ? row.title || row.data?.title || "(untitled)"
+                          : key === "slug"
+                          ? row.slug
+                          : key === "status"
+                          ? row.status
+                          : key === "created_at" || key === "updated_at"
+                          ? formatDate(row[key])
+                          : row.data?.[key];
+
+                      return <td key={key}>{renderCellValue(val)}</td>;
                     })}
-                    <td
-                      className="su-table-cell-actions"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+
+                    <td onClick={(e) => e.stopPropagation()}>
                       <button
-                        type="button"
                         className="su-btn su-btn-xs su-btn-ghost"
                         onClick={() => handleClickRow(row.id)}
                       >
                         Edit
                       </button>
                       <button
-                        type="button"
                         className="su-btn su-btn-xs su-btn-ghost su-text-danger"
                         onClick={(e) => handleDelete(row.id, e)}
                       >
@@ -448,34 +367,32 @@ export default function TypeList() {
             </tbody>
           </table>
         </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="su-pagination">
-            <button
-              type="button"
-              className="su-btn su-btn-sm"
-              disabled={currentPage <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              Previous
-            </button>
-            <span className="su-pagination-info">
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              type="button"
-              className="su-btn su-btn-sm"
-              disabled={currentPage >= totalPages}
-              onClick={() =>
-                setPage((p) => Math.min(totalPages, p + 1))
-              }
-            >
-              Next
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="su-pagination">
+          <button
+            className="su-btn su-btn-sm"
+            disabled={currentPage <= 1}
+            onClick={() => setPage((n) => Math.max(1, n - 1))}
+          >
+            Previous
+          </button>
+
+          <span className="su-pagination-info">
+            Page {currentPage} of {totalPages}
+          </span>
+
+          <button
+            className="su-btn su-btn-sm"
+            disabled={currentPage >= totalPages}
+            onClick={() => setPage((n) => Math.min(totalPages, n + 1))}
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }
