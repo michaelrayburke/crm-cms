@@ -65,23 +65,46 @@ export default function TypeList() {
       try {
         setLoading(true);
         setError("");
+        setViews([]);
+        setColumns(FALLBACK_COLUMNS);
+        setActiveViewSlug("");
 
-        // 1) Find the content type by slug
-        const ctRes = await api.get("/api/content-types");
-        if (cancelled) return;
+        let ct = null;
 
-        const list = ctRes.data || [];
-        const ct = list.find((c) => c.slug === typeSlug);
+        // 1) First, try treating typeSlug as an ID
+        try {
+          const byIdRes = await api.get(`/api/content-types/${typeSlug}`);
+          if (byIdRes?.data && byIdRes.data.id) {
+            ct = byIdRes.data;
+          }
+        } catch {
+          // Ignore – not an ID or not found by ID
+        }
+
+        // 2) If that didn’t work, fall back to matching by slug
         if (!ct) {
-          setContentType(null);
-          setViews([]);
-          setColumns(FALLBACK_COLUMNS);
-          setError("Content type not found");
+          const ctRes = await api.get("/api/content-types");
+          if (cancelled) return;
+
+          const list = ctRes.data || [];
+          ct = list.find((c) => c.slug === typeSlug) || null;
+        }
+
+        if (!ct) {
+          if (!cancelled) {
+            setContentType(null);
+            setError("Content type not found");
+            setViews([]);
+            setColumns(FALLBACK_COLUMNS);
+          }
           return;
         }
+
+        if (cancelled) return;
+
         setContentType(ct);
 
-        // 2) Load list views for this type + role
+        // 3) Load list views for this type + role
         const lvRes = await api.get(`/api/content-types/${ct.id}/list-views`, {
           params: { role },
         });
@@ -128,7 +151,7 @@ export default function TypeList() {
     return () => {
       cancelled = true;
     };
-  }, [typeSlug, role]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [typeSlug, role, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // React to view slug changes in the URL after initial load
   useEffect(() => {
@@ -150,7 +173,7 @@ export default function TypeList() {
       Array.isArray(cfgCols) && cfgCols.length ? cfgCols : FALLBACK_COLUMNS
     );
     setPage(1);
-  }, [views, searchParams]); // eslint-disable-line react-hooks-exhaustive-deps
+  }, [views, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------------------------------------------
   // Load entries for this type
@@ -167,7 +190,6 @@ export default function TypeList() {
         const res = await api.get(`/api/content/${typeSlug}`);
         if (cancelled) return;
 
-        // backend returns an array of entries
         const list = Array.isArray(res.data)
           ? res.data
           : res.data?.entries || [];
@@ -222,7 +244,6 @@ export default function TypeList() {
   const pageEnd = pageStart + perPage;
   const pageRows = filteredEntries.slice(pageStart, pageEnd);
 
-  // reset page if filters change significantly
   useEffect(() => {
     setPage(1);
   }, [searchTerm, statusFilter, typeSlug, activeViewSlug]);
