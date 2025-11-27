@@ -69,26 +69,15 @@ export default function TypeList() {
         setColumns(FALLBACK_COLUMNS);
         setActiveViewSlug("");
 
-        let ct = null;
+        // 1) Load all content types and find by slug OR id
+        const ctRes = await api.get("/api/content-types");
+        if (cancelled) return;
 
-        // 1) First, try treating typeSlug as an ID
-        try {
-          const byIdRes = await api.get(`/api/content-types/${typeSlug}`);
-          if (byIdRes?.data && byIdRes.data.id) {
-            ct = byIdRes.data;
-          }
-        } catch {
-          // Ignore – not an ID or not found by ID
-        }
-
-        // 2) If that didn’t work, fall back to matching by slug
-        if (!ct) {
-          const ctRes = await api.get("/api/content-types");
-          if (cancelled) return;
-
-          const list = ctRes.data || [];
-          ct = list.find((c) => c.slug === typeSlug) || null;
-        }
+        const list = ctRes.data || [];
+        const ct =
+          list.find((c) => c.slug === typeSlug) ||
+          list.find((c) => c.id === typeSlug) ||
+          null;
 
         if (!ct) {
           if (!cancelled) {
@@ -101,10 +90,9 @@ export default function TypeList() {
         }
 
         if (cancelled) return;
-
         setContentType(ct);
 
-        // 3) Load list views for this type + role
+        // 2) Load list views for this type + role
         const lvRes = await api.get(`/api/content-types/${ct.id}/list-views`, {
           params: { role },
         });
@@ -113,6 +101,7 @@ export default function TypeList() {
         const loadedViews = (lvRes.data && lvRes.data.views) || [];
         setViews(loadedViews);
 
+        // 3) Choose active view: URL ?view=… → default → first
         const queryViewSlug = searchParams.get("view");
         let chosen = null;
 
@@ -120,18 +109,17 @@ export default function TypeList() {
           chosen = loadedViews.find((v) => v.slug === queryViewSlug) || null;
         }
         if (!chosen && loadedViews.length) {
-          chosen =
-            loadedViews.find((v) => v.is_default) || loadedViews[0];
+          chosen = loadedViews.find((v) => v.is_default) || loadedViews[0];
         }
 
         if (chosen) {
           setActiveViewSlug(chosen.slug);
           const cfgCols = chosen.config && chosen.config.columns;
-          if (Array.isArray(cfgCols) && cfgCols.length) {
-            setColumns(cfgCols);
-          } else {
-            setColumns(FALLBACK_COLUMNS);
-          }
+          setColumns(
+            Array.isArray(cfgCols) && cfgCols.length
+              ? cfgCols
+              : FALLBACK_COLUMNS
+          );
         } else {
           setActiveViewSlug("");
           setColumns(FALLBACK_COLUMNS);
@@ -219,8 +207,7 @@ export default function TypeList() {
     if (statusFilter !== "all") {
       list = list.filter(
         (e) =>
-          (e.status || "draft").toLowerCase() ===
-          statusFilter.toLowerCase()
+          (e.status || "draft").toLowerCase() === statusFilter.toLowerCase()
       );
     }
 
