@@ -51,11 +51,12 @@ export default function ListViewsSettings() {
     (async () => {
       try {
         setLoadingTypes(true);
-        setError("");
-        const res = await api.get("/api/content-types");
+
+        // api.get already returns data, not { data }
+        const listRaw = await api.get("/api/content-types");
         if (cancelled) return;
 
-        const list = Array.isArray(res?.data) ? res.data : [];
+        const list = Array.isArray(listRaw) ? [...listRaw] : [];
 
         // predictable sort
         list.sort((a, b) => {
@@ -65,8 +66,6 @@ export default function ListViewsSettings() {
         });
 
         setContentTypes(list);
-
-        // auto-select first CT if none selected yet
         if (list.length && !selectedTypeId) {
           setSelectedTypeId(list[0].id);
         }
@@ -83,21 +82,19 @@ export default function ListViewsSettings() {
     return () => {
       cancelled = true;
     };
-  }, [selectedTypeId]);
+  }, []); // run once on mount
 
   // ---------------------------------------------
   // Build available fields = builtins + CT fields
   // ---------------------------------------------
   const computeAvailableFields = (ct) => {
     if (!ct) return BUILTIN_COLUMNS;
-
     const ctFields = Array.isArray(ct.fields)
       ? ct.fields.map((f) => ({
           key: f.key, // data.[key] in entries.data
           label: f.label || f.name || f.key,
         }))
       : [];
-
     const all = [...BUILTIN_COLUMNS];
     for (const f of ctFields) {
       if (!all.find((x) => x.key === f.key)) {
@@ -115,38 +112,42 @@ export default function ListViewsSettings() {
     let cancelled = false;
 
     (async () => {
-      try {
-        setLoading(true);
-        setSaveMessage("");
-        setError("");
-        setDirty(false);
+      setLoading(true);
+      setError("");
+      setSaveMessage("");
+      setDirty(false);
 
-        // 1) full content type (with fields)
-        const [ctRes, viewsRes] = await Promise.all([
-          api.get(`/api/content-types/${selectedTypeId}`),
-          api
-            .get(`/api/content-types/${selectedTypeId}/list-views`, {
-              params: { role },
-            })
-            .catch((err) => {
-              // If list views endpoint fails (404/500/etc), treat as "no views yet"
-              console.error(
-                "[ListViews] list-views endpoint error (treated as empty)",
-                err
-              );
-              return { data: { views: [] } };
-            }),
-        ]);
+      try {
+        // 1) Always load the content type (with fields)
+        const ct = await api.get(`/api/content-types/${selectedTypeId}`);
+
+        // 2) Try to load list views; if it fails, treat as "no views yet"
+        let viewsRes;
+        try {
+          const url = `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(
+            role
+          )}`;
+          viewsRes = await api.get(url);
+        } catch (viewsErr) {
+          console.warn(
+            "[ListViews] list-views fetch failed, treating as no views",
+            viewsErr
+          );
+          viewsRes = { views: [] };
+        }
 
         if (cancelled) return;
 
-        const ct = ctRes?.data;
-        setContentTypeDetail(ct || null);
+        setContentTypeDetail(ct);
 
         const av = computeAvailableFields(ct);
         setAvailableFields(av);
 
-        const loadedViews = (viewsRes?.data && viewsRes.data.views) || [];
+        const loadedViews = Array.isArray(viewsRes?.views)
+          ? viewsRes.views
+          : Array.isArray(viewsRes)
+          ? viewsRes
+          : [];
         setViews(loadedViews);
 
         if (loadedViews.length === 0) {
@@ -181,19 +182,9 @@ export default function ListViewsSettings() {
           }
         }
       } catch (err) {
-        console.error("[ListViews] load views error", err);
+        console.error("[ListViews] load views/CT error", err);
         if (!cancelled) {
-          // Be forgiving: keep fields visible, just show a soft error
-          setError("Problem loading list views (you can still configure them).");
-          // Fallback: computed available fields but no views
-          if (contentTypeDetail && !columns.length) {
-            const fallbackCols = [
-              { key: "title", label: "Title" },
-              { key: "status", label: "Status" },
-              { key: "updated_at", label: "Updated" },
-            ];
-            setColumns(fallbackCols);
-          }
+          setError("Failed to load list views");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -203,7 +194,7 @@ export default function ListViewsSettings() {
     return () => {
       cancelled = true;
     };
-  }, [selectedTypeId, role]); // re-run when type or role changes
+  }, [selectedTypeId, role]);
 
   // ---------------------------------------------
   // Derived: chosen view object
@@ -350,11 +341,13 @@ export default function ListViewsSettings() {
         is_default: isDefault,
         config: { columns },
       };
-      const res = await api.put(
+
+      // api.put returns data directly
+      const resp = await api.put(
         `/api/content-types/${selectedTypeId}/list-view`,
         payload
       );
-      const saved = res.data.view || res.data;
+      const saved = resp.view || resp;
 
       setViews((prev) => {
         const idx = prev.findIndex((v) => v.slug === saved.slug);
