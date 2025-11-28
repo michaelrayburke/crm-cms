@@ -1,5 +1,5 @@
 // FILE: ServiceUp/admin/src/pages/Content/TypeList.jsx
-// FULLY FIXED VERSION – uses content type ID for list-views API calls
+console.log("🔥 TypeList.jsx is running and loaded");
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -61,6 +61,7 @@ export default function TypeList() {
   // Load CT + List Views (FIXED: uses ct.id for list-views)
   // ---------------------------------------------------------
   useEffect(() => {
+	console.log("📡 Fetching list views for CT ID:", ct.id);
     if (!typeSlug) return;
     let cancelled = false;
 
