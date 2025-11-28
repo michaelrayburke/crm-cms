@@ -61,7 +61,6 @@ export default function TypeList() {
   // Load CT + List Views (FIXED: uses ct.id for list-views)
   // ---------------------------------------------------------
   useEffect(() => {
-	console.log("📡 Fetching list views for CT ID:", ct.id);
     if (!typeSlug) return;
     let cancelled = false;
 
