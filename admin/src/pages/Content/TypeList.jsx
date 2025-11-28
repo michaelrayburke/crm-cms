@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 
 // Built-in columns that exist on every entry
@@ -11,324 +11,441 @@ const BUILTIN_COLUMNS = [
   { key: "updated_at", label: "Updated" },
 ];
 
-// Simple helper to build a fallback column set when no list views exist
-function buildFallbackColumns(contentType) {
-  const fields = Array.isArray(contentType?.fields) ? contentType.fields : [];
+const FALLBACK_COLUMNS = BUILTIN_COLUMNS;
 
-  const fieldColumns = fields.slice(0, 3).map((f) => ({
-    key: f.key,
-    label: f.label || f.name || f.key,
-  }));
+// For now we hard-code ADMIN; later we can wire this to the real user role
+const ROLE = "ADMIN";
 
-  const base = [...BUILTIN_COLUMNS];
-  for (const col of fieldColumns) {
-    if (!base.find((b) => b.key === col.key)) {
-      base.push(col);
+function renderCell(entry, col) {
+  const key = col.key;
+
+  // Built-ins
+  if (key === "title") return entry.title || "(untitled)";
+  if (key === "slug") return entry.slug || "";
+  if (key === "status") return entry.status || "draft";
+  if (key === "created_at") {
+    return entry.created_at ? new Date(entry.created_at).toLocaleString() : "";
+  }
+  if (key === "updated_at") {
+    return entry.updated_at ? new Date(entry.updated_at).toLocaleString() : "";
+  }
+
+  // Custom fields live under entry.data
+  const data = entry.data || {};
+  const value = data[key];
+
+  if (value == null) return "";
+
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
+
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "[object]";
     }
   }
-  return base;
+
+  return String(value);
 }
 
 export default function TypeList() {
-  console.log("🔥 TypeList.jsx is running and loaded");
+  const { typeSlug } = useParams();
+  const navigate = useNavigate();
 
-  const { slug } = useParams(); // e.g., "songs"
-  const [contentTypes, setContentTypes] = useState([]);
-  const [entries, setEntries] = useState([]);
-  const [loadingTypes, setLoadingTypes] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [loadingEntries, setLoadingEntries] = useState(false);
   const [error, setError] = useState("");
 
-  // List-view specific state
+  const [contentTypes, setContentTypes] = useState([]);
+  const [activeContentType, setActiveContentType] = useState(null);
+
+  const [entries, setEntries] = useState([]);
+
   const [listViews, setListViews] = useState([]);
   const [activeViewSlug, setActiveViewSlug] = useState("");
-  const [columns, setColumns] = useState([]);
+  const [columns, setColumns] = useState(FALLBACK_COLUMNS);
 
-  // For now we just use ADMIN; later we can pull this from the JWT or user context
-  const role = "ADMIN";
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
-  // --------------------------------------------------
-  // Load all content types (for metadata + ID lookup)
-  // --------------------------------------------------
+  // Load content types, then list views + entries for this slug
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
+    async function load() {
       try {
-        setLoadingTypes(true);
-        const res = await api.get("/api/content-types");
+        setLoading(true);
+        setError("");
+
+        // 1) Load all content types
+        const ctRes = await api.get("/api/content-types");
+        const list = ctRes.data || [];
         if (cancelled) return;
-        const list = res.data || [];
-
-        // Keep a stable sorted list (optional)
-        list.sort((a, b) => {
-          const an = (a.name || a.slug || "").toLowerCase();
-          const bn = (b.name || b.slug || "").toLowerCase();
-          return an.localeCompare(bn);
-        });
-
         setContentTypes(list);
-      } catch (err) {
-        console.error("[TypeList] failed to load content types", err);
-        if (!cancelled) {
-          setError("Failed to load content types");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingTypes(false);
-        }
-      }
-    })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+        // 2) Find the active content type by slug
+        const ct =
+          list.find(
+            (t) =>
+              t.slug === typeSlug ||
+              t.id === typeSlug ||
+              t.key === typeSlug
+          ) || null;
 
-  // --------------------------------------------------
-  // Derive the active content type from the slug
-  // --------------------------------------------------
-  const activeContentType = useMemo(() => {
-    if (!contentTypes || !contentTypes.length || !slug) return null;
-    return (
-      contentTypes.find((ct) => ct.slug === slug) ||
-      contentTypes.find((ct) => String(ct.id) === String(slug)) ||
-      null
-    );
-  }, [contentTypes, slug]);
+        setActiveContentType(ct || null);
 
-  // --------------------------------------------------
-  // Load entries for this content type (by slug)
-  // --------------------------------------------------
-  useEffect(() => {
-    if (!slug) return;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        setLoadingEntries(true);
-        setError("");
-        const res = await api.get(`/api/content/${slug}`);
-        if (cancelled) return;
-        setEntries(res.data || []);
-      } catch (err) {
-        console.error("[TypeList] failed to load entries", err);
-        if (!cancelled) {
-          setError("Failed to load entries");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingEntries(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [slug]);
-
-  // --------------------------------------------------
-  // Load list views for this content type & role (by ID)
-  // --------------------------------------------------
-  useEffect(() => {
-    if (!activeContentType || !activeContentType.id) {
-      // No CT yet: fallback columns until we know more
-      setColumns(buildFallbackColumns(activeContentType));
-      setListViews([]);
-      setActiveViewSlug("");
-      return;
-    }
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        setError("");
-        const res = await api.get(
-          `/api/content-types/${activeContentType.id}/list-views`,
-          { params: { role } }
-        );
-
-        if (cancelled) return;
-
-        const loaded = (res.data && res.data.views) || [];
-        setListViews(loaded);
-
-        if (!loaded.length) {
-          // No views configured: fallback
-          setActiveViewSlug("");
-          setColumns(buildFallbackColumns(activeContentType));
+        if (!ct) {
+          setError("Content type not found");
+          setListViews([]);
+          setColumns(FALLBACK_COLUMNS);
+          setEntries([]);
           return;
         }
 
-        // Pick default view (or first)
-        const def = loaded.find((v) => v.is_default) || loaded[0];
-        setActiveViewSlug(def.slug);
+        // 3) Load list views for this type + role
+        try {
+          const lvRes = await api.get(
+            `/api/content-types/${ct.id}/list-views`,
+            {
+              params: { role: ROLE },
+            }
+          );
+          if (cancelled) return;
 
-        const cfgCols = def.config?.columns || [];
-        if (Array.isArray(cfgCols) && cfgCols.length) {
-          setColumns(cfgCols);
-        } else {
-          setColumns(buildFallbackColumns(activeContentType));
-        }
-      } catch (err) {
-        console.error("[TypeList] failed to load list views", err);
-        if (!cancelled) {
-          // If list views request fails, we still want a usable table
+          const views = (lvRes.data && lvRes.data.views) || [];
+          setListViews(views);
+
+          if (views.length) {
+            const def = views.find((v) => v.is_default) || views[0];
+            setActiveViewSlug(def.slug);
+
+            const cfgCols =
+              def.config && Array.isArray(def.config.columns)
+                ? def.config.columns
+                : [];
+
+            if (cfgCols.length) {
+              setColumns(cfgCols);
+            } else {
+              setColumns(FALLBACK_COLUMNS);
+            }
+          } else {
+            // No views configured -> use fallback
+            setActiveViewSlug("");
+            setColumns(FALLBACK_COLUMNS);
+          }
+        } catch (err) {
+          console.error("[TypeList] failed to load list views", err);
+          if (cancelled) return;
+          // Graceful fallback if 400/404 or other error
           setListViews([]);
           setActiveViewSlug("");
-          setColumns(buildFallbackColumns(activeContentType));
-          // Optionally surface a mild error
-          // setError("Failed to load list views; using fallback layout");
+          setColumns(FALLBACK_COLUMNS);
         }
+
+        // 4) Load entries
+        try {
+          setLoadingEntries(true);
+          const eRes = await api.get(`/api/content/${ct.slug}`);
+          if (cancelled) return;
+
+          const raw = eRes.data;
+          const items = Array.isArray(raw)
+            ? raw
+            : Array.isArray(raw?.items)
+            ? raw.items
+            : [];
+          setEntries(items);
+        } catch (err) {
+          console.error("[TypeList] failed to load entries", err);
+          if (!cancelled) {
+            setError("Failed to load entries");
+            setEntries([]);
+          }
+        } finally {
+          if (!cancelled) setLoadingEntries(false);
+        }
+      } catch (err) {
+        console.error("[TypeList] load error", err);
+        if (!cancelled) {
+          setError("Failed to load content type");
+          setListViews([]);
+          setColumns(FALLBACK_COLUMNS);
+          setEntries([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    })();
+    }
+
+    load();
 
     return () => {
       cancelled = true;
     };
-  }, [activeContentType, role]);
+  }, [typeSlug]);
 
-  // --------------------------------------------------
-  // Helpers to render cell values
-  // --------------------------------------------------
-  const builtinKeys = new Set(BUILTIN_COLUMNS.map((c) => c.key));
+  const hasConfiguredViews = listViews.length > 0;
 
-  const renderCellValue = (entry, col) => {
-    const key = col.key;
-    if (builtinKeys.has(key)) {
-      return entry[key] ?? "";
-    }
-    // Custom field stored under entry.data[key]
-    const dataVal = entry.data ? entry.data[key] : undefined;
-    if (dataVal == null) return "";
+  const activeView = useMemo(() => {
+    if (!hasConfiguredViews || !activeViewSlug) return null;
+    return listViews.find((v) => v.slug === activeViewSlug) || null;
+  }, [hasConfiguredViews, activeViewSlug, listViews]);
 
-    if (typeof dataVal === "object") {
-      try {
-        return JSON.stringify(dataVal);
-      } catch {
-        return String(dataVal);
-      }
-    }
-    return String(dataVal);
+  const handleChangeView = (slug) => {
+    const v = listViews.find((x) => x.slug === slug);
+    if (!v) return;
+    setActiveViewSlug(v.slug);
+
+    const cfgCols =
+      v.config && Array.isArray(v.config.columns) ? v.config.columns : [];
+    setColumns(cfgCols.length ? cfgCols : FALLBACK_COLUMNS);
   };
 
-  // --------------------------------------------------
-  // Render
-  // --------------------------------------------------
-  const title =
-    activeContentType?.name || activeContentType?.slug || slug || "Entries";
+  const filteredEntries = useMemo(() => {
+    let list = entries || [];
+    if (statusFilter !== "ALL") {
+      list = list.filter((e) => (e.status || "draft") === statusFilter);
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((e) => {
+        const t = (e.title || "").toLowerCase();
+        const s = (e.slug || "").toLowerCase();
+        return t.includes(q) || s.includes(q);
+      });
+    }
+    return list;
+  }, [entries, statusFilter, search]);
 
-  const noViewsConfigured = listViews.length === 0;
+  const handleNew = () => {
+    if (!activeContentType) return;
+    navigate(`/content/${activeContentType.slug}/new`);
+  };
+
+  const handleRowClick = (entry) => {
+    if (!activeContentType || !entry.id) return;
+    navigate(`/content/${activeContentType.slug}/${entry.id}`);
+  };
+
+  if (loading && !activeContentType) {
+    return (
+      <div className="su-page su-page-content">
+        <div className="su-page-header">
+          <h1 className="su-page-title">Entries</h1>
+          <p className="su-page-subtitle">Loading content…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !activeContentType) {
+    return (
+      <div className="su-page su-page-content">
+        <div className="su-page-header">
+          <h1 className="su-page-title">Entries</h1>
+          <p className="su-page-subtitle su-text-danger">{error}</p>
+          <p className="su-page-subtitle">
+            <Link to="/content" className="su-link">
+              ← Back to all content types
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="su-page">
-      <div className="su-page-header">
+    <div className="su-page su-page-content">
+      <div className="su-page-header su-flex su-justify-between su-items-center su-gap-md">
         <div>
-          <h1 className="su-page-title">{title}</h1>
+          <h1 className="su-page-title">
+            {activeContentType?.name || "Entries"}
+          </h1>
           <p className="su-page-subtitle">
             Manage entries for this content type.
           </p>
+
+          <div className="su-mt-xs su-text-xs su-text-muted">
+            {hasConfiguredViews ? (
+              <span>
+                Showing list view{" "}
+                <strong>{activeView?.label || activeViewSlug}</strong> for role{" "}
+                <code>{ROLE}</code>. Customize in{" "}
+                <Link to="/settings/list-views" className="su-link">
+                  Settings → List Views
+                </Link>
+                .
+              </span>
+            ) : (
+              <span>
+                No list views configured yet for role{" "}
+                <code>{ROLE}</code>. Using a fallback layout. You can customize
+                columns in{" "}
+                <Link to="/settings/list-views" className="su-link">
+                  Settings → List Views
+                </Link>
+                .
+              </span>
+            )}
+          </div>
         </div>
-        <div className="su-page-actions">
-          {activeContentType && (
-            <Link
-              className="su-btn su-btn-primary"
-              to={`/content/${activeContentType.slug}/new`}
+
+        <div className="su-flex su-gap-sm">
+          <button
+            type="button"
+            className="su-btn su-btn-secondary"
+            onClick={() => navigate("/content")}
+          >
+            ← All types
+          </button>
+          <button
+            type="button"
+            className="su-btn su-btn-primary"
+            onClick={handleNew}
+            disabled={!activeContentType}
+          >
+            + New
+          </button>
+        </div>
+      </div>
+
+      {/* View switcher */}
+      {hasConfiguredViews && (
+        <div className="su-card su-mb-md">
+          <div className="su-card-body">
+            <div className="su-flex su-flex-wrap su-gap-xs su-items-center">
+              <span className="su-text-xs su-text-muted">Views:</span>
+              {listViews.map((v) => (
+                <button
+                  key={v.slug}
+                  type="button"
+                  className={
+                    "su-chip" +
+                    (v.slug === activeViewSlug ? " su-chip--active" : "")
+                  }
+                  onClick={() => handleChangeView(v.slug)}
+                >
+                  {v.label}
+                  {v.is_default && (
+                    <span className="su-chip-badge">default</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="su-card su-mb-md">
+        <div className="su-card-body su-flex su-flex-wrap su-gap-md su-items-center">
+          <div className="su-field">
+            <label className="su-label su-label-sm">Search</label>
+            <input
+              className="su-input su-input-sm"
+              placeholder="Search by title or slug…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="su-field">
+            <label className="su-label su-label-sm">Status</label>
+            <select
+              className="su-input su-input-sm"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
             >
-              + New {activeContentType.singular || "entry"}
-            </Link>
+              <option value="ALL">All</option>
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
+          <div className="su-text-xs su-text-muted su-ml-auto">
+            Showing {filteredEntries.length} of {entries.length} entries
+          </div>
+        </div>
+      </div>
+
+      {/* Entries table */}
+      <div className="su-card">
+        <div className="su-card-body su-table-wrapper">
+          {loadingEntries ? (
+            <p className="su-text-muted">Loading entries…</p>
+          ) : filteredEntries.length === 0 ? (
+            <p className="su-text-muted">
+              No entries yet. Click{" "}
+              <button
+                type="button"
+                className="su-link-button"
+                onClick={handleNew}
+                disabled={!activeContentType}
+              >
+                New
+              </button>{" "}
+              to create the first one.
+            </p>
+          ) : (
+            <table className="su-table su-table-hover">
+              <thead>
+                <tr>
+                  {columns.map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEntries.map((entry) => (
+                  <tr
+                    key={entry.id}
+                    className="su-table-row-clickable"
+                    onClick={() => handleRowClick(entry)}
+                  >
+                    {columns.map((col) => (
+                      <td key={col.key}>{renderCell(entry, col)}</td>
+                    ))}
+                    <td className="su-text-right">
+                      <button
+                        type="button"
+                        className="su-btn su-btn-link su-btn-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRowClick(entry);
+                        }}
+                      >
+                        Edit →
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
       </div>
 
-      {error && (
-        <div className="su-alert su-alert-danger su-mb-md">{error}</div>
-      )}
-
-      {noViewsConfigured && (
-        <div className="su-alert su-alert-info su-mb-md">
-          No list views configured yet for role <strong>{role}</strong>. Using a
-          fallback layout. You can customize columns in{" "}
-          <Link to="/settings/list-views">Settings → List Views</Link>.
-        </div>
-      )}
-
-      {(loadingTypes || loadingEntries) && (
-        <div className="su-card su-mb-lg">
-          <div className="su-card-body">Loading…</div>
-        </div>
-      )}
-
-      {!loadingTypes && !loadingEntries && (
-        <div className="su-card">
-          <div className="su-card-header">
-            <h2 className="su-card-title">Entries</h2>
-            <p className="su-card-subtitle">
-              Showing {entries.length} entr{entries.length === 1 ? "y" : "ies"}{" "}
-              using view{" "}
-              {activeViewSlug ? <code>{activeViewSlug}</code> : "fallback"}.
-            </p>
-          </div>
-          <div className="su-card-body su-table-wrapper">
-            {entries.length === 0 ? (
-              <p className="su-text-muted">
-                No entries yet. Click &ldquo;New&rdquo; to create the first one.
-              </p>
-            ) : (
-              <table className="su-table su-table-striped su-w-full">
-                <thead>
-                  <tr>
-                    {columns.map((col) => (
-                      <th key={col.key}>{col.label}</th>
-                    ))}
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map((entry) => (
-                    <tr key={entry.id}>
-                      {columns.map((col) => (
-                        <td key={col.key}>{renderCellValue(entry, col)}</td>
-                      ))}
-                      <td>
-                        {activeContentType && (
-                          <Link
-                            className="su-link"
-                            to={`/content/${activeContentType.slug}/${entry.id}`}
-                          >
-                            Edit
-                          </Link>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Debug section (optional, can remove later) */}
+      {/* Debug block to verify list view wiring */}
       <div className="su-card su-mt-lg">
         <div className="su-card-header">
           <h2 className="su-card-title">Debug</h2>
+          <p className="su-card-subtitle su-text-xs">
+            This is just to verify list view wiring; you can remove it later.
+          </p>
         </div>
         <div className="su-card-body">
-          <pre className="su-code-block">
+          <pre className="su-code-block su-text-xs">
             {JSON.stringify(
               {
-                slugFromRoute: slug,
+                typeSlug,
                 activeContentType: activeContentType
-                  ? {
-                      id: activeContentType.id,
-                      slug: activeContentType.slug,
-                      name: activeContentType.name,
-                    }
+                  ? { id: activeContentType.id, slug: activeContentType.slug }
                   : null,
-                role,
+                role: ROLE,
                 listViews,
                 activeViewSlug,
                 columns,
