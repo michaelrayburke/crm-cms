@@ -1,178 +1,142 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api } from '../../lib/api';
-import { StatusChip } from '../../components/StatusChip';
-import { StatusDot } from '../../components/StatusDot';
-import { Avatar } from '../../components/Avatar';
-import {
-  ArrowUpDown,
-  ChevronDown,
-  ChevronUp,
-  Filter,
-  MoreHorizontal,
-  Plus,
-  Settings2,
-  X,
-} from 'lucide-react';
+import React, { useEffect, useMemo, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import { api } from "../../lib/api";
 
-function getIdentifierKeyForType(type) {
-  if (!type) return 'id';
-  if (type.identifierKey) return type.identifierKey;
-  // Fallbacks
-  if (type.fields?.some((f) => f.key === 'slug')) return 'slug';
-  if (type.fields?.some((f) => f.key === 'title')) return 'title';
-  return 'id';
-}
+// Built-in columns that exist on every entry
+const BUILTIN_COLUMNS = [
+  { key: "title", label: "Title" },
+  { key: "slug", label: "Slug" },
+  { key: "status", label: "Status" },
+  { key: "created_at", label: "Created" },
+  { key: "updated_at", label: "Updated" },
+];
 
-function formatValue(value) {
-  if (value == null) return '';
-  if (Array.isArray(value)) {
-    if (!value.length) return '';
-    if (typeof value[0] === 'object') {
-      return value
-        .map((item) => item.title || item.name || item.slug || item.id)
-        .join(', ');
+// Simple helper to build a fallback column set when no list views exist
+function buildFallbackColumns(contentType) {
+  const fields = Array.isArray(contentType?.fields) ? contentType.fields : [];
+
+  const fieldColumns = fields.slice(0, 3).map((f) => ({
+    key: f.key,
+    label: f.label || f.name || f.key,
+  }));
+
+  const base = [...BUILTIN_COLUMNS];
+  for (const col of fieldColumns) {
+    if (!base.find((b) => b.key === col.key)) {
+      base.push(col);
     }
-    return value.join(', ');
   }
-  if (typeof value === 'object') {
-    return value.title || value.name || value.slug || value.id || JSON.stringify(value);
-  }
-  return String(value);
-}
-
-function collectKeysFromRows(rows) {
-  const keys = new Set();
-  rows.forEach((row) => {
-    Object.keys(row.data || {}).forEach((k) => keys.add(k));
-  });
-  return Array.from(keys);
-}
-
-function loadListColumns(typeSlug, rows) {
-  try {
-    const raw = window.localStorage.getItem(`su:listColumns:${typeSlug}`);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length) return parsed;
-    }
-  } catch (e) {
-    // ignore
-  }
-  // fallback: first few keys from data
-  const keys = collectKeysFromRows(rows);
-  return keys.slice(0, 4);
-}
-
-function saveListColumns(typeSlug, columns) {
-  try {
-    window.localStorage.setItem(
-      `su:listColumns:${typeSlug}`,
-      JSON.stringify(columns || []),
-    );
-  } catch (e) {
-    // ignore
-  }
+  return base;
 }
 
 export default function TypeList() {
-  const { slug: typeSlug } = useParams();
-  const navigate = useNavigate();
+  console.log("🔥 TypeList.jsx is running and loaded");
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [contentMeta, setContentMeta] = useState(null);
-  const [rows, setRows] = useState([]);
-  const [columns, setColumns] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortKey, setSortKey] = useState('updated_at');
-  const [sortDir, setSortDir] = useState('desc');
-  const [editingColumns, setEditingColumns] = useState(false);
-
-  // NEW: content types + list-view wiring
+  const { slug } = useParams(); // e.g., "songs"
   const [contentTypes, setContentTypes] = useState([]);
-  const [listViewNotice, setListViewNotice] = useState('');
+  const [entries, setEntries] = useState([]);
+  const [loadingTypes, setLoadingTypes] = useState(true);
+  const [loadingEntries, setLoadingEntries] = useState(false);
+  const [error, setError] = useState("");
 
-  // Load all content types so we can resolve the content-type id (needed for list view API).
+  // List-view specific state
+  const [listViews, setListViews] = useState([]);
+  const [activeViewSlug, setActiveViewSlug] = useState("");
+  const [columns, setColumns] = useState([]);
+
+  // For now we just use ADMIN; later we can pull this from the JWT or user context
+  const role = "ADMIN";
+
+  // --------------------------------------------------
+  // Load all content types (for metadata + ID lookup)
+  // --------------------------------------------------
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
       try {
-        const res = await api.get('/api/content-types');
+        setLoadingTypes(true);
+        const res = await api.get("/api/content-types");
         if (cancelled) return;
-        setContentTypes(res.data || []);
+        const list = res.data || [];
+
+        // Keep a stable sorted list (optional)
+        list.sort((a, b) => {
+          const an = (a.name || a.slug || "").toLowerCase();
+          const bn = (b.name || b.slug || "").toLowerCase();
+          return an.localeCompare(bn);
+        });
+
+        setContentTypes(list);
       } catch (err) {
-        console.error('[TypeList] failed to load content types for list views', err);
+        console.error("[TypeList] failed to load content types", err);
+        if (!cancelled) {
+          setError("Failed to load content types");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingTypes(false);
+        }
       }
     })();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // --------------------------------------------------
+  // Derive the active content type from the slug
+  // --------------------------------------------------
   const activeContentType = useMemo(() => {
-    if (!typeSlug || !contentTypes || !contentTypes.length) return null;
+    if (!contentTypes || !contentTypes.length || !slug) return null;
     return (
-      contentTypes.find((ct) => ct.slug === typeSlug) ||
-      contentTypes.find((ct) => String(ct.id) === String(typeSlug)) ||
+      contentTypes.find((ct) => ct.slug === slug) ||
+      contentTypes.find((ct) => String(ct.id) === String(slug)) ||
       null
     );
-  }, [contentTypes, typeSlug]);
+  }, [contentTypes, slug]);
 
-  // Load entries for this type
+  // --------------------------------------------------
+  // Load entries for this content type (by slug)
+  // --------------------------------------------------
   useEffect(() => {
-    if (!typeSlug) return;
-
+    if (!slug) return;
     let cancelled = false;
 
-    async function load() {
-      setLoading(true);
-      setError('');
-
+    (async () => {
       try {
-        const res = await api.get(`/api/content/${typeSlug}`, {
-          params: {
-            q: searchTerm || undefined,
-          },
-        });
-
+        setLoadingEntries(true);
+        setError("");
+        const res = await api.get(`/api/content/${slug}`);
         if (cancelled) return;
-
-        const payload = res.data || {};
-        const data = Array.isArray(payload.data) ? payload.data : [];
-        const meta = payload.meta || null;
-
-        setRows(data);
-        setContentMeta(meta);
-
-        // If we don't have columns yet, try to load from local storage
-        // (this is our fallback when no server list views exist).
-        if (!columns.length && data.length) {
-          const loaded = loadListColumns(typeSlug, data);
-          setColumns(loaded);
-        }
+        setEntries(res.data || []);
       } catch (err) {
-        if (cancelled) return;
-        console.error('[TypeList] failed to load content', err);
-        setError(
-          err?.response?.data?.message ||
-            'Unable to load entries for this content type.',
-        );
+        console.error("[TypeList] failed to load entries", err);
+        if (!cancelled) {
+          setError("Failed to load entries");
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoadingEntries(false);
+        }
       }
-    }
-
-    load();
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [typeSlug, searchTerm]); // columns intentionally omitted
+  }, [slug]);
 
-  // Load server-defined list views for this content type and role (currently ADMIN-only).
+  // --------------------------------------------------
+  // Load list views for this content type & role (by ID)
+  // --------------------------------------------------
   useEffect(() => {
     if (!activeContentType || !activeContentType.id) {
+      // No CT yet: fallback columns until we know more
+      setColumns(buildFallbackColumns(activeContentType));
+      setListViews([]);
+      setActiveViewSlug("");
       return;
     }
 
@@ -180,43 +144,43 @@ export default function TypeList() {
 
     (async () => {
       try {
+        setError("");
         const res = await api.get(
           `/api/content-types/${activeContentType.id}/list-views`,
-          { params: { role: 'ADMIN' } },
+          { params: { role } }
         );
 
         if (cancelled) return;
 
-        const data = res.data || {};
-        const views = (data && data.views) || [];
+        const loaded = (res.data && res.data.views) || [];
+        setListViews(loaded);
 
-        if (!Array.isArray(views) || !views.length) {
-          setListViewNotice(
-            'No list views configured yet for this content type and role. Using a fallback layout.',
-          );
+        if (!loaded.length) {
+          // No views configured: fallback
+          setActiveViewSlug("");
+          setColumns(buildFallbackColumns(activeContentType));
           return;
         }
 
-        const def = views.find((v) => v.is_default) || views[0];
-        const cols = (def.config && def.config.columns) || [];
-        const keys = cols.map((c) => c.key).filter(Boolean);
+        // Pick default view (or first)
+        const def = loaded.find((v) => v.is_default) || loaded[0];
+        setActiveViewSlug(def.slug);
 
-        if (!keys.length) {
-          setListViewNotice(
-            'Active list view has no columns configured. Using a fallback layout.',
-          );
-          return;
+        const cfgCols = def.config?.columns || [];
+        if (Array.isArray(cfgCols) && cfgCols.length) {
+          setColumns(cfgCols);
+        } else {
+          setColumns(buildFallbackColumns(activeContentType));
         }
-
-        setListViewNotice('');
-        setColumns(keys);
-        saveListColumns(typeSlug, keys);
       } catch (err) {
-        console.error('[TypeList] failed to load list views', err);
+        console.error("[TypeList] failed to load list views", err);
         if (!cancelled) {
-          setListViewNotice(
-            'Could not load list views from the server. Using a fallback layout.',
-          );
+          // If list views request fails, we still want a usable table
+          setListViews([]);
+          setActiveViewSlug("");
+          setColumns(buildFallbackColumns(activeContentType));
+          // Optionally surface a mild error
+          // setError("Failed to load list views; using fallback layout");
         }
       }
     })();
@@ -224,315 +188,157 @@ export default function TypeList() {
     return () => {
       cancelled = true;
     };
-  }, [activeContentType, typeSlug]);
+  }, [activeContentType, role]);
 
-  const identifierKey = useMemo(
-    () => getIdentifierKeyForType(contentMeta?.type),
-    [contentMeta],
-  );
+  // --------------------------------------------------
+  // Helpers to render cell values
+  // --------------------------------------------------
+  const builtinKeys = new Set(BUILTIN_COLUMNS.map((c) => c.key));
 
-  const processedRows = useMemo(() => {
-    let data = [...rows];
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      data = data.filter((row) => {
-        const title = row.title || row.data?.title || '';
-        const slug = row.slug || '';
-        const id = String(row.id || '');
-        return (
-          title.toLowerCase().includes(term) ||
-          slug.toLowerCase().includes(term) ||
-          id.toLowerCase().includes(term)
-        );
-      });
+  const renderCellValue = (entry, col) => {
+    const key = col.key;
+    if (builtinKeys.has(key)) {
+      return entry[key] ?? "";
     }
+    // Custom field stored under entry.data[key]
+    const dataVal = entry.data ? entry.data[key] : undefined;
+    if (dataVal == null) return "";
 
-    if (sortKey) {
-      data.sort((a, b) => {
-        const av =
-          sortKey === 'updated_at'
-            ? a.updated_at
-            : sortKey === 'created_at'
-            ? a.created_at
-            : a.data?.[sortKey];
-        const bv =
-          sortKey === 'updated_at'
-            ? b.updated_at
-            : sortKey === 'created_at'
-            ? b.created_at
-            : b.data?.[sortKey];
-
-        const aVal = av == null ? '' : av;
-        const bVal = bv == null ? '' : bv;
-
-        if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
-        return 0;
-      });
+    if (typeof dataVal === "object") {
+      try {
+        return JSON.stringify(dataVal);
+      } catch {
+        return String(dataVal);
+      }
     }
+    return String(dataVal);
+  };
 
-    return data;
-  }, [rows, searchTerm, sortKey, sortDir]);
+  // --------------------------------------------------
+  // Render
+  // --------------------------------------------------
+  const title =
+    activeContentType?.name || activeContentType?.slug || slug || "Entries";
 
-  async function removeEntry(id) {
-    if (!window.confirm('Delete this entry? This cannot be undone.')) return;
-    try {
-      await api.delete(`/api/content/${typeSlug}/${id}`);
-      setRows((prev) => prev.filter((row) => row.id !== id));
-    } catch (err) {
-      console.error('[TypeList] failed to delete entry', err);
-      alert('Failed to delete entry.');
-    }
-  }
-
-  function handleToggleSort(key) {
-    if (sortKey === key) {
-      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortKey(key);
-      setSortDir('asc');
-    }
-  }
-
-  function prettifyKey(key) {
-    if (!key) return '';
-    return key
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, (m) => m.toUpperCase());
-  }
-
-  const titleKey =
-    contentMeta?.type?.fields?.find((f) => f.isTitle)?.key || 'title';
-
-  const typeLabel =
-    contentMeta?.type?.label_plural || contentMeta?.type?.label || typeSlug;
-
-  const hasAnyColumns = columns && columns.length > 0;
+  const noViewsConfigured = listViews.length === 0;
 
   return (
-    <div className="su-page su-page-content-list">
+    <div className="su-page">
       <div className="su-page-header">
         <div>
-          <h1 className="su-page-title">{typeLabel}</h1>
-          {contentMeta?.type?.description && (
-            <p className="su-page-subtitle">{contentMeta.type.description}</p>
-          )}
+          <h1 className="su-page-title">{title}</h1>
+          <p className="su-page-subtitle">
+            Manage entries for this content type.
+          </p>
         </div>
         <div className="su-page-actions">
-          <button
-            type="button"
-            className="su-btn su-btn-primary"
-            onClick={() => navigate(`/admin/content/${typeSlug}/new`)}
-          >
-            <Plus size={16} />
-            <span>New {contentMeta?.type?.label || 'Entry'}</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="su-toolbar su-gap-md">
-        <div className="su-toolbar-left">
-          <div className="su-search-input">
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search title, slug, ID…"
-            />
-            {searchTerm && (
-              <button
-                type="button"
-                className="su-icon-btn"
-                onClick={() => setSearchTerm('')}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="su-toolbar-right">
-          <button
-            type="button"
-            className="su-icon-btn"
-            onClick={() => setEditingColumns((v) => !v)}
-            title="Show/hide columns"
-          >
-            <Settings2 size={16} />
-          </button>
-        </div>
-      </div>
-
-      {listViewNotice && (
-        <div className="su-alert su-alert-info su-mb-sm">{listViewNotice}</div>
-      )}
-
-      {editingColumns && (
-        <div className="su-card su-mb-md">
-          <div className="su-card-header">
-            <div className="su-card-title">Columns to show</div>
-            <button
-              type="button"
-              className="su-icon-btn"
-              onClick={() => setEditingColumns(false)}
+          {activeContentType && (
+            <Link
+              className="su-btn su-btn-primary"
+              to={`/content/${activeContentType.slug}/new`}
             >
-              <X size={14} />
-            </button>
-          </div>
-          <div className="su-card-body su-columns-picker">
-            {collectKeysFromRows(rows).map((key) => {
-              const checked = columns.includes(key);
-              return (
-                <label key={key} className="su-checkbox-pill">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(e) => {
-                      const next = e.target.checked
-                        ? [...columns, key]
-                        : columns.filter((k) => k !== key);
-                      setColumns(next);
-                      saveListColumns(typeSlug, next);
-                    }}
-                  />
-                  <span>{prettifyKey(key)}</span>
-                </label>
-              );
-            })}
-            {!rows.length && (
-              <div className="su-text-muted">
-                No data yet – columns will appear once you add entries.
-              </div>
-            )}
-          </div>
+              + New {activeContentType.singular || "entry"}
+            </Link>
+          )}
         </div>
-      )}
+      </div>
 
       {error && (
-        <div className="su-alert su-alert-error su-mb-md">
-          {error}{' '}
-          <button
-            type="button"
-            className="su-link"
-            onClick={() => window.location.reload()}
-          >
-            Reload
-          </button>
+        <div className="su-alert su-alert-danger su-mb-md">{error}</div>
+      )}
+
+      {noViewsConfigured && (
+        <div className="su-alert su-alert-info su-mb-md">
+          No list views configured yet for role <strong>{role}</strong>. Using a
+          fallback layout. You can customize columns in{" "}
+          <Link to="/settings/list-views">Settings → List Views</Link>.
         </div>
       )}
 
-      <div className="su-table-wrapper">
-        <table className="su-table su-table-content">
-          <thead>
-            <tr>
-              <th
-                style={{ width: '40%' }}
-                onClick={() => handleToggleSort(titleKey)}
-                className="su-table-sortable"
-              >
-                <div className="su-table-header-cell">
-                  <span>Title</span>
-                  <ArrowUpDown size={14} />
-                </div>
-              </th>
+      {(loadingTypes || loadingEntries) && (
+        <div className="su-card su-mb-lg">
+          <div className="su-card-body">Loading…</div>
+        </div>
+      )}
 
-              {hasAnyColumns &&
-                columns.map((key) => (
-                  <th
-                    key={key}
-                    onClick={() => handleToggleSort(key)}
-                    className="su-table-sortable"
-                  >
-                    <div className="su-table-header-cell">
-                      <span>{prettifyKey(key)}</span>
-                      <ArrowUpDown size={14} />
-                    </div>
-                  </th>
-                ))}
-
-              <th
-                onClick={() => handleToggleSort('id')}
-                className="su-table-sortable"
-              >
-                <div className="su-table-header-cell">
-                  <span>ID</span>
-                  <ArrowUpDown size={14} />
-                </div>
-              </th>
-              <th
-                onClick={() => handleToggleSort('updated_at')}
-                className="su-table-sortable"
-              >
-                <div className="su-table-header-cell">
-                  <span>Updated</span>
-                  <ArrowUpDown size={14} />
-                </div>
-              </th>
-              <th style={{ textAlign: 'right' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={4 + (columns?.length || 0)}>Loading…</td>
-              </tr>
-            )}
-
-            {!loading &&
-              processedRows.map((row) => {
-                const id = row[identifierKey] || row.id;
-                const title =
-                  row.title || row.data?.[titleKey] || row.data?.title;
-                const updated = row.updated_at
-                  ? new Date(row.updated_at).toLocaleString()
-                  : '';
-
-                return (
-                  <tr key={id}>
-                    <td>
-                      <Link to={`/admin/content/${typeSlug}/${id}`}>
-                        {formatValue(title) || '(untitled)'}
-                      </Link>
-                    </td>
-                    {hasAnyColumns &&
-                      columns.map((key) => (
-                        <td key={key}>{formatValue(row.data?.[key])}</td>
-                      ))}
-                    <td>{id}</td>
-                    <td>{updated}</td>
-                    <td align="right">
-                      <div className="su-row-actions">
-                        <Link
-                          to={`/admin/content/${typeSlug}/${id}`}
-                          className="su-link"
-                        >
-                          Edit
-                        </Link>
-                        <button
-                          type="button"
-                          className="su-link su-link-danger"
-                          onClick={() => removeEntry(id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
+      {!loadingTypes && !loadingEntries && (
+        <div className="su-card">
+          <div className="su-card-header">
+            <h2 className="su-card-title">Entries</h2>
+            <p className="su-card-subtitle">
+              Showing {entries.length} entr{entries.length === 1 ? "y" : "ies"}{" "}
+              using view{" "}
+              {activeViewSlug ? <code>{activeViewSlug}</code> : "fallback"}.
+            </p>
+          </div>
+          <div className="su-card-body su-table-wrapper">
+            {entries.length === 0 ? (
+              <p className="su-text-muted">
+                No entries yet. Click &ldquo;New&rdquo; to create the first one.
+              </p>
+            ) : (
+              <table className="su-table su-table-striped su-w-full">
+                <thead>
+                  <tr>
+                    {columns.map((col) => (
+                      <th key={col.key}>{col.label}</th>
+                    ))}
+                    <th>Actions</th>
                   </tr>
-                );
-              })}
-
-            {!loading && processedRows.length === 0 && (
-              <tr>
-                <td
-                  colSpan={4 + (columns?.length || 0)}
-                  style={{ padding: '12px 0', opacity: 0.7 }}
-                >
-                  No entries yet.
-                </td>
-              </tr>
+                </thead>
+                <tbody>
+                  {entries.map((entry) => (
+                    <tr key={entry.id}>
+                      {columns.map((col) => (
+                        <td key={col.key}>{renderCellValue(entry, col)}</td>
+                      ))}
+                      <td>
+                        {activeContentType && (
+                          <Link
+                            className="su-link"
+                            to={`/content/${activeContentType.slug}/${entry.id}`}
+                          >
+                            Edit
+                          </Link>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
-          </tbody>
-        </table>
+          </div>
+        </div>
+      )}
+
+      {/* Debug section (optional, can remove later) */}
+      <div className="su-card su-mt-lg">
+        <div className="su-card-header">
+          <h2 className="su-card-title">Debug</h2>
+        </div>
+        <div className="su-card-body">
+          <pre className="su-code-block">
+            {JSON.stringify(
+              {
+                slugFromRoute: slug,
+                activeContentType: activeContentType
+                  ? {
+                      id: activeContentType.id,
+                      slug: activeContentType.slug,
+                      name: activeContentType.name,
+                    }
+                  : null,
+                role,
+                listViews,
+                activeViewSlug,
+                columns,
+                entriesCount: entries.length,
+              },
+              null,
+              2
+            )}
+          </pre>
+        </div>
       </div>
     </div>
   );
