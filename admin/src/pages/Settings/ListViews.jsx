@@ -344,6 +344,11 @@ export default function ListViewsSettings() {
       const payload = {
         slug,
         label,
+        // roles array for the view (use selected role for now)
+        roles: [role],
+        // default_roles array: include role if isDefault is true
+        default_roles: isDefault ? [role] : [],
+        // also include legacy fields for backward compatibility
         role,
         is_default: isDefault,
         config: { columns },
@@ -361,12 +366,12 @@ export default function ListViewsSettings() {
       } else if (res && Array.isArray(res?.data)) {
         savedViews = res.data;
       }
-      // find the saved view for this role (case-insensitive)
+      // find the view row matching the current role (case-insensitive)
       let saved =
         savedViews.find(
           (v) => v.role && v.role.toUpperCase() === role.toUpperCase()
         ) || savedViews[0];
-      // if nothing yet, fallback to legacy shape where data.view or data is a single view
+      // if nothing found, fallback to legacy shape where data.view or data is a single view
       if (!saved && res?.data && !Array.isArray(res.data)) {
         saved = res.data.view || res.data;
       }
