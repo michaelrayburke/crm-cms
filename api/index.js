@@ -14,6 +14,7 @@ import dashboardRouter from "./routes/dashboard.js";
 import contentTypesRouter from './routes/contentTypes.js';
 import editorViewsRouter from './routes/editorViews.js';
 import listViewsRouter from './routes/listViews.js';
+import auth from "./middleware/auth.js";
 
 dotenv.config();
 
@@ -491,6 +492,8 @@ app.use((err, req, res, _next) => {
   }
   res.status(500).json({ error: 'Server error' });
 });
+
+app.use(auth);
 
 /* ----------------------- Listen ------------------------------------ */
 const PORT = process.env.PORT || 4000;
