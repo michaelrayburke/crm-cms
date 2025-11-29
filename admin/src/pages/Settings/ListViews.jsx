@@ -53,7 +53,8 @@ export default function ListViewsSettings() {
         setLoadingTypes(true);
         const res = await api.get("/api/content-types");
         if (cancelled) return;
-        const list = res.data || [];
+        // API may return a plain array or an object with a `.data` property.
+        const list = Array.isArray(res) ? res : res?.data || [];
 
         // predictable sort
         list.sort((a, b) => {
@@ -341,6 +342,7 @@ export default function ListViewsSettings() {
 
     try {
       setLoading(true);
+      // Build payload with legacy fields (role, is_default) for backwards compatibility
       const payload = {
         slug,
         label,
@@ -352,20 +354,50 @@ export default function ListViewsSettings() {
         `/api/content-types/${selectedTypeId}/list-view`,
         payload
       );
-      const saved = res.data.view || res.data;
+
+      // Response may include an array of views (res.data.views) or a single view
+      let savedRow;
+      if (res?.data?.views && Array.isArray(res.data.views)) {
+        const arr = res.data.views;
+        // Find the view for the current role (case-insensitive) or fall back
+        savedRow =
+          arr.find(
+            (v) =>
+              (v.role || "").toUpperCase() === role.toUpperCase() &&
+              v.slug === slug
+          ) || arr.find((v) => v.slug === slug) || arr[0];
+      } else if (Array.isArray(res)) {
+        // Raw array
+        const arr = res;
+        savedRow =
+          arr.find(
+            (v) =>
+              (v.role || "").toUpperCase() === role.toUpperCase() &&
+              v.slug === slug
+          ) || arr.find((v) => v.slug === slug) || arr[0];
+      } else {
+        // Legacy: res.data.view or res.data is a single view
+        savedRow = res?.data?.view || res?.data || null;
+      }
+
+      if (!savedRow) {
+        setSaveMessage("List view saved");
+        setDirty(false);
+        return;
+      }
 
       setViews((prev) => {
-        const idx = prev.findIndex((v) => v.slug === saved.slug);
+        const idx = prev.findIndex((v) => v.slug === savedRow.slug);
         if (idx === -1) {
-          return [...prev, saved];
+          return [...prev, savedRow];
         }
         const next = [...prev];
-        next[idx] = saved;
+        next[idx] = savedRow;
         return next;
       });
 
-      setActiveViewSlug(saved.slug);
-      setIsDefault(!!saved.is_default);
+      setActiveViewSlug(savedRow.slug);
+      setIsDefault(!!savedRow.is_default);
       setSaveMessage("List view saved");
       setDirty(false);
     } catch (err) {
