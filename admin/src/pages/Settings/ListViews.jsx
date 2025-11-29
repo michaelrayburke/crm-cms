@@ -64,7 +64,7 @@ export default function ListViewsSettings() {
 
         setContentTypes(list);
         if (list.length && !selectedTypeId) {
-          setSelectedTypeId(list[0].slug);
+          setSelectedTypeId(list[0].id);
         }
       } catch (err) {
         console.error("[ListViews] failed to load content types", err);
@@ -408,7 +408,7 @@ export default function ListViewsSettings() {
                 <option value="">No content types yet</option>
               )}
               {contentTypes.map((ct) => (
-                <option key={ct.id} value={ct.slug}>
+                <option key={ct.id} value={ct.id}>
                   {ct.name || ct.slug}
                 </option>
               ))}

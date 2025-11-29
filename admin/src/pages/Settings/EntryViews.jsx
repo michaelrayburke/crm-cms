@@ -87,7 +87,7 @@ export default function EntryViews() {
         if (!cancelled) {
           setContentTypes(list);
           if (list.length && !selectedTypeId) {
-            setSelectedTypeId(list[0].slug);
+            setSelectedTypeId(list[0].id);
           }
         }
       } catch (err) {
@@ -450,13 +450,13 @@ export default function EntryViews() {
             <div className="su-vertical-list">
               {contentTypes.map((ct) => (
                 <button
-                  key={ct.slug}
+                  key={ct.id}
                   type="button"
                   className={
                     "su-pill-button" +
-                    (ct.slug === selectedTypeId ? " su-pill-button--active" : "")
+                    (ct.id === selectedTypeId ? " su-pill-button--active" : "")
                   }
-                  onClick={() => setSelectedTypeId(ct.slug)}
+                  onClick={() => setSelectedTypeId(ct.id)}
                 >
                   {ct.name || ct.slug}
                 </button>

@@ -134,7 +134,7 @@ export default function Editor() {
         // 2) Load the full definition (including fields) by ID
         let fullCt;
         try {
-          const fullRes = await api.get(`/api/content-types/${basicCt.slug}`);
+          const fullRes = await api.get(`/api/content-types/${basicCt.id}`);
           fullCt = fullRes?.data || fullRes || basicCt;
         } catch (e) {
           console.warn(
@@ -151,7 +151,7 @@ export default function Editor() {
         // 3) Load editor view config (no explicit role yet; default layout)
         try {
           const viewRes = await api.get(
-            `/api/content-types/${basicCt.slug}/editor-view`
+            `/api/content-types/${basicCt.id}/editor-view`
           );
           const cfg = viewRes?.config || {};
           if (!cancelled) {

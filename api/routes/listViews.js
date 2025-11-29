@@ -5,198 +5,196 @@ import { checkPermission } from '../middleware/checkPermission.js';
 
 const router = express.Router();
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function isUuid(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    String(value || '').trim()
-  );
-}
-
-async function resolveContentTypeId(idOrSlug) {
-  if (!idOrSlug) return null;
-  const raw = String(idOrSlug).trim();
-  const isId = isUuid(raw);
-  const where = isId ? 'id = $1::uuid' : 'slug = $1';
-
+/**
+ * Helper: fetch the default list view for a content type + role.
+ */
+async function getDefaultListView(contentTypeId, role) {
   const { rows } = await pool.query(
     `
-      SELECT id
-      FROM content_types
-      WHERE ${where}
+    SELECT id, content_type_id, slug, label, role, is_default, config
+    FROM entry_list_views
+    WHERE content_type_id = $1
+      AND role = $2
+    ORDER BY is_default DESC, created_at ASC
+    LIMIT 1
     `,
-    [raw]
+    [contentTypeId, role]
   );
-
-  return rows[0]?.id ?? null;
+  return rows[0] || null;
 }
-
-async function getListViewsForTypeAndRole(contentTypeId, role) {
-  const roleValue = (role || 'ADMIN').toUpperCase();
-  const { rows } = await pool.query(
-    `
-      SELECT id, content_type_id, slug, label, role, is_default, config
-      FROM entry_list_views
-      WHERE content_type_id = $1
-        AND role = $2
-      ORDER BY created_at ASC, id ASC
-    `,
-    [contentTypeId, roleValue]
-  );
-  return rows;
-}
-
-// ---------------------------------------------------------------------------
-// Routes
-// ---------------------------------------------------------------------------
 
 /**
  * GET /api/content-types/:id/list-views?role=ADMIN
- * Returns all list views for a given content type + role.
- *
- * NOTE: :id may be either the UUID primary key or the content type slug.
- * IMPORTANT: returns a plain array for backwards compatibility.
+ * Returns ALL list views for this content type + role.
+ * (Used by Settings → List Views page we’ll build next.)
  */
 router.get(
   '/content-types/:id/list-views',
   checkPermission('manage_content_types'),
   async (req, res) => {
-    try {
-      const { id: idOrSlug } = req.params;
-      const role = (req.query.role || req.user?.role || 'ADMIN').toUpperCase();
+    const { id } = req.params;
+    const { role } = req.query;
 
-      const contentTypeId = await resolveContentTypeId(idOrSlug);
-      if (!contentTypeId) {
+    if (!role) {
+      return res.status(400).json({ error: 'Missing role query param' });
+    }
+
+    try {
+      const ctRes = await pool.query(
+        'SELECT id FROM content_types WHERE id = $1',
+        [id]
+      );
+      if (!ctRes.rows.length) {
         return res.status(404).json({ error: 'Content type not found' });
       }
 
-      const views = await getListViewsForTypeAndRole(contentTypeId, role);
+      const { rows } = await pool.query(
+        `
+        SELECT id, content_type_id, slug, label, role, is_default, config
+        FROM entry_list_views
+        WHERE content_type_id = $1
+          AND role = $2
+        ORDER BY is_default DESC, label ASC
+        `,
+        [id, role]
+      );
 
-      // NOTE: returning the raw array keeps existing frontend logic working.
-      return res.json(views);
+      return res.json({ views: rows });
     } catch (err) {
       console.error('[GET /content-types/:id/list-views]', err);
-      return res.status(500).json({ error: 'Failed to load list views' });
+      return res.status(500).json({ error: 'Failed to fetch list views' });
+    }
+  }
+);
+
+/**
+ * GET /api/content-types/:id/list-view?role=ADMIN
+ * Returns the chosen/default list view for this type + role.
+ * If none exists, returns a synthetic config so entries can still render.
+ * (Used by the Entries table page.)
+ */
+router.get(
+  '/content-types/:id/list-view',
+  checkPermission('view_content_types'),
+  async (req, res) => {
+    const { id } = req.params;
+    const { role } = req.query;
+
+    if (!role) {
+      return res.status(400).json({ error: 'Missing role query param' });
+    }
+
+    try {
+      const ctRes = await pool.query(
+        'SELECT id, slug, name FROM content_types WHERE id = $1',
+        [id]
+      );
+      if (!ctRes.rows.length) {
+        return res.status(404).json({ error: 'Content type not found' });
+      }
+
+      const ct = ctRes.rows[0];
+      const view = await getDefaultListView(id, role);
+
+      if (!view) {
+        // No stored view; synthesize a config with basic columns.
+        const fallbackConfig = {
+          columns: [
+            { key: 'title', label: 'Title' },
+            { key: 'status', label: 'Status' },
+            { key: 'updated_at', label: 'Updated' },
+          ],
+        };
+        return res.json({
+          slug: 'default',
+          label: 'Default list',
+          role,
+          is_default: false,
+          config: fallbackConfig,
+        });
+      }
+
+      return res.json(view);
+    } catch (err) {
+      console.error('[GET /content-types/:id/list-view]', err);
+      return res.status(500).json({ error: 'Failed to fetch list view' });
     }
   }
 );
 
 /**
  * PUT /api/content-types/:id/list-view
- * Create or update a single list view definition for a type + role.
- *
- * Body:
- *   {
- *     slug: string,
- *     label: string,
- *     role: "ADMIN" | "EDITOR" | "...",
- *     is_default: boolean,
- *     config: { columns: [{ key, label, ... }] }
- *   }
- *
- * NOTE: :id may be either the UUID primary key or the content type slug.
+ * Upserts a single list view:
+ * Body: { slug, label, role, is_default?, config }
  */
 router.put(
   '/content-types/:id/list-view',
   checkPermission('manage_content_types'),
   async (req, res) => {
+    const { id } = req.params;
+    let { slug, label, role, is_default, config } = req.body || {};
+
+    if (!slug || !label || !role) {
+      return res
+        .status(400)
+        .json({ error: 'slug, label, and role are required' });
+    }
+
+    slug = String(slug)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]/g, '-');
+    label = String(label).trim();
+    role = String(role).trim().toUpperCase();
+    const isDefault = !!is_default;
+
+    if (!config || typeof config !== 'object') {
+      config = {};
+    }
+
     const client = await pool.connect();
-
     try {
-      const { id: idOrSlug } = req.params;
-      const {
-        slug,
-        label,
-        role,
-        is_default: isDefault,
-        config,
-      } = req.body || {};
-
-      if (!slug || typeof slug !== 'string') {
-        return res.status(400).json({ error: 'slug is required' });
-      }
-      if (!role || typeof role !== 'string') {
-        return res.status(400).json({ error: 'role is required' });
-      }
-
-      const roleValue = role.toUpperCase();
-
-      const contentTypeId = await resolveContentTypeId(idOrSlug);
-      if (!contentTypeId) {
+      const ctRes = await client.query(
+        'SELECT id FROM content_types WHERE id = $1',
+        [id]
+      );
+      if (!ctRes.rows.length) {
+        client.release();
         return res.status(404).json({ error: 'Content type not found' });
       }
 
       await client.query('BEGIN');
 
-      // If this view should be the default, clear others for this type+role.
       if (isDefault) {
         await client.query(
           `
-            UPDATE entry_list_views
-            SET is_default = FALSE
-            WHERE content_type_id = $1
-              AND role = $2
+          UPDATE entry_list_views
+          SET is_default = false
+          WHERE content_type_id = $1
+            AND role = $2
           `,
-          [contentTypeId, roleValue]
+          [id, role]
         );
       }
 
-      const findSql = `
-        SELECT id
-        FROM entry_list_views
-        WHERE content_type_id = $1
-          AND slug = $2
-          AND role = $3
-        LIMIT 1
-      `;
-      const existingRes = await client.query(findSql, [
-        contentTypeId,
-        slug,
-        roleValue,
-      ]);
-
-      let savedRow;
-
-      if (existingRes.rows.length) {
-        const updateSql = `
-          UPDATE entry_list_views
-          SET
-            label = $1,
-            is_default = $2,
-            config = $3,
-            updated_at = NOW()
-          WHERE id = $4
-          RETURNING id, content_type_id, slug, label, role, is_default, config
-        `;
-        const updateRes = await client.query(updateSql, [
-          label || slug,
-          !!isDefault,
-          config || {},
-          existingRes.rows[0].id,
-        ]);
-        savedRow = updateRes.rows[0];
-      } else {
-        const insertSql = `
-          INSERT INTO entry_list_views
-            (content_type_id, slug, label, role, is_default, config)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          RETURNING id, content_type_id, slug, label, role, is_default, config
-        `;
-        const insertRes = await client.query(insertSql, [
-          contentTypeId,
-          slug,
-          label || slug,
-          roleValue,
-          !!isDefault,
-          config || {},
-        ]);
-        savedRow = insertRes.rows[0];
-      }
+      const upsertRes = await client.query(
+        `
+        INSERT INTO entry_list_views (content_type_id, slug, label, role, is_default, config)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (content_type_id, role, slug)
+        DO UPDATE
+          SET label = EXCLUDED.label,
+              is_default = EXCLUDED.is_default,
+              config = EXCLUDED.config,
+              updated_at = now()
+        RETURNING id, content_type_id, slug, label, role, is_default, config
+        `,
+        [id, slug, label, role, isDefault, config]
+      );
 
       await client.query('COMMIT');
-      return res.json({ view: savedRow });
+      const row = upsertRes.rows[0];
+      return res.json({ view: row });
     } catch (err) {
       await client.query('ROLLBACK');
       console.error('[PUT /content-types/:id/list-view]', err);
