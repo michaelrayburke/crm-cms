@@ -53,8 +53,7 @@ export default function ListViewsSettings() {
         setLoadingTypes(true);
         const res = await api.get("/api/content-types");
         if (cancelled) return;
-        // handle both array and object shapes for content types
-        const list = Array.isArray(res) ? res : (res?.data || []);
+        const list = res.data || [];
 
         // predictable sort
         list.sort((a, b) => {
@@ -125,7 +124,8 @@ export default function ListViewsSettings() {
 
         if (cancelled) return;
 
-        const ct = ctRes.data;
+        // handle both axios response { data: ... } and raw object
+        const ct = ctRes?.data || ctRes || null;
         setContentTypeDetail(ct);
 
         const av = computeAvailableFields(ct);
@@ -344,11 +344,6 @@ export default function ListViewsSettings() {
       const payload = {
         slug,
         label,
-        // roles array for the view (use selected role for now)
-        roles: [role],
-        // default_roles array: include role if isDefault is true
-        default_roles: isDefault ? [role] : [],
-        // also include legacy fields for backward compatibility
         role,
         is_default: isDefault,
         config: { columns },
@@ -357,39 +352,22 @@ export default function ListViewsSettings() {
         `/api/content-types/${selectedTypeId}/list-view`,
         payload
       );
-      // support new API shape: array or { views: [...] }
-      let savedViews = [];
-      if (Array.isArray(res)) {
-        savedViews = res;
-      } else if (res && Array.isArray(res?.data?.views)) {
-        savedViews = res.data.views;
-      } else if (res && Array.isArray(res?.data)) {
-        savedViews = res.data;
-      }
-      // find the view row matching the current role (case-insensitive)
-      let saved =
-        savedViews.find(
-          (v) => v.role && v.role.toUpperCase() === role.toUpperCase()
-        ) || savedViews[0];
-      // if nothing found, fallback to legacy shape where data.view or data is a single view
-      if (!saved && res?.data && !Array.isArray(res.data)) {
-        saved = res.data.view || res.data;
-      }
-      if (saved) {
-        setViews((prev) => {
-          const idx = prev.findIndex((v) => v.slug === saved.slug);
-          if (idx === -1) {
-            return [...prev, saved];
-          }
-          const next = [...prev];
-          next[idx] = saved;
-          return next;
-        });
-        setActiveViewSlug(saved.slug);
-        setIsDefault(!!saved.is_default);
-        setSaveMessage("List view saved");
-        setDirty(false);
-      }
+      const saved = res.data.view || res.data;
+
+      setViews((prev) => {
+        const idx = prev.findIndex((v) => v.slug === saved.slug);
+        if (idx === -1) {
+          return [...prev, saved];
+        }
+        const next = [...prev];
+        next[idx] = saved;
+        return next;
+      });
+
+      setActiveViewSlug(saved.slug);
+      setIsDefault(!!saved.is_default);
+      setSaveMessage("List view saved");
+      setDirty(false);
     } catch (err) {
       console.error("[ListViews] save error", err);
       setError("Failed to save list view");
