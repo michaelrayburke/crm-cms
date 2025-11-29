@@ -53,7 +53,8 @@ export default function ListViewsSettings() {
         setLoadingTypes(true);
         const res = await api.get("/api/content-types");
         if (cancelled) return;
-        const list = res.data || [];
+        // handle both array and object shapes for content types
+        const list = Array.isArray(res) ? res : (res?.data || []);
 
         // predictable sort
         list.sort((a, b) => {
@@ -351,22 +352,39 @@ export default function ListViewsSettings() {
         `/api/content-types/${selectedTypeId}/list-view`,
         payload
       );
-      const saved = res.data.view || res.data;
-
-      setViews((prev) => {
-        const idx = prev.findIndex((v) => v.slug === saved.slug);
-        if (idx === -1) {
-          return [...prev, saved];
-        }
-        const next = [...prev];
-        next[idx] = saved;
-        return next;
-      });
-
-      setActiveViewSlug(saved.slug);
-      setIsDefault(!!saved.is_default);
-      setSaveMessage("List view saved");
-      setDirty(false);
+      // support new API shape: array or { views: [...] }
+      let savedViews = [];
+      if (Array.isArray(res)) {
+        savedViews = res;
+      } else if (res && Array.isArray(res?.data?.views)) {
+        savedViews = res.data.views;
+      } else if (res && Array.isArray(res?.data)) {
+        savedViews = res.data;
+      }
+      // find the saved view for this role (case-insensitive)
+      let saved =
+        savedViews.find(
+          (v) => v.role && v.role.toUpperCase() === role.toUpperCase()
+        ) || savedViews[0];
+      // if nothing yet, fallback to legacy shape where data.view or data is a single view
+      if (!saved && res?.data && !Array.isArray(res.data)) {
+        saved = res.data.view || res.data;
+      }
+      if (saved) {
+        setViews((prev) => {
+          const idx = prev.findIndex((v) => v.slug === saved.slug);
+          if (idx === -1) {
+            return [...prev, saved];
+          }
+          const next = [...prev];
+          next[idx] = saved;
+          return next;
+        });
+        setActiveViewSlug(saved.slug);
+        setIsDefault(!!saved.is_default);
+        setSaveMessage("List view saved");
+        setDirty(false);
+      }
     } catch (err) {
       console.error("[ListViews] save error", err);
       setError("Failed to save list view");
