@@ -57,6 +57,7 @@ async function getListViewsForTypeAndRole(contentTypeId, role) {
  * Returns all list views for a given content type + role.
  *
  * NOTE: :id may be either the UUID primary key or the content type slug.
+ * IMPORTANT: returns a plain array for backwards compatibility.
  */
 router.get(
   '/content-types/:id/list-views',
@@ -72,7 +73,9 @@ router.get(
       }
 
       const views = await getListViewsForTypeAndRole(contentTypeId, role);
-      return res.json({ views });
+
+      // NOTE: returning the raw array keeps existing frontend logic working.
+      return res.json(views);
     } catch (err) {
       console.error('[GET /content-types/:id/list-views]', err);
       return res.status(500).json({ error: 'Failed to load list views' });

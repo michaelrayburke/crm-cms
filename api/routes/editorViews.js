@@ -75,6 +75,7 @@ async function getDefaultEditorView(contentTypeId, role) {
  * Return all editor views for a given type + role.
  *
  * NOTE: :id may be either the UUID primary key or the content type slug.
+ * IMPORTANT: returns a plain array for backwards compatibility.
  */
 router.get(
   '/content-types/:id/editor-views',
@@ -90,12 +91,12 @@ router.get(
       }
 
       const views = await getEditorViewsForTypeAndRole(contentTypeId, role);
-      return res.json({ views });
+
+      // NOTE: returning the raw array keeps existing frontend logic working.
+      return res.json(views);
     } catch (err) {
       console.error('[GET /content-types/:id/editor-views]', err);
-      return res
-        .status(500)
-        .json({ error: 'Failed to load editor views' });
+      return res.status(500).json({ error: 'Failed to load editor views' });
     }
   }
 );
@@ -134,9 +135,7 @@ router.get(
       });
     } catch (err) {
       console.error('[GET /content-types/:id/editor-view]', err);
-      return res
-        .status(500)
-        .json({ error: 'Failed to load editor view' });
+      return res.status(500).json({ error: 'Failed to load editor view' });
     }
   }
 );
