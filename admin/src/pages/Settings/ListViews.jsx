@@ -822,22 +822,45 @@ export default function ListViewsSettings() {
               <p className="su-text-muted">No saved views yet for this role.</p>
             )}
             <div className="su-chip-row su-mb-md">
-              {views.map((v) => (
-                <button
-                  key={v.slug}
-                  type="button"
-                  onClick={() => handleSelectView(v.slug)}
-                  className={
-                    "su-chip" +
-                    (v.slug === activeViewSlug ? " su-chip--active" : "")
-                  }
-                >
-                  {v.label}
-                  {v.is_default && (
-                    <span className="su-chip-badge">default</span>
-                  )}
-                </button>
-              ))}
+              {views.map((v) => {
+                // Determine if this view is default for the currently selected role.
+                // A view may specify default_roles in its config (array of strings)
+                // or fall back to the legacy is_default flag for its single role.
+                const viewDefaultRoles = Array.isArray(v?.config?.default_roles)
+                  ? v.config.default_roles.map((r) => String(r || '').toUpperCase())
+                  : [];
+                const viewRoles = Array.isArray(v?.config?.roles)
+                  ? v.config.roles.map((r) => String(r || '').toUpperCase())
+                  : v.role
+                  ? [String(v.role || '').toUpperCase()]
+                  : [];
+                // Decide if this view should show the 'default' badge:
+                // - If there are explicit default_roles, show the badge when the
+                //   selected role matches one of them.
+                // - Otherwise fall back to the legacy is_default boolean, but only
+                //   if the view's role matches the selected role.
+                const isDefaultForCurrentRole =
+                  (viewDefaultRoles.length > 0
+                    ? viewDefaultRoles.includes(role.toUpperCase())
+                    : v.is_default && viewRoles.includes(role.toUpperCase()));
+
+                return (
+                  <button
+                    key={v.slug}
+                    type="button"
+                    onClick={() => handleSelectView(v.slug)}
+                    className={
+                      "su-chip" +
+                      (v.slug === activeViewSlug ? " su-chip--active" : "")
+                    }
+                  >
+                    {v.label}
+                    {isDefaultForCurrentRole && (
+                      <span className="su-chip-badge">default</span>
+                    )}
+                  </button>
+                );
+              })}
               <button
                 type="button"
                 className="su-chip su-chip--ghost"
