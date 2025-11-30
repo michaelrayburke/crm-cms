@@ -51,10 +51,14 @@ export default function ListViewsSettings() {
   const [saveMessage, setSaveMessage] = useState("");
   const [dirty, setDirty] = useState(false);
 
-  // List of all possible roles.  If you add more roles to your system, add
-  // them here so they can be assigned to views.  These values should
-  // correspond to the role names returned in user tokens.
-  const ALL_ROLES = ["ADMIN", "EDITOR", "AUTHOR", "VIEWER"];
+  // List of all possible roles. We will fetch these from the API
+  // (`/api/roles`) on mount. If the call fails, we fall back to the
+  // default roles below. Each role is stored in uppercase.
+  const [allRoles, setAllRoles] = useState(["ADMIN", "EDITOR", "AUTHOR", "VIEWER"]);
+
+  // Default roles for this view. A view can be default for multiple
+  // roles. When saving, this array is passed as `default_roles`.
+  const [defaultRoles, setDefaultRoles] = useState([]);
 
   // ---------------------------------------------
   // Load content types on mount
@@ -65,6 +69,22 @@ export default function ListViewsSettings() {
     (async () => {
       try {
         setLoadingTypes(true);
+        // Fetch available roles. If this call fails, we keep the
+        // existing default roles. Roles endpoint should return an array
+        // of role objects with a `slug` or `name` field.
+        try {
+          const rolesRes = await api.get("/api/roles");
+          const rawRoles = rolesRes?.data || rolesRes || [];
+          if (Array.isArray(rawRoles) && rawRoles.length) {
+            const extracted = rawRoles.map((r) => (r.slug || r.name || r.role || "").toUpperCase()).filter(Boolean);
+            if (extracted.length) {
+              setAllRoles(extracted);
+            }
+          }
+        } catch (_e) {
+          // ignore errors; fallback to default roles
+        }
+
         const res = await api.get("/api/content-types");
         if (cancelled) return;
         // API may return a plain array or an object with a `.data` property.
@@ -531,7 +551,7 @@ export default function ListViewsSettings() {
               value={role}
               onChange={handleSelectRole}
             >
-              {ALL_ROLES.map((r) => (
+              {allRoles.map((r) => (
                 <option key={r} value={r}>
                   {r.charAt(0) + r.slice(1).toLowerCase()}
                 </option>
@@ -543,7 +563,7 @@ export default function ListViewsSettings() {
           <div className="su-field">
             <label className="su-label">Assigned roles</label>
             <div className="su-flex su-gap-sm su-flex-wrap">
-              {ALL_ROLES.map((r) => (
+               {allRoles.map((r) => (
                 <label key={r} className="su-checkbox">
                   <input
                     type="checkbox"
@@ -616,7 +636,9 @@ export default function ListViewsSettings() {
                   checked={isDefault}
                   onChange={handleToggleDefault}
                 />
-                <span>Make this the default view for {role}</span>
+                <span>
+                  Make this the default view for the selected roles
+                </span>
               </label>
             </div>
 
