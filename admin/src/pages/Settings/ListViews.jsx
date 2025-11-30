@@ -23,7 +23,16 @@ const BUILTIN_COLUMNS = [
 export default function ListViewsSettings() {
   const [contentTypes, setContentTypes] = useState([]);
   const [selectedTypeId, setSelectedTypeId] = useState("");
+  // Role used for filtering list views when loading.  This is the single role
+  // the admin is currently editing for.  We still support multiple roles
+  // assigned to a single view via the `assignedRoles` state below.
   const [role, setRole] = useState("ADMIN");
+
+  // Assigned roles for the current view being edited.  A view can be
+  // associated with one or more roles.  When saving, this array is
+  // passed as the `roles` field in the API payload.  If the view is
+  // marked as default, the same list is used for `default_roles`.
+  const [assignedRoles, setAssignedRoles] = useState(["ADMIN"]);
 
   const [contentTypeDetail, setContentTypeDetail] = useState(null);
 
@@ -41,6 +50,11 @@ export default function ListViewsSettings() {
   const [error, setError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [dirty, setDirty] = useState(false);
+
+  // List of all possible roles.  If you add more roles to your system, add
+  // them here so they can be assigned to views.  These values should
+  // correspond to the role names returned in user tokens.
+  const ALL_ROLES = ["ADMIN", "EDITOR", "AUTHOR", "VIEWER"];
 
   // ---------------------------------------------
   // Load content types on mount
@@ -88,10 +102,14 @@ export default function ListViewsSettings() {
   const computeAvailableFields = (ct) => {
     if (!ct) return BUILTIN_COLUMNS;
     const ctFields = Array.isArray(ct.fields)
-      ? ct.fields.map((f) => ({
-          key: f.key, // data.[key] in entries.data
-          label: f.label || f.name || f.key,
-        }))
+      ? ct.fields.map((f) => {
+          // Prefer f.key but fall back to f.field_key if present
+          const fieldKey = f.key || f.field_key;
+          return {
+            key: fieldKey,
+            label: f.label || f.name || fieldKey,
+          };
+        })
       : [];
     const all = [...BUILTIN_COLUMNS];
     for (const f of ctFields) {
@@ -174,7 +192,25 @@ export default function ListViewsSettings() {
             loadedViews.find((v) => v.is_default) || loadedViews[0];
           setActiveViewSlug(def.slug);
           setCurrentLabel(def.label);
-          setIsDefault(!!def.is_default);
+          // Determine default roles: use config.default_roles if present, otherwise
+          // fall back to the legacy is_default boolean.  If multiple default
+          // roles were stored, the view will be default for all of them.
+          const cfgRoles = Array.isArray(def?.config?.roles)
+            ? def.config.roles
+            : [];
+          const cfgDefaultRoles = Array.isArray(def?.config?.default_roles)
+            ? def.config.default_roles
+            : [];
+          // If no roles array was provided, fall back to the legacy role column
+          const legacyRole = def.role ? [def.role.toUpperCase()] : [];
+          setAssignedRoles(cfgRoles.length ? cfgRoles : legacyRole);
+          // Determine whether the current view is default for the selected role.
+          // If any of the assigned roles are marked as default, we mark it as default.
+          if (cfgDefaultRoles.length) {
+            setIsDefault(cfgDefaultRoles.includes(role.toUpperCase()));
+          } else {
+            setIsDefault(!!def.is_default);
+          }
 
           const cfg = (def.config && def.config.columns) || [];
           if (cfg.length) {
@@ -231,7 +267,21 @@ export default function ListViewsSettings() {
 
     setActiveViewSlug(slug);
     setCurrentLabel(v.label);
-    setIsDefault(!!v.is_default);
+    // When selecting a saved view, load its assigned roles and default status.
+    const vRoles = Array.isArray(v?.config?.roles)
+      ? v.config.roles
+      : v.role
+      ? [v.role.toUpperCase()]
+      : [];
+    setAssignedRoles(vRoles);
+    const vDefaultRoles = Array.isArray(v?.config?.default_roles)
+      ? v.config.default_roles
+      : [];
+    if (vDefaultRoles.length) {
+      setIsDefault(vDefaultRoles.includes(role.toUpperCase()));
+    } else {
+      setIsDefault(!!v.is_default);
+    }
 
     const cfg = (v.config && v.config.columns) || [];
     if (cfg.length) {
@@ -263,6 +313,9 @@ export default function ListViewsSettings() {
     setActiveViewSlug(slug);
     setCurrentLabel(label);
     setIsDefault(false);
+
+    // When creating a new view, assign it to the currently selected role by default.
+    setAssignedRoles([role]);
 
     if (!columns || !columns.length) {
       const defaultCols = [
@@ -323,6 +376,21 @@ export default function ListViewsSettings() {
     setDirty(true);
   };
 
+  // Toggle a role in the assignedRoles array.  Adds the role if not present,
+  // removes it if already present.  Marks the view as dirty so the user
+  // knows to save changes.
+  const toggleAssignedRole = (roleValue) => {
+    const upper = roleValue.toUpperCase();
+    setAssignedRoles((prev) => {
+      const exists = prev.includes(upper);
+      if (exists) {
+        return prev.filter((r) => r !== upper);
+      }
+      return [...prev, upper];
+    });
+    setDirty(true);
+  };
+
   const handleSave = async () => {
     if (!selectedTypeId || !role) return;
     setError("");
@@ -342,12 +410,20 @@ export default function ListViewsSettings() {
 
     try {
       setLoading(true);
-      // Build payload with legacy fields (role, is_default) for backwards compatibility
+      // Build payload.  We include both the new multi-role fields (roles,
+      // default_roles) and the legacy single-role fields (role, is_default)
+      // so that the API can support both formats.  assignedRoles is an
+      // array of strings (uppercased), and if isDefault is true we pass
+      // the same list as default_roles; otherwise default_roles is empty.
       const payload = {
         slug,
         label,
+        // Legacy single-role fields for backwards compatibility
         role,
         is_default: isDefault,
+        // New multi-role fields
+        roles: assignedRoles,
+        default_roles: isDefault ? assignedRoles : [],
         config: { columns },
       };
       const res = await api.put(
@@ -455,11 +531,35 @@ export default function ListViewsSettings() {
               value={role}
               onChange={handleSelectRole}
             >
-              <option value="ADMIN">Admin</option>
-              <option value="EDITOR">Editor</option>
-              <option value="AUTHOR">Author</option>
-              <option value="VIEWER">Viewer</option>
+              {ALL_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r.charAt(0) + r.slice(1).toLowerCase()}
+                </option>
+              ))}
             </select>
+          </div>
+
+          {/* Multi-role assignment for the current view */}
+          <div className="su-field">
+            <label className="su-label">Assigned roles</label>
+            <div className="su-flex su-gap-sm su-flex-wrap">
+              {ALL_ROLES.map((r) => (
+                <label key={r} className="su-checkbox">
+                  <input
+                    type="checkbox"
+                    value={r}
+                    checked={assignedRoles.includes(r)}
+                    onChange={() => toggleAssignedRole(r)}
+                  />
+                  <span>{r.charAt(0) + r.slice(1).toLowerCase()}</span>
+                </label>
+              ))}
+            </div>
+            <small className="su-text-muted">
+              Select one or more roles that can use this view.  When this view
+              is marked as default, it will be the default for all selected
+              roles.
+            </small>
           </div>
         </div>
       </div>
