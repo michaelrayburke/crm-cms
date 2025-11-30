@@ -565,20 +565,85 @@ export default function ListViewsSettings() {
         return;
       }
 
-      setViews((prev) => {
-        const idx = prev.findIndex((v) => v.slug === savedRow.slug);
-        if (idx === -1) {
-          return [...prev, savedRow];
+      // Instead of only updating the saved row in state, reload the list
+      // views from the API to ensure default flags and other views are
+      // correctly refreshed.  This guarantees that only one view is
+      // default per role and prevents stale duplicates from lingering
+      // in the UI.  We use the currently selected role when reloading.
+      try {
+        const lvRes = await api.get(
+          `/api/content-types/${selectedTypeId}/list-views`,
+          { params: { role } }
+        );
+        const lvRaw = lvRes?.data || lvRes || [];
+        let newViews;
+        if (Array.isArray(lvRaw)) {
+          newViews = lvRaw;
+        } else if (lvRaw && Array.isArray(lvRaw.views)) {
+          newViews = lvRaw.views;
+        } else {
+          newViews = [];
         }
-        const next = [...prev];
-        next[idx] = savedRow;
-        return next;
-      });
-
-      setActiveViewSlug(savedRow.slug);
-      setIsDefault(!!savedRow.is_default);
-      setSaveMessage("List view saved");
-      setDirty(false);
+        setViews(newViews);
+        // Find the newly saved view by slug; fall back to the first view
+        const next = newViews.find((v) => v.slug === slug) || newViews[0] || null;
+        if (next) {
+          setActiveViewSlug(next.slug);
+          setCurrentLabel(next.label);
+          // Load assigned roles and default roles from the view config
+          const cfgRoles = Array.isArray(next?.config?.roles)
+            ? next.config.roles
+            : next.role
+            ? [next.role.toUpperCase()]
+            : [];
+          setAssignedRoles(cfgRoles);
+          const cfgDefault = Array.isArray(next?.config?.default_roles)
+            ? next.config.default_roles.map((r) => r.toUpperCase())
+            : [];
+          setDefaultRoles(cfgDefault);
+          setIsDefault(
+            cfgDefault.includes(role.toUpperCase()) || !!next.is_default
+          );
+          const cfgCols = Array.isArray(next?.config?.columns)
+            ? next.config.columns
+            : [
+                { key: "title", label: "Title" },
+                { key: "status", label: "Status" },
+                { key: "updated_at", label: "Updated" },
+              ];
+          setColumns(cfgCols);
+        } else {
+          // No views returned: fallback to synthesized default layout
+          setActiveViewSlug("default");
+          setCurrentLabel("Default list");
+          setIsDefault(true);
+          setAssignedRoles([role]);
+          setDefaultRoles([]);
+          setColumns([
+            { key: "title", label: "Title" },
+            { key: "status", label: "Status" },
+            { key: "updated_at", label: "Updated" },
+          ]);
+        }
+        setSaveMessage("List view saved");
+        setDirty(false);
+      } catch (err) {
+        console.error("[ListViews] reload after save error", err);
+        // If reload fails, fall back to previous behaviour of updating saved row locally
+        setViews((prev) => {
+          const idx = prev.findIndex((v) => v.slug === savedRow.slug);
+          if (idx === -1) {
+            return [...prev, savedRow];
+          }
+          const nextList = [...prev];
+          nextList[idx] = savedRow;
+          return nextList;
+        });
+        setActiveViewSlug(savedRow.slug);
+        setIsDefault(!!savedRow.is_default);
+        setSaveMessage("List view saved");
+        setDirty(false);
+      }
     } catch (err) {
       console.error("[ListViews] save error", err);
       setError("Failed to save list view");
@@ -602,8 +667,12 @@ export default function ListViewsSettings() {
       setLoading(true);
       setError('');
       setSaveMessage('');
-      // delete all roles for this slug
-      await api.delete(`/api/content-types/${selectedTypeId}/list-view/${activeViewSlug}`);
+      // delete the view for the current role.  Passing the role
+      // identifies the row uniquely when multiple roles share the same slug.
+      await api.delete(
+        `/api/content-types/${selectedTypeId}/list-view/${activeViewSlug}`,
+        { params: { role } }
+      );
       // Reload list views
       const lvRes = await api.get(`/api/content-types/${selectedTypeId}/list-views`, { params: { role } });
       const lvRaw = lvRes?.data || lvRes || [];
