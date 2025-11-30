@@ -199,13 +199,24 @@ router.put(
              FROM entry_list_views
             WHERE content_type_id = $1
               AND slug = $2
-              AND role = $3
-            LIMIT 1`,
+              AND role = $3`,
           [contentTypeId, slug, roleValue]
         );
         let savedRow;
         if (existingRows.length > 0) {
-          // Update existing
+          // Update the first existing row and delete duplicates.  This
+          // ensures that slugs remain unique per role.  If multiple rows
+          // exist for the same slug+role (legacy bug), we consolidate
+          // them into a single row.
+          const firstId = existingRows[0].id;
+          // Delete duplicate rows (excluding the first)
+          if (existingRows.length > 1) {
+            const dupIds = existingRows.slice(1).map((r) => r.id);
+            await client.query(
+              `DELETE FROM entry_list_views WHERE id = ANY($1::uuid[])`,
+              [dupIds]
+            );
+          }
           const { rows: updateRows } = await client.query(
             `UPDATE entry_list_views
                 SET label = $1,
@@ -223,7 +234,7 @@ router.put(
                 roles: roleList,
                 default_roles: defaultRoleList,
               },
-              existingRows[0].id,
+              firstId,
             ]
           );
           savedRow = updateRows[0];
@@ -260,6 +271,55 @@ router.put(
       return res.status(500).json({ error: 'Failed to save list view' });
     } finally {
       client.release();
+    }
+  }
+);
+
+/**
+ * DELETE /api/content-types/:id/list-view/:slug
+ * Delete a list view for a given content type.  If a `role` query
+ * parameter is provided, only the view for that role is deleted.
+ * Otherwise all views for the slug are removed.  This endpoint
+ * removes any duplicates and ensures slug uniqueness.
+ *
+ * NOTE: :id may be either the UUID primary key or the content type slug.
+ */
+router.delete(
+  '/content-types/:id/list-view/:slug',
+  checkPermission('manage_content_types'),
+  async (req, res) => {
+    const { id: idOrSlug, slug } = req.params;
+    const roleParam = (req.query.role || '').trim().toUpperCase();
+    try {
+      const contentTypeId = await resolveContentTypeId(idOrSlug);
+      if (!contentTypeId) {
+        return res.status(404).json({ error: 'Content type not found' });
+      }
+      if (!slug) {
+        return res.status(400).json({ error: 'slug is required' });
+      }
+      if (roleParam) {
+        // Delete only rows matching this role
+        await pool.query(
+          `DELETE FROM entry_list_views
+             WHERE content_type_id = $1
+               AND slug = $2
+               AND role = $3`,
+          [contentTypeId, slug, roleParam]
+        );
+      } else {
+        // Delete all rows for this slug (all roles)
+        await pool.query(
+          `DELETE FROM entry_list_views
+             WHERE content_type_id = $1
+               AND slug = $2`,
+          [contentTypeId, slug]
+        );
+      }
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('[DELETE /content-types/:id/list-view/:slug]', err);
+      return res.status(500).json({ error: 'Failed to delete list view' });
     }
   }
 );
