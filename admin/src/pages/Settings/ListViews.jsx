@@ -171,7 +171,11 @@ export default function ListViewsSettings() {
         setAvailableFields(av);
 
         // ---- NEW: handle both array & { views: [] } shapes + expose debug ----
-        const raw = viewsRes.data;
+        // viewsRes may be either an axios response (with a .data property)
+        // or a plain array/object. Normalize it here so we can handle
+        // both cases consistently.
+        const rawViews = viewsRes?.data || viewsRes || [];
+        const raw = rawViews;
         let loadedViews = [];
 
         if (Array.isArray(raw)) {
@@ -224,10 +228,14 @@ export default function ListViewsSettings() {
           // If no roles array was provided, fall back to the legacy role column
           const legacyRole = def.role ? [def.role.toUpperCase()] : [];
           setAssignedRoles(cfgRoles.length ? cfgRoles : legacyRole);
-          // Determine whether the current view is default for the selected role.
-          // If any of the assigned roles are marked as default, we mark it as default.
-          if (cfgDefaultRoles.length) {
-            setIsDefault(cfgDefaultRoles.includes(role.toUpperCase()));
+          // Normalize default roles to uppercase and update state.  If none
+          // provided, use an empty list.  Determine whether the current
+          // view is default for the selected role based on this list or
+          // legacy is_default flag.
+          const normalizedDefaultRoles = cfgDefaultRoles.map((r) => r.toUpperCase());
+          setDefaultRoles(normalizedDefaultRoles);
+          if (normalizedDefaultRoles.length) {
+            setIsDefault(normalizedDefaultRoles.includes(role.toUpperCase()));
           } else {
             setIsDefault(!!def.is_default);
           }
@@ -294,9 +302,15 @@ export default function ListViewsSettings() {
       ? [v.role.toUpperCase()]
       : [];
     setAssignedRoles(vRoles);
+
+    // Load default roles for this view.  If the view stores an array of
+    // default_roles, use it.  Otherwise fall back to the legacy is_default
+    // flag for the single stored role.  We also update our defaultRoles
+    // state so the UI can present a checkbox per role.
     const vDefaultRoles = Array.isArray(v?.config?.default_roles)
-      ? v.config.default_roles
+      ? v.config.default_roles.map((r) => r.toUpperCase())
       : [];
+    setDefaultRoles(vDefaultRoles);
     if (vDefaultRoles.length) {
       setIsDefault(vDefaultRoles.includes(role.toUpperCase()));
     } else {
@@ -332,10 +346,12 @@ export default function ListViewsSettings() {
 
     setActiveViewSlug(slug);
     setCurrentLabel(label);
+    // When creating a new view, clear default status and set default roles
+    // equal to the currently selected role.  The user can toggle default
+    // assignments separately.
     setIsDefault(false);
-
-    // When creating a new view, assign it to the currently selected role by default.
     setAssignedRoles([role]);
+    setDefaultRoles([role]);
 
     if (!columns || !columns.length) {
       const defaultCols = [
@@ -363,10 +379,7 @@ export default function ListViewsSettings() {
     setDirty(true);
   };
 
-  const handleToggleDefault = (e) => {
-    setIsDefault(e.target.checked);
-    setDirty(true);
-  };
+  // No longer used: default roles are toggled individually via toggleDefaultRole
 
   const handleAddColumn = (fieldKey) => {
     const field = availableFields.find((f) => f.key === fieldKey);
@@ -403,10 +416,40 @@ export default function ListViewsSettings() {
     const upper = roleValue.toUpperCase();
     setAssignedRoles((prev) => {
       const exists = prev.includes(upper);
-      if (exists) {
+       if (exists) {
+        // If removing a role, also remove it from the defaultRoles list and
+        // update isDefault accordingly
+        setDefaultRoles((dprev) => {
+          const newList = dprev.filter((r) => r !== upper);
+          // update isDefault: whether current role is still default
+          setIsDefault(newList.includes(role.toUpperCase()));
+          return newList;
+        });
         return prev.filter((r) => r !== upper);
       }
       return [...prev, upper];
+    });
+    setDirty(true);
+  };
+
+  // Toggle a role in the defaultRoles array.  Only roles that are currently
+  // assigned can be marked as default.  Updates isDefault to reflect
+  // whether the currently selected role is included in defaultRoles.
+  const toggleDefaultRole = (roleValue) => {
+    const upper = roleValue.toUpperCase();
+    setDefaultRoles((prev) => {
+      const exists = prev.includes(upper);
+      let next;
+      if (exists) {
+        next = prev.filter((r) => r !== upper);
+      } else {
+        next = [...prev, upper];
+      }
+      // Keep default roles only among assigned roles
+      next = next.filter((r) => assignedRoles.includes(r));
+      // Update isDefault based on whether current role is default
+      setIsDefault(next.includes(role.toUpperCase()));
+      return next;
     });
     setDirty(true);
   };
@@ -435,17 +478,20 @@ export default function ListViewsSettings() {
       // so that the API can support both formats.  assignedRoles is an
       // array of strings (uppercased), and if isDefault is true we pass
       // the same list as default_roles; otherwise default_roles is empty.
-      const payload = {
-        slug,
-        label,
-        // Legacy single-role fields for backwards compatibility
-        role,
-        is_default: isDefault,
-        // New multi-role fields
-        roles: assignedRoles,
-        default_roles: isDefault ? assignedRoles : [],
-        config: { columns },
-      };
+       // When saving, include both new multi-role fields (roles, default_roles)
+       // and legacy fields (role, is_default).  We compute is_default
+       // as whether the current role is in the list of defaultRoles.
+       const payload = {
+         slug,
+         label,
+         // Legacy single-role fields for backwards compatibility
+         role,
+         is_default: defaultRoles.includes(role.toUpperCase()),
+         // New multi-role fields
+         roles: assignedRoles,
+         default_roles: defaultRoles,
+         config: { columns },
+       };
       const res = await api.put(
         `/api/content-types/${selectedTypeId}/list-view`,
         payload
@@ -575,11 +621,10 @@ export default function ListViewsSettings() {
                 </label>
               ))}
             </div>
-            <small className="su-text-muted">
-              Select one or more roles that can use this view.  When this view
-              is marked as default, it will be the default for all selected
-              roles.
-            </small>
+             <small className="su-text-muted">
+               Select one or more roles that can use this view.  You can mark
+               individual roles as default in the section below.
+             </small>
           </div>
         </div>
       </div>
@@ -630,17 +675,24 @@ export default function ListViewsSettings() {
               />
             </div>
             <div className="su-field su-mt-sm">
-              <label className="su-checkbox">
-                <input
-                  type="checkbox"
-                  checked={isDefault}
-                  onChange={handleToggleDefault}
-                />
-                <span>
-                  Make this the default view for the selected roles
-                </span>
-              </label>
-            </div>
+               <label className="su-label">Default roles</label>
+               <div className="su-flex su-gap-sm su-flex-wrap">
+                 {assignedRoles.map((r) => (
+                   <label key={r} className="su-checkbox">
+                     <input
+                       type="checkbox"
+                       value={r}
+                       checked={defaultRoles.includes(r)}
+                       onChange={() => toggleDefaultRole(r)}
+                     />
+                     <span>{r.charAt(0) + r.slice(1).toLowerCase()}</span>
+                   </label>
+                 ))}
+               </div>
+               <small className="su-text-muted">
+                 Choose which of the assigned roles should use this view by default.
+               </small>
+             </div>
 
             <div className="su-mt-md su-text-xs su-text-muted">
               <div>
@@ -785,8 +837,9 @@ export default function ListViewsSettings() {
                 role,
                 activeViewSlug,
                 label: currentLabel,
-                isDefault,
-                columns,
+                 isDefault,
+                 defaultRoles,
+                 columns,
               },
               null,
               2
