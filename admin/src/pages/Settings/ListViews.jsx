@@ -496,6 +496,18 @@ export default function ListViewsSettings() {
       return;
     }
 
+    // Ensure slug is unique among existing views (case-insensitive).  If a
+    // different view already uses this slug, abort save with an error.
+    const dup = (views || []).find(
+      (v) => v.slug && v.slug.toLowerCase() === slug.toLowerCase() && v.slug !== activeViewSlug
+    );
+    if (dup) {
+      setError(
+        `A view with the slug "${slug}" already exists. Please choose a different label or slug.`
+      );
+      return;
+    }
+
     try {
       setLoading(true);
       // Build payload.  We include both the new multi-role fields (roles,
@@ -570,6 +582,82 @@ export default function ListViewsSettings() {
     } catch (err) {
       console.error("[ListViews] save error", err);
       setError("Failed to save list view");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Delete the currently selected view.  This will remove all roles for this
+  // slug by default.  After deletion, reload the list of views and select
+  // the first available view.  If no views remain, revert to the
+  // synthesized default layout.
+  const handleDeleteCurrentView = async () => {
+    if (!selectedTypeId || !activeViewSlug || activeViewSlug === 'default') {
+      return;
+    }
+    if (!window.confirm('Are you sure you want to delete this view? This cannot be undone.')) {
+      return;
+    }
+    try {
+      setLoading(true);
+      setError('');
+      setSaveMessage('');
+      // delete all roles for this slug
+      await api.delete(`/api/content-types/${selectedTypeId}/list-view/${activeViewSlug}`);
+      // Reload list views
+      const lvRes = await api.get(`/api/content-types/${selectedTypeId}/list-views`, { params: { role } });
+      const lvRaw = lvRes?.data || lvRes || [];
+      let newViews;
+      if (Array.isArray(lvRaw)) {
+        newViews = lvRaw;
+      } else if (lvRaw && Array.isArray(lvRaw.views)) {
+        newViews = lvRaw.views;
+      } else {
+        newViews = [];
+      }
+      setViews(newViews);
+      if (newViews.length === 0) {
+        // reset to default layout
+        setActiveViewSlug('default');
+        setCurrentLabel('Default list');
+        setIsDefault(true);
+        setAssignedRoles([role]);
+        setDefaultRoles([]);
+        setColumns([
+          { key: 'title', label: 'Title' },
+          { key: 'status', label: 'Status' },
+          { key: 'updated_at', label: 'Updated' },
+        ]);
+        setDirty(false);
+      } else {
+        // Select the first view
+        const first = newViews[0];
+        setActiveViewSlug(first.slug);
+        setCurrentLabel(first.label);
+        // load assigned and default roles
+        const cfgRoles = Array.isArray(first?.config?.roles)
+          ? first.config.roles
+          : first.role
+          ? [first.role.toUpperCase()]
+          : [];
+        setAssignedRoles(cfgRoles);
+        const dRoles = Array.isArray(first?.config?.default_roles)
+          ? first.config.default_roles.map((r) => r.toUpperCase())
+          : [];
+        setDefaultRoles(dRoles);
+        setIsDefault(dRoles.includes(role.toUpperCase()) || !!first.is_default);
+        const cfgCols = Array.isArray(first?.config?.columns)
+          ? first.config.columns
+          : [
+              { key: 'title', label: 'Title' },
+              { key: 'status', label: 'Status' },
+              { key: 'updated_at', label: 'Updated' },
+            ];
+        setColumns(cfgCols);
+      }
+    } catch (err) {
+      console.error('[ListViews] delete error', err);
+      setError('Failed to delete list view');
     } finally {
       setLoading(false);
     }
@@ -735,6 +823,16 @@ export default function ListViewsSettings() {
                 }
               >
                 {loading ? "Saving…" : "Save view"}
+              </button>
+              <button
+                type="button"
+                className="su-btn su-btn-danger su-ml-sm"
+                onClick={handleDeleteCurrentView}
+                disabled={
+                  loading || !selectedTypeId || !role || !activeViewSlug || activeViewSlug === 'default'
+                }
+              >
+                Delete view
               </button>
               {dirty && (
                 <span className="su-text-warning su-ml-sm">
