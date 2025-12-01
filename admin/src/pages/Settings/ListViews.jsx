@@ -651,6 +651,29 @@ export default function ListViewsSettings() {
         return;
       }
 
+      // Optimistically update the views list locally so the UI reflects
+      // changes immediately, even before reload.  Merge the updated label,
+      // roles, default roles and columns into the existing view record.
+      setViews((prev) => {
+        const idx = prev.findIndex((v) => v.slug === savedRow.slug);
+        const updated = {
+          ...savedRow,
+          label,
+          config: {
+            ...(savedRow.config || {}),
+            roles: assignedRoles,
+            default_roles: defaultRoles,
+            columns,
+          },
+        };
+        if (idx === -1) {
+          return [...prev, updated];
+        }
+        const nextList = [...prev];
+        nextList[idx] = updated;
+        return nextList;
+      });
+
       // Instead of only updating the saved row in state, reload the list
       // views from the API to ensure default flags and other views are
       // correctly refreshed.  This guarantees that only one view is
