@@ -217,18 +217,48 @@ function App() {
             }
           />
 		
-		<Route
-		  path="/admin/settings/list-views"
-		  element={
-		    <RequireAuth>
-                <RequirePermission slug="roles.manage">
-				    <AdminLayout>
-						<ListViewsSettings />
-					</AdminLayout>
-				</RequirePermission>
-		    </RequireAuth>
-		  }
-		/>
+        {/* List views settings: allow dynamic segments for type slug and view slug.
+           The type segment uses the content type slug to mirror the content
+           editing URLs (e.g. /admin/settings/list-views/songs).  When both
+           :typeSlug and :viewSlug are present we render the edit stage; with only
+           :typeSlug we render the list of views; with none we list all
+           content types. */}
+        <Route
+          path="/admin/settings/list-views/:typeSlug/:viewSlug"
+          element={
+            <RequireAuth>
+              <RequirePermission slug="roles.manage">
+                <AdminLayout>
+                  <ListViewsSettings />
+                </AdminLayout>
+              </RequirePermission>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/settings/list-views/:typeSlug"
+          element={
+            <RequireAuth>
+              <RequirePermission slug="roles.manage">
+                <AdminLayout>
+                  <ListViewsSettings />
+                </AdminLayout>
+              </RequirePermission>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/settings/list-views"
+          element={
+            <RequireAuth>
+              <RequirePermission slug="roles.manage">
+                <AdminLayout>
+                  <ListViewsSettings />
+                </AdminLayout>
+              </RequirePermission>
+            </RequireAuth>
+          }
+        />
 
 
           <Route
