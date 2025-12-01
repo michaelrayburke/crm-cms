@@ -669,7 +669,7 @@ export default function ListViewsSettings() {
       setSaveMessage('');
       // delete the view for the current role.  Passing the role
       // identifies the row uniquely when multiple roles share the same slug.
-      await api.delete(
+      await api.del(
         `/api/content-types/${selectedTypeId}/list-view/${activeViewSlug}`,
         { params: { role } }
       );
