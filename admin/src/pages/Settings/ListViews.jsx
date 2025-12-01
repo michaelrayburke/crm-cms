@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 
 // Simple slugify for view slugs
@@ -21,6 +22,14 @@ const BUILTIN_COLUMNS = [
 ];
 
 export default function ListViewsSettings() {
+  // Read route params and navigation helper.  The list‑views page supports
+  // optional `:typeSlug` and `:viewSlug` segments which drive the
+  // current stage.  When neither param is present we show the list of
+  // content types (types stage).  When only `typeSlug` is present we
+  // show the list of views for that type (views stage).  When both
+  // params are present we edit that specific view (edit stage).
+  const params = useParams();
+  const navigate = useNavigate();
   const [contentTypes, setContentTypes] = useState([]);
   // When this page first loads we show a list of content types.  When the
   // user clicks on a type we switch to the list-view stage for that type.
@@ -64,6 +73,35 @@ export default function ListViewsSettings() {
   // Default roles for this view. A view can be default for multiple
   // roles. When saving, this array is passed as `default_roles`.
   const [defaultRoles, setDefaultRoles] = useState([]);
+
+  // ---------------------------------------------
+  // Sync stage and selection from the URL params
+  // ---------------------------------------------
+  useEffect(() => {
+    // We support either :typeSlug or :typeId for backwards compatibility.
+    // Grab whichever is defined.  React Router merges params from nested
+    // routes, so both could exist but at least one will be blank.
+    const typeSlug = params.typeSlug || params.typeId;
+    const viewSlug = params.viewSlug || "";
+    if (!typeSlug) {
+      // No type selected → show list of content types
+      setStage("types");
+      setSelectedTypeId("");
+      setActiveViewSlug("");
+      return;
+    }
+    // Set the selected type (slug or id) and choose stage based on
+    // whether a view slug is present.  When editing a view we also
+    // preset the activeViewSlug so the form fields populate correctly.
+    setSelectedTypeId(typeSlug);
+    if (viewSlug) {
+      setStage("edit");
+      setActiveViewSlug(viewSlug);
+    } else {
+      setStage("views");
+      setActiveViewSlug("");
+    }
+  }, [params.typeId, params.typeSlug, params.viewSlug]);
 
   // ---------------------------------------------
   // Load content types on mount
@@ -285,10 +323,13 @@ export default function ListViewsSettings() {
   // Handlers
   // ---------------------------------------------
   const handleSelectType = (e) => {
-    // When selecting a type from the list view we move to the views stage.
+    // When selecting a type from the list page we navigate to the
+    // appropriate URL.  The route path is `/admin/settings/list-views/:typeSlug`.
     const val = e?.target?.value || e;
-    setSelectedTypeId(val);
-    setStage('views');
+    if (!val) return;
+    // Navigate to the type views page.  The useEffect above will update
+    // selectedTypeId and stage accordingly.
+    navigate(`/admin/settings/list-views/${val}`);
   };
 
   const handleSelectRole = (e) => {
@@ -341,7 +382,12 @@ export default function ListViewsSettings() {
     setError("");
 
     // Move into edit stage so the user sees the editing UI
-    setStage('edit');
+    // Navigate to the edit page for this view.  The URL shape is
+    // `/admin/settings/list-views/:typeSlug/:viewSlug`.  The above
+    // useEffect will update stage and activeViewSlug.  Passing the
+    // current selectedTypeId (which may be a slug or id) keeps the
+    // existing selection.
+    navigate(`/admin/settings/list-views/${selectedTypeId}/${slug}`);
   };
 
   const handleNewView = () => {
@@ -377,8 +423,11 @@ export default function ListViewsSettings() {
     setSaveMessage("");
     setError("");
 
-    // Move into edit stage so the user sees the editing UI
-    setStage('edit');
+    // Navigate to the edit page for the newly created view.  This
+    // ensures the URL reflects the view slug and will trigger the
+    // useEffect above to set stage/edit state.  Use selectedTypeId
+    // from state (slug or id).
+    navigate(`/admin/settings/list-views/${selectedTypeId}/${slug}`);
   };
 
   const handleLabelChange = (e) => {
@@ -594,9 +643,9 @@ export default function ListViewsSettings() {
       if (!savedRow) {
         setSaveMessage("List view saved");
         setDirty(false);
-        // After saving we return to the views list stage so the user can see
-        // the updated list of views.  This also clears the edit state.
-        setStage('views');
+        // After saving we navigate back to the list of views for this type.
+        // This updates the URL and resets the stage via useEffect.
+        navigate(`/admin/settings/list-views/${selectedTypeId}`);
         return;
       }
 
@@ -662,7 +711,8 @@ export default function ListViewsSettings() {
         }
         setSaveMessage("List view saved");
         setDirty(false);
-        setStage('views');
+        // Navigate back to the views list page
+        navigate(`/admin/settings/list-views/${selectedTypeId}`);
       } catch (err) {
         console.error("[ListViews] reload after save error", err);
         // If reload fails, fall back to previous behaviour of updating saved row locally
@@ -722,7 +772,9 @@ export default function ListViewsSettings() {
       }
       setViews(newViews);
       if (newViews.length === 0) {
-        // reset to default layout
+        // no saved views remain: reset to default layout and navigate back to
+        // the views list for this type.  The default layout is still shown
+        // in the edit UI but we treat it as unsaved.
         setActiveViewSlug('default');
         setCurrentLabel('Default list');
         setIsDefault(true);
@@ -734,8 +786,10 @@ export default function ListViewsSettings() {
           { key: 'updated_at', label: 'Updated' },
         ]);
         setDirty(false);
+        // Navigate back to the list of views (no viewSlug in path)
+        navigate(`/admin/settings/list-views/${selectedTypeId}`);
       } else {
-        // Select the first view
+        // Select the first view from the reloaded list and navigate to it
         const first = newViews[0];
         setActiveViewSlug(first.slug);
         setCurrentLabel(first.label);
@@ -759,14 +813,14 @@ export default function ListViewsSettings() {
               { key: 'updated_at', label: 'Updated' },
             ];
         setColumns(cfgCols);
+        // Navigate to the new active view slug
+        navigate(`/admin/settings/list-views/${selectedTypeId}/${first.slug}`);
       }
     } catch (err) {
       console.error('[ListViews] delete error', err);
       setError('Failed to delete list view');
     } finally {
       setLoading(false);
-      // After deletion, return to views stage
-      setStage('views');
     }
   };
 
@@ -805,12 +859,12 @@ export default function ListViewsSettings() {
             <div className="su-chip-row su-mb-md">
               {contentTypes.map((ct) => (
                 <button
-                  key={ct.id}
+                  key={ct.id || ct.slug}
                   type="button"
-                  onClick={() => handleSelectType(ct.id)}
+                  onClick={() => handleSelectType(ct.slug || ct.id)}
                   className="su-chip"
                 >
-                  {ct.name || ct.slug}
+                  {ct.name || ct.label_plural || ct.label_singular || ct.slug}
                 </button>
               ))}
             </div>
@@ -826,12 +880,19 @@ export default function ListViewsSettings() {
               <button
                 type="button"
                 className="su-btn su-btn-ghost su-btn-sm"
-                onClick={() => setStage('types')}
+                onClick={() => {
+                  // Navigate back to the list of content types
+                  navigate('/admin/settings/list-views');
+                }}
               >
                 ← Back to types
               </button>
               <h2 className="su-card-title su-ml-sm">
-                Views for {(contentTypes.find((ct) => ct.id === selectedTypeId)?.name || '') || ''}
+                Views for {
+                  (contentTypes.find((ct) => ct.slug === selectedTypeId || ct.id === selectedTypeId)?.name ||
+                    contentTypes.find((ct) => ct.slug === selectedTypeId || ct.id === selectedTypeId)?.label_singular ||
+                    selectedTypeId || '')
+                }
               </h2>
             </div>
             <div className="su-card-body">
@@ -889,7 +950,10 @@ export default function ListViewsSettings() {
               <button
                 type="button"
                 className="su-btn su-btn-ghost su-btn-sm"
-                onClick={() => setStage('views')}
+                onClick={() => {
+                  // Navigate back to the list of views for the current type
+                  navigate(`/admin/settings/list-views/${selectedTypeId}`);
+                }}
               >
                 ← Back to views
               </button>
