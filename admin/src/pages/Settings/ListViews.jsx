@@ -199,9 +199,11 @@ export default function ListViewsSettings() {
 
         const [ctRes, viewsRes] = await Promise.all([
           api.get(`/api/content-types/${selectedTypeId}`),
-          api.get(`/api/content-types/${selectedTypeId}/list-views`, {
-            params: { role },
-          }),
+          // Append role as a query param instead of passing a params object.  The
+          // api helper only accepts a URL string, so we encode the role
+          // directly in the URL.  Without this change the role filter was
+          // silently ignored.
+          api.get(`/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(role)}`),
         ]);
 
         if (cancelled) return;
@@ -656,8 +658,7 @@ export default function ListViewsSettings() {
       // in the UI.  We use the currently selected role when reloading.
       try {
         const lvRes = await api.get(
-          `/api/content-types/${selectedTypeId}/list-views`,
-          { params: { role } }
+          `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(role)}`
         );
         const lvRaw = lvRes?.data || lvRes || [];
         let newViews;
@@ -755,12 +756,16 @@ export default function ListViewsSettings() {
       setSaveMessage('');
       // delete the view for the current role.  Passing the role
       // identifies the row uniquely when multiple roles share the same slug.
-      await api.delete(
-        `/api/content-types/${selectedTypeId}/list-view/${activeViewSlug}`,
-        { params: { role } }
+      // Use api.del instead of api.delete (api.js defines del for DELETE)
+      // and include the role as a query parameter.  Without this the
+      // request would silently fail and the view would not be removed.
+      await api.del(
+        `/api/content-types/${selectedTypeId}/list-view/${activeViewSlug}?role=${encodeURIComponent(role)}`
       );
       // Reload list views
-      const lvRes = await api.get(`/api/content-types/${selectedTypeId}/list-views`, { params: { role } });
+      const lvRes = await api.get(
+        `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(role)}`
+      );
       const lvRaw = lvRes?.data || lvRes || [];
       let newViews;
       if (Array.isArray(lvRaw)) {
