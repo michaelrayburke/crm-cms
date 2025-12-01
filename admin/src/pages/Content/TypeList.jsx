@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
+import { useSettings } from '../../context/SettingsContext'; // 🔸 NEW
 
 // Built-in columns that exist on every entry coming from the API
 const BUILTIN_KEYS = ['title', 'slug', 'status', 'created_at', 'updated_at'];
@@ -64,6 +65,9 @@ export default function TypeList() {
   const typeSlug = typeSlugParam || typeSlugAlt;
 
   const role = 'ADMIN';
+
+  // 🔔 listen for global “list views changed” bumps
+  const { listViewsVersion } = useSettings(); // 🔸 NEW
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -207,7 +211,7 @@ export default function TypeList() {
     return () => {
       cancelled = true;
     };
-  }, [typeSlug, role]);
+  }, [typeSlug, role, listViewsVersion]); // 🔸 UPDATED
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -396,6 +400,7 @@ export default function TypeList() {
                 entriesCount: rows.length,
                 availableKeys,
                 titleKey,
+                listViewsVersion, // 👀 helpful debug
               },
               null,
               2,
