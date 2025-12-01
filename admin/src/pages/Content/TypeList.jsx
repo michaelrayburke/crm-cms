@@ -211,7 +211,7 @@ export default function TypeList() {
     return () => {
       cancelled = true;
     };
-  }, [typeSlug, role, listViewsVersion]); // 🔸 UPDATED
+  }, [typeSlug, role, listViewsVersion]); // 🔸 UPDATED: react to version bump
 
   // ---------------------------------------------------------------------------
   // Helpers
