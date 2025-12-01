@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
+import { useSettings } from "../../context/SettingsContext"; // ✅ NEW
 
 // Simple slugify for view slugs
 function slugify(str) {
@@ -22,7 +23,7 @@ const BUILTIN_COLUMNS = [
 ];
 
 export default function ListViewsSettings() {
-  // Read route params and navigation helper.  The list‑views page supports
+  // Read route params and navigation helper.  The list-views page supports
   // optional `:typeSlug` and `:viewSlug` segments which drive the
   // current stage.  When neither param is present we show the list of
   // content types (types stage).  When only `typeSlug` is present we
@@ -30,6 +31,8 @@ export default function ListViewsSettings() {
   // params are present we edit that specific view (edit stage).
   const params = useParams();
   const navigate = useNavigate();
+  const { bumpListViewsVersion } = useSettings(); // ✅ NEW
+
   const [contentTypes, setContentTypes] = useState([]);
   // When this page first loads we show a list of content types.  When the
   // user clicks on a type we switch to the list-view stage for that type.
@@ -199,10 +202,7 @@ export default function ListViewsSettings() {
 
         const [ctRes, viewsRes] = await Promise.all([
           api.get(`/api/content-types/${selectedTypeId}`),
-          // Append role as a query param instead of passing a params object.  The
-          // api helper only accepts a URL string, so we encode the role
-          // directly in the URL.  Without this change the role filter was
-          // silently ignored.
+          // Append role as a query param instead of passing a params object.
           api.get(`/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(role)}`),
         ]);
 
@@ -215,10 +215,7 @@ export default function ListViewsSettings() {
         const av = computeAvailableFields(ct);
         setAvailableFields(av);
 
-        // ---- NEW: handle both array & { views: [] } shapes + expose debug ----
-        // viewsRes may be either an axios response (with a .data property)
-        // or a plain array/object. Normalize it here so we can handle
-        // both cases consistently.
+        // ---- handle both array & { views: [] } shapes + expose debug ----
         const rawViews = viewsRes?.data || viewsRes || [];
         const raw = rawViews;
         let loadedViews = [];
@@ -233,7 +230,6 @@ export default function ListViewsSettings() {
 
         setViews(loadedViews);
 
-        // global debug helper so we can inspect from DevTools
         window.__debugListViews = {
           typeId: selectedTypeId,
           role,
@@ -262,21 +258,16 @@ export default function ListViewsSettings() {
           setActiveViewSlug(def.slug);
           setCurrentLabel(def.label);
           // Determine default roles: use config.default_roles if present, otherwise
-          // fall back to the legacy is_default boolean.  If multiple default
-          // roles were stored, the view will be default for all of them.
+          // fall back to the legacy is_default boolean.
           const cfgRoles = Array.isArray(def?.config?.roles)
             ? def.config.roles
             : [];
           const cfgDefaultRoles = Array.isArray(def?.config?.default_roles)
             ? def.config.default_roles
             : [];
-          // If no roles array was provided, fall back to the legacy role column
           const legacyRole = def.role ? [def.role.toUpperCase()] : [];
           setAssignedRoles(cfgRoles.length ? cfgRoles : legacyRole);
-          // Normalize default roles to uppercase and update state.  If none
-          // provided, use an empty list.  Determine whether the current
-          // view is default for the selected role based on this list or
-          // legacy is_default flag.
+
           const normalizedDefaultRoles = cfgDefaultRoles.map((r) => r.toUpperCase());
           setDefaultRoles(normalizedDefaultRoles);
           if (normalizedDefaultRoles.length) {
@@ -289,7 +280,6 @@ export default function ListViewsSettings() {
           if (cfg.length) {
             setColumns(cfg);
           } else {
-            // fallback if somehow empty
             const defaultCols = [
               { key: "title", label: "Title" },
               { key: "status", label: "Status" },
@@ -325,12 +315,8 @@ export default function ListViewsSettings() {
   // Handlers
   // ---------------------------------------------
   const handleSelectType = (e) => {
-    // When selecting a type from the list page we navigate to the
-    // appropriate URL.  The route path is `/admin/settings/list-views/:typeSlug`.
     const val = e?.target?.value || e;
     if (!val) return;
-    // Navigate to the type views page.  The useEffect above will update
-    // selectedTypeId and stage accordingly.
     navigate(`/admin/settings/list-views/${val}`);
   };
 
@@ -346,7 +332,6 @@ export default function ListViewsSettings() {
 
     setActiveViewSlug(slug);
     setCurrentLabel(v.label);
-    // When selecting a saved view, load its assigned roles and default status.
     const vRoles = Array.isArray(v?.config?.roles)
       ? v.config.roles
       : v.role
@@ -354,10 +339,6 @@ export default function ListViewsSettings() {
       : [];
     setAssignedRoles(vRoles);
 
-    // Load default roles for this view.  If the view stores an array of
-    // default_roles, use it.  Otherwise fall back to the legacy is_default
-    // flag for the single stored role.  We also update our defaultRoles
-    // state so the UI can present a checkbox per role.
     const vDefaultRoles = Array.isArray(v?.config?.default_roles)
       ? v.config.default_roles.map((r) => r.toUpperCase())
       : [];
@@ -383,12 +364,6 @@ export default function ListViewsSettings() {
     setSaveMessage("");
     setError("");
 
-    // Move into edit stage so the user sees the editing UI
-    // Navigate to the edit page for this view.  The URL shape is
-    // `/admin/settings/list-views/:typeSlug/:viewSlug`.  The above
-    // useEffect will update stage and activeViewSlug.  Passing the
-    // current selectedTypeId (which may be a slug or id) keeps the
-    // existing selection.
     navigate(`/admin/settings/list-views/${selectedTypeId}/${slug}`);
   };
 
@@ -405,9 +380,6 @@ export default function ListViewsSettings() {
 
     setActiveViewSlug(slug);
     setCurrentLabel(label);
-    // When creating a new view, clear default status and set default roles
-    // equal to the currently selected role.  The user can toggle default
-    // assignments separately.
     setIsDefault(false);
     setAssignedRoles([role]);
     setDefaultRoles([role]);
@@ -425,10 +397,6 @@ export default function ListViewsSettings() {
     setSaveMessage("");
     setError("");
 
-    // Navigate to the edit page for the newly created view.  This
-    // ensures the URL reflects the view slug and will trigger the
-    // useEffect above to set stage/edit state.  Use selectedTypeId
-    // from state (slug or id).
     navigate(`/admin/settings/list-views/${selectedTypeId}/${slug}`);
   };
 
@@ -436,15 +404,12 @@ export default function ListViewsSettings() {
     const val = e.target.value;
     setCurrentLabel(val);
 
-    // If we're on a synthetic/default or new view, keep slug in sync
     if (!activeView || activeView.slug === "default") {
       setActiveViewSlug(slugify(val || "view"));
     }
 
     setDirty(true);
   };
-
-  // No longer used: default roles are toggled individually via toggleDefaultRole
 
   const handleAddColumn = (fieldKey) => {
     const field = availableFields.find((f) => f.key === fieldKey);
@@ -474,19 +439,13 @@ export default function ListViewsSettings() {
     setDirty(true);
   };
 
-  // Toggle a role in the assignedRoles array.  Adds the role if not present,
-  // removes it if already present.  Marks the view as dirty so the user
-  // knows to save changes.
   const toggleAssignedRole = (roleValue) => {
     const upper = roleValue.toUpperCase();
     setAssignedRoles((prev) => {
       const exists = prev.includes(upper);
-       if (exists) {
-        // If removing a role, also remove it from the defaultRoles list and
-        // update isDefault accordingly
+      if (exists) {
         setDefaultRoles((dprev) => {
           const newList = dprev.filter((r) => r !== upper);
-          // update isDefault: whether current role is still default
           setIsDefault(newList.includes(role.toUpperCase()));
           return newList;
         });
@@ -497,9 +456,6 @@ export default function ListViewsSettings() {
     setDirty(true);
   };
 
-  // Toggle a role in the defaultRoles array.  Only roles that are currently
-  // assigned can be marked as default.  Updates isDefault to reflect
-  // whether the currently selected role is included in defaultRoles.
   const toggleDefaultRole = (roleValue) => {
     const upper = roleValue.toUpperCase();
     setDefaultRoles((prev) => {
@@ -509,16 +465,9 @@ export default function ListViewsSettings() {
         next = prev.filter((r) => r !== upper);
       } else {
         next = [...prev, upper];
-        // When adding a role as default for this view, remove the same role
-        // from the defaultRoles of all other views in memory.  This
-        // ensures there is at most one default per role across all views
-        // even before saving.  The backend will enforce this on save, but
-        // updating local state prevents multiple default chips from
-        // appearing simultaneously.
         setViews((oldViews) => {
           return oldViews.map((v) => {
             if (v.slug === activeViewSlug) return v;
-            // Normalize default_roles array on the view
             const cfg = v.config || {};
             const droles = Array.isArray(cfg.default_roles)
               ? cfg.default_roles.map((r) => r.toUpperCase())
@@ -535,25 +484,19 @@ export default function ListViewsSettings() {
           });
         });
       }
-      // Keep default roles only among assigned roles
       next = next.filter((r) => assignedRoles.includes(r));
-      // Update isDefault based on whether current role is default
       setIsDefault(next.includes(role.toUpperCase()));
 
-      // Also update the views array so the UI reflects new default roles
       setViews((prevViews) => {
         return prevViews.map((v) => {
-          // If this is the view being edited, update its config.default_roles
           if (v.slug === activeViewSlug) {
             const cfg = v.config || {};
             return {
               ...v,
-              // For legacy support, also update is_default on the row based on current role
               is_default: next.includes(role.toUpperCase()),
               config: { ...cfg, default_roles: next },
             };
           }
-          // Other views were updated above when adding a new default role
           return v;
         });
       });
@@ -568,13 +511,6 @@ export default function ListViewsSettings() {
     setSaveMessage("");
 
     const label = (currentLabel || "").trim();
-    // When editing an existing view we keep the slug stable. Only
-    // generate a new slug when creating a brand‑new view (i.e. when no
-    // view is selected or the active view slug is "default").  This
-    // prevents accidentally creating a second view with a new slug
-    // when the label changes on an existing view.  Without this, a
-    // label change would produce a new slug and thus insert a new row
-    // instead of updating the existing view.
     const slug =
       activeViewSlug && activeViewSlug !== "default"
         ? activeViewSlug
@@ -589,8 +525,6 @@ export default function ListViewsSettings() {
       return;
     }
 
-    // Ensure slug is unique among existing views (case-insensitive).  If a
-    // different view already uses this slug, abort save with an error.
     const dup = (views || []).find(
       (v) => v.slug && v.slug.toLowerCase() === slug.toLowerCase() && v.slug !== activeViewSlug
     );
@@ -603,35 +537,27 @@ export default function ListViewsSettings() {
 
     try {
       setLoading(true);
-      // Build payload.  We include both the new multi-role fields (roles,
-      // default_roles) and the legacy single-role fields (role, is_default)
-      // so that the API can support both formats.  assignedRoles is an
-      // array of strings (uppercased), and if isDefault is true we pass
-      // the same list as default_roles; otherwise default_roles is empty.
-       // When saving, include both new multi-role fields (roles, default_roles)
-       // and legacy fields (role, is_default).  We compute is_default
-       // as whether the current role is in the list of defaultRoles.
-       const payload = {
-         slug,
-         label,
-         // Legacy single-role fields for backwards compatibility
-         role,
-         is_default: defaultRoles.includes(role.toUpperCase()),
-         // New multi-role fields
-         roles: assignedRoles,
-         default_roles: defaultRoles,
-         config: { columns },
-       };
+
+      const payload = {
+        slug,
+        label,
+        // Legacy single-role fields for backwards compatibility
+        role,
+        is_default: defaultRoles.includes(role.toUpperCase()),
+        // New multi-role fields
+        roles: assignedRoles,
+        default_roles: defaultRoles,
+        config: { columns },
+      };
+
       const res = await api.put(
         `/api/content-types/${selectedTypeId}/list-view`,
         payload
       );
 
-      // Response may include an array of views (res.data.views) or a single view
       let savedRow;
       if (res?.data?.views && Array.isArray(res.data.views)) {
         const arr = res.data.views;
-        // Find the view for the current role (case-insensitive) or fall back
         savedRow =
           arr.find(
             (v) =>
@@ -639,7 +565,6 @@ export default function ListViewsSettings() {
               v.slug === slug
           ) || arr.find((v) => v.slug === slug) || arr[0];
       } else if (Array.isArray(res)) {
-        // Raw array
         const arr = res;
         savedRow =
           arr.find(
@@ -648,22 +573,17 @@ export default function ListViewsSettings() {
               v.slug === slug
           ) || arr.find((v) => v.slug === slug) || arr[0];
       } else {
-        // Legacy: res.data.view or res.data is a single view
         savedRow = res?.data?.view || res?.data || null;
       }
 
       if (!savedRow) {
-        setSaveMessage("List view saved");
+        setSaveMessage("List view saved. Entry lists will use this layout now.");
         setDirty(false);
-        // After saving we navigate back to the list of views for this type.
-        // This updates the URL and resets the stage via useEffect.
+        bumpListViewsVersion(); // ✅ notify others
         navigate(`/admin/settings/list-views/${selectedTypeId}`);
         return;
       }
 
-      // Optimistically update the views list locally so the UI reflects
-      // changes immediately, even before reload.  Merge the updated label,
-      // roles, default roles and columns into the existing view record.
       setViews((prev) => {
         const idx = prev.findIndex((v) => v.slug === savedRow.slug);
         const updated = {
@@ -684,11 +604,6 @@ export default function ListViewsSettings() {
         return nextList;
       });
 
-      // Instead of only updating the saved row in state, reload the list
-      // views from the API to ensure default flags and other views are
-      // correctly refreshed.  This guarantees that only one view is
-      // default per role and prevents stale duplicates from lingering
-      // in the UI.  We use the currently selected role when reloading.
       try {
         const lvRes = await api.get(
           `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(role)}`
@@ -703,12 +618,10 @@ export default function ListViewsSettings() {
           newViews = [];
         }
         setViews(newViews);
-        // Find the newly saved view by slug; fall back to the first view
         const next = newViews.find((v) => v.slug === slug) || newViews[0] || null;
         if (next) {
           setActiveViewSlug(next.slug);
           setCurrentLabel(next.label);
-          // Load assigned roles and default roles from the view config
           const cfgRoles = Array.isArray(next?.config?.roles)
             ? next.config.roles
             : next.role
@@ -731,7 +644,6 @@ export default function ListViewsSettings() {
               ];
           setColumns(cfgCols);
         } else {
-          // No views returned: fallback to synthesized default layout
           setActiveViewSlug("default");
           setCurrentLabel("Default list");
           setIsDefault(true);
@@ -743,13 +655,12 @@ export default function ListViewsSettings() {
             { key: "updated_at", label: "Updated" },
           ]);
         }
-        setSaveMessage("List view saved");
+        setSaveMessage("List view saved. Entry lists will use this layout now.");
         setDirty(false);
-        // Navigate back to the views list page
+        bumpListViewsVersion(); // ✅ notify others
         navigate(`/admin/settings/list-views/${selectedTypeId}`);
       } catch (err) {
         console.error("[ListViews] reload after save error", err);
-        // If reload fails, fall back to previous behaviour of updating saved row locally
         setViews((prev) => {
           const idx = prev.findIndex((v) => v.slug === savedRow.slug);
           if (idx === -1) {
@@ -761,8 +672,9 @@ export default function ListViewsSettings() {
         });
         setActiveViewSlug(savedRow.slug);
         setIsDefault(!!savedRow.is_default);
-        setSaveMessage("List view saved");
+        setSaveMessage("List view saved. Entry lists will use this layout now.");
         setDirty(false);
+        bumpListViewsVersion(); // ✅ notify others even on fallback
       }
     } catch (err) {
       console.error("[ListViews] save error", err);
@@ -772,10 +684,6 @@ export default function ListViewsSettings() {
     }
   };
 
-  // Delete the currently selected view.  This will remove all roles for this
-  // slug by default.  After deletion, reload the list of views and select
-  // the first available view.  If no views remain, revert to the
-  // synthesized default layout.
   const handleDeleteCurrentView = async () => {
     if (!selectedTypeId || !activeViewSlug || activeViewSlug === 'default') {
       return;
@@ -787,15 +695,9 @@ export default function ListViewsSettings() {
       setLoading(true);
       setError('');
       setSaveMessage('');
-      // delete the view for the current role.  Passing the role
-      // identifies the row uniquely when multiple roles share the same slug.
-      // Use api.del instead of api.delete (api.js defines del for DELETE)
-      // and include the role as a query parameter.  Without this the
-      // request would silently fail and the view would not be removed.
       await api.del(
         `/api/content-types/${selectedTypeId}/list-view/${activeViewSlug}?role=${encodeURIComponent(role)}`
       );
-      // Reload list views
       const lvRes = await api.get(
         `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(role)}`
       );
@@ -810,9 +712,6 @@ export default function ListViewsSettings() {
       }
       setViews(newViews);
       if (newViews.length === 0) {
-        // no saved views remain: reset to default layout and navigate back to
-        // the views list for this type.  The default layout is still shown
-        // in the edit UI but we treat it as unsaved.
         setActiveViewSlug('default');
         setCurrentLabel('Default list');
         setIsDefault(true);
@@ -824,14 +723,12 @@ export default function ListViewsSettings() {
           { key: 'updated_at', label: 'Updated' },
         ]);
         setDirty(false);
-        // Navigate back to the list of views (no viewSlug in path)
+        bumpListViewsVersion(); // ✅ notify others
         navigate(`/admin/settings/list-views/${selectedTypeId}`);
       } else {
-        // Select the first view from the reloaded list and navigate to it
         const first = newViews[0];
         setActiveViewSlug(first.slug);
         setCurrentLabel(first.label);
-        // load assigned and default roles
         const cfgRoles = Array.isArray(first?.config?.roles)
           ? first.config.roles
           : first.role
@@ -851,7 +748,7 @@ export default function ListViewsSettings() {
               { key: 'updated_at', label: 'Updated' },
             ];
         setColumns(cfgCols);
-        // Navigate to the new active view slug
+        bumpListViewsVersion(); // ✅ notify others
         navigate(`/admin/settings/list-views/${selectedTypeId}/${first.slug}`);
       }
     } catch (err) {
@@ -919,7 +816,6 @@ export default function ListViewsSettings() {
                 type="button"
                 className="su-btn su-btn-ghost su-btn-sm"
                 onClick={() => {
-                  // Navigate back to the list of content types
                   navigate('/admin/settings/list-views');
                 }}
               >
@@ -939,7 +835,6 @@ export default function ListViewsSettings() {
               )}
               <div className="su-chip-row su-mb-md">
                 {views.map((v) => {
-                  // Determine if this view is default for the currently selected role.
                   const viewDefaultRoles = Array.isArray(v?.config?.default_roles)
                     ? v.config.default_roles.map((r) => String(r || '').toUpperCase())
                     : [];
@@ -989,7 +884,6 @@ export default function ListViewsSettings() {
                 type="button"
                 className="su-btn su-btn-ghost su-btn-sm"
                 onClick={() => {
-                  // Navigate back to the list of views for the current type
                   navigate(`/admin/settings/list-views/${selectedTypeId}`);
                 }}
               >
