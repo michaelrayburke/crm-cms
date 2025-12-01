@@ -474,6 +474,24 @@ export default function ListViewsSettings() {
       next = next.filter((r) => assignedRoles.includes(r));
       // Update isDefault based on whether current role is default
       setIsDefault(next.includes(role.toUpperCase()));
+
+      // Also update the views array so the UI reflects new default roles
+      setViews((prevViews) => {
+        return prevViews.map((v) => {
+          // If this is the view being edited, update its config.default_roles
+          if (v.slug === activeViewSlug) {
+            const cfg = v.config || {};
+            return {
+              ...v,
+              // For legacy support, also update is_default on the row based on current role
+              is_default: next.includes(role.toUpperCase()),
+              config: { ...cfg, default_roles: next },
+            };
+          }
+          // Other views were updated above when adding a new default role
+          return v;
+        });
+      });
       return next;
     });
     setDirty(true);
@@ -669,7 +687,7 @@ export default function ListViewsSettings() {
       setSaveMessage('');
       // delete the view for the current role.  Passing the role
       // identifies the row uniquely when multiple roles share the same slug.
-      await api.del(
+      await api.delete(
         `/api/content-types/${selectedTypeId}/list-view/${activeViewSlug}`,
         { params: { role } }
       );
@@ -753,39 +771,30 @@ export default function ListViewsSettings() {
 
       <div className="su-card su-mb-lg">
         <div className="su-card-body su-flex su-gap-md su-flex-wrap">
+          {/* Content types selector: show as a list of chips instead of a dropdown. */}
           <div className="su-field">
             <label className="su-label">Content type</label>
-            <select
-              className="su-input"
-              value={selectedTypeId || ""}
-              onChange={handleSelectType}
-              disabled={loadingTypes || !contentTypes.length}
-            >
-              {!contentTypes.length && (
-                <option value="">No content types yet</option>
+            <div className="su-chip-row su-mt-sm">
+              {contentTypes.length === 0 && (
+                <span className="su-text-muted">No content types yet</span>
               )}
               {contentTypes.map((ct) => (
-                <option key={ct.id} value={ct.id}>
+                <button
+                  key={ct.id}
+                  type="button"
+                  onClick={() => setSelectedTypeId(ct.id)}
+                  className={
+                    "su-chip" +
+                    (selectedTypeId === ct.id ? " su-chip--active" : "")
+                  }
+                >
                   {ct.name || ct.slug}
-                </option>
+                </button>
               ))}
-            </select>
+            </div>
           </div>
 
-          <div className="su-field">
-            <label className="su-label">Role</label>
-            <select
-              className="su-input"
-              value={role}
-              onChange={handleSelectRole}
-            >
-              {allRoles.map((r) => (
-                <option key={r} value={r}>
-                  {r.charAt(0) + r.slice(1).toLowerCase()}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Role selector removed: we rely on assigned roles checkboxes below.  The `role` state still controls which views are shown, but the dropdown is hidden to simplify the UI. */}
 
           {/* Multi-role assignment for the current view */}
           <div className="su-field">
