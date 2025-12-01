@@ -568,7 +568,17 @@ export default function ListViewsSettings() {
     setSaveMessage("");
 
     const label = (currentLabel || "").trim();
-    const slug = slugify(label || "view");
+    // When editing an existing view we keep the slug stable. Only
+    // generate a new slug when creating a brand‑new view (i.e. when no
+    // view is selected or the active view slug is "default").  This
+    // prevents accidentally creating a second view with a new slug
+    // when the label changes on an existing view.  Without this, a
+    // label change would produce a new slug and thus insert a new row
+    // instead of updating the existing view.
+    const slug =
+      activeViewSlug && activeViewSlug !== "default"
+        ? activeViewSlug
+        : slugify(label || "view");
 
     if (!label) {
       setError("Label is required");
