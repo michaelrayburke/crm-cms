@@ -191,17 +191,15 @@ router.put(
         return res.status(404).json({ error: 'Content type not found' });
       }
       await client.query('BEGIN');
-      // Upsert a row per role.  For each role in roleList, either insert a new
-      // entry_list_views row or update the existing one (identified by
-      // content_type_id + slug + role).  If the role is in defaultRoleList,
-      // mark it as default.  Otherwise, mark as non-default.
-      const upsertResults = [];
-      for (const roleValueRaw of roleList) {
-        const roleValue = roleValueRaw.toUpperCase();
-        const isDefaultForRole = defaultRoleList.includes(roleValue);
-        // Clear any other list views marked as default for this type+role.
-        if (isDefaultForRole) {
-          // Clear any other list views marked as default for this type+role and remove default_roles from their config.
+      // We now store a single row per view with a list of roles in config.roles and
+      // default roles in config.default_roles.  First, ensure default roles
+      // do not include roles not present in the role list.
+      defaultRoleList = defaultRoleList.filter((r) => roleList.includes(r));
+
+      // Clear any other list views marked as default for this content type and roles
+      // in defaultRoleList.  This ensures only one default view per role.
+      if (defaultRoleList.length > 0) {
+        for (const dRole of defaultRoleList) {
           await client.query(
             `UPDATE entry_list_views
                SET is_default = FALSE,
@@ -212,79 +210,82 @@ router.put(
                      true
                    )
              WHERE content_type_id = $1
-               AND role = $2`,
-            [contentTypeId, roleValue]
+               AND (config->'default_roles')::jsonb ? $2`,
+            [contentTypeId, dRole]
           );
         }
-        // Check for existing row for this role
-        const { rows: existingRows } = await client.query(
-          `SELECT id
-             FROM entry_list_views
-            WHERE content_type_id = $1
-              AND slug = $2
-              AND role = $3`,
-          [contentTypeId, slug, roleValue]
+      }
+
+      // Check for existing rows for this slug regardless of role
+      const { rows: existingRows } = await client.query(
+        `SELECT id, role
+           FROM entry_list_views
+          WHERE content_type_id = $1
+            AND slug = $2`,
+        [contentTypeId, slug]
+      );
+
+      let savedRow;
+      // Build a config that includes all roles and default roles
+      const newConfig = {
+        ...(config || {}),
+        roles: roleList,
+        default_roles: defaultRoleList,
+      };
+      if (existingRows.length > 0) {
+        // Update the first existing row and delete duplicates.  Use the first row as the primary
+        const firstId = existingRows[0].id;
+        if (existingRows.length > 1) {
+          const dupIds = existingRows.slice(1).map((r) => r.id);
+          await client.query(
+            `DELETE FROM entry_list_views WHERE id = ANY($1::uuid[])`,
+            [dupIds]
+          );
+        }
+        // Choose a legacy role value for the updated row. Use the first role in the list.
+        const legacyRoleValue = roleList[0] || 'ADMIN';
+        // Determine is_default flag.  If any role is default, mark the row as default.
+        const isDefaultRow = defaultRoleList.length > 0;
+        const { rows: updateRows } = await client.query(
+          `UPDATE entry_list_views
+              SET label = $1,
+                  role = $2,
+                  is_default = $3,
+                  config = $4,
+                  updated_at = NOW()
+            WHERE id = $5
+            RETURNING id, content_type_id, slug, label, role, is_default, config`,
+          [
+            label || slug,
+            legacyRoleValue,
+            isDefaultRow,
+            newConfig,
+            firstId,
+          ]
         );
-        let savedRow;
-        // Build a config that includes only this role and its default status
-        const newConfig = {
-          ...(config || {}),
-          roles: [roleValue],
-          default_roles: isDefaultForRole ? [roleValue] : [],
-        };
-        if (existingRows.length > 0) {
-          // Update the first existing row and delete duplicates.  This
-          // ensures that slugs remain unique per role.  If multiple rows
-          // exist for the same slug+role (legacy bug), we consolidate
-          // them into a single row.
-          const firstId = existingRows[0].id;
-          // Delete duplicate rows (excluding the first)
-          if (existingRows.length > 1) {
-            const dupIds = existingRows.slice(1).map((r) => r.id);
-            await client.query(
-              `DELETE FROM entry_list_views WHERE id = ANY($1::uuid[])`,
-              [dupIds]
-            );
-          }
-          const { rows: updateRows } = await client.query(
-            `UPDATE entry_list_views
-                SET label = $1,
-                    is_default = $2,
-                    config = $3,
-                    updated_at = NOW()
-              WHERE id = $4
-              RETURNING id, content_type_id, slug, label, role, is_default, config`,
-            [
-              label || slug,
-              isDefaultForRole,
-              newConfig,
-              firstId,
-            ]
-          );
-          savedRow = updateRows[0];
-        } else {
-          // Insert new
-          const { rows: insertRows } = await client.query(
-            `INSERT INTO entry_list_views
-                (content_type_id, slug, label, role, is_default, config)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             RETURNING id, content_type_id, slug, label, role, is_default, config`,
-            [
-              contentTypeId,
-              slug,
-              label || slug,
-              roleValue,
-              isDefaultForRole,
-              newConfig,
-            ]
-          );
-          savedRow = insertRows[0];
-        }
-        upsertResults.push(savedRow);
+        savedRow = updateRows[0];
+      } else {
+        // Insert new row
+        const legacyRoleValue = roleList[0] || 'ADMIN';
+        const isDefaultRow = defaultRoleList.length > 0;
+        const { rows: insertRows } = await client.query(
+          `INSERT INTO entry_list_views
+              (content_type_id, slug, label, role, is_default, config)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING id, content_type_id, slug, label, role, is_default, config`,
+          [
+            contentTypeId,
+            slug,
+            label || slug,
+            legacyRoleValue,
+            isDefaultRow,
+            newConfig,
+          ]
+        );
+        savedRow = insertRows[0];
       }
       await client.query('COMMIT');
-      // Return all updated/inserted rows for the caller.
-      return res.json({ views: upsertResults });
+      return res.json({ views: [savedRow] });
     } catch (err) {
       await client.query('ROLLBACK');
       console.error('[PUT /content-types/:id/list-view]', err);
