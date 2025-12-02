@@ -1,4 +1,4 @@
-// ServiceUp/api/routes/contentTypes.js
+// ServiceUp/api/routes/contentTypes.js (updated to accept slug)
 import express from "express";
 import pg from "pg";
 
@@ -17,6 +17,26 @@ function requireAdmin(req, res, next) {
     return res.status(403).json({ error: "Forbidden" });
   }
   next();
+}
+
+// Helper to detect UUID
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    String(value || '').trim()
+  );
+}
+
+// Resolve content type ID from slug or ID
+async function resolveContentTypeId(idOrSlug) {
+  const raw = String(idOrSlug).trim();
+  if (isUuid(raw)) {
+    return raw;
+  }
+  const { rows } = await pool.query(
+    `SELECT id FROM content_types WHERE slug = $1`,
+    [raw]
+  );
+  return rows[0]?.id ?? null;
 }
 
 /**
@@ -41,14 +61,14 @@ router.get("/", async (req, res) => {
         updated_at
       FROM content_types
     `;
-
+    
     if (type) {
       sql += " WHERE type = $1";
       params.push(type);
     }
-
+    
     sql += " ORDER BY label_plural ASC";
-
+    
     const { rows } = await pool.query(sql, params);
     res.json(rows);
   } catch (err) {
@@ -76,17 +96,17 @@ router.post("/", requireAdmin, async (req, res) => {
     if (!slug || !label_singular || !label_plural) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-
+    
     // Legacy "name" column for backwards compatibility
     const legacyName = label_plural;
-
+    
     const insertSql = `
       INSERT INTO content_types
         (slug, type, label_singular, label_plural, description, icon, is_system, name)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *;
     `;
-
+    
     const { rows } = await pool.query(insertSql, [
       slug,
       type,
@@ -97,7 +117,6 @@ router.post("/", requireAdmin, async (req, res) => {
       is_system,
       legacyName,
     ]);
-
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error("Error creating content type", err);
@@ -112,11 +131,16 @@ router.post("/", requireAdmin, async (req, res) => {
 /**
  * GET /api/content-types/:id
  * Fetch type + its fields
+ * Accepts either a UUID or a slug
  */
 router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-
+    const resolvedId = await resolveContentTypeId(id);
+    if (!resolvedId) {
+      return res.status(404).json({ error: "Content type not found" });
+    }
+    
     const typeResult = await pool.query(
       `SELECT
          id,
@@ -129,17 +153,16 @@ router.get("/:id", async (req, res) => {
          is_system
        FROM content_types
        WHERE id = $1`,
-      [id]
+      [resolvedId]
     );
-
     if (!typeResult.rows.length) {
       return res.status(404).json({ error: "Content type not found" });
     }
-
+    
     const fieldsResult = await pool.query(
       `SELECT
          id,
-        content_type_id,
+         content_type_id,
          field_key,
          label,
          type,
@@ -150,9 +173,9 @@ router.get("/:id", async (req, res) => {
        FROM content_fields
        WHERE content_type_id = $1
        ORDER BY order_index ASC, created_at ASC`,
-      [id]
+      [resolvedId]
     );
-
+    
     res.json({
       ...typeResult.rows[0],
       fields: fieldsResult.rows,
@@ -170,6 +193,10 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+    const resolvedId = await resolveContentTypeId(id);
+    if (!resolvedId) {
+      return res.status(404).json({ error: "Content type not found" });
+    }
     const {
       slug,
       label_singular,
@@ -178,7 +205,7 @@ router.put("/:id", requireAdmin, async (req, res) => {
       icon,
       type,
     } = req.body || {};
-
+    
     const updateSql = `
       UPDATE content_types
       SET
@@ -192,7 +219,7 @@ router.put("/:id", requireAdmin, async (req, res) => {
       WHERE id = $7
       RETURNING *;
     `;
-
+    
     const { rows } = await pool.query(updateSql, [
       slug,
       label_singular,
@@ -200,13 +227,11 @@ router.put("/:id", requireAdmin, async (req, res) => {
       description,
       icon,
       type,
-      id,
+      resolvedId,
     ]);
-
     if (!rows.length) {
       return res.status(404).json({ error: "Content type not found" });
     }
-
     res.json(rows[0]);
   } catch (err) {
     console.error("Error updating content type", err);
@@ -223,20 +248,21 @@ router.put("/:id", requireAdmin, async (req, res) => {
 router.delete("/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-
+    const resolvedId = await resolveContentTypeId(id);
+    if (!resolvedId) {
+      return res.status(404).json({ error: "Content type not found" });
+    }
     const { rows } = await pool.query(
       "SELECT is_system FROM content_types WHERE id = $1",
-      [id]
+      [resolvedId]
     );
-
     if (!rows.length) {
       return res.status(404).json({ error: "Content type not found" });
     }
     if (rows[0].is_system) {
       return res.status(400).json({ error: "Cannot delete system content type" });
     }
-
-    await pool.query("DELETE FROM content_types WHERE id = $1", [id]);
+    await pool.query("DELETE FROM content_types WHERE id = $1", [resolvedId]);
     res.json({ success: true });
   } catch (err) {
     console.error("Error deleting content type", err);
@@ -250,27 +276,27 @@ router.delete("/:id", requireAdmin, async (req, res) => {
  */
 router.put("/:id/fields", requireAdmin, async (req, res) => {
   const client = await pool.connect();
-
   try {
     const { id } = req.params;
+    const resolvedId = await resolveContentTypeId(id);
+    if (!resolvedId) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Content type not found" });
+    }
     const { fields } = req.body || {};
-
     await client.query("BEGIN");
-
     const ct = await client.query(
       "SELECT id FROM content_types WHERE id = $1",
-      [id]
+      [resolvedId]
     );
     if (!ct.rows.length) {
       await client.query("ROLLBACK");
       return res.status(404).json({ error: "Content type not found" });
     }
-
     await client.query(
       "DELETE FROM content_fields WHERE content_type_id = $1",
-      [id]
+      [resolvedId]
     );
-
     const insertSql = `
       INSERT INTO content_fields
         (content_type_id, field_key, label, type, required, help_text, order_index, config)
@@ -278,11 +304,10 @@ router.put("/:id/fields", requireAdmin, async (req, res) => {
         ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
       RETURNING *;
     `;
-
     const inserted = [];
     for (const [index, f] of (fields || []).entries()) {
       const { rows } = await client.query(insertSql, [
-        id,
+        resolvedId,
         f.field_key,
         f.label,
         f.type || "text",
@@ -293,7 +318,6 @@ router.put("/:id/fields", requireAdmin, async (req, res) => {
       ]);
       inserted.push(rows[0]);
     }
-
     await client.query("COMMIT");
     res.json(inserted);
   } catch (err) {
