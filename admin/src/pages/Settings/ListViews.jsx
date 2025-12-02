@@ -443,6 +443,10 @@ export default function ListViewsSettings() {
 
   const toggleAssignedRole = (roleValue) => {
     const upper = roleValue.toUpperCase();
+    // If a non-admin role is being toggled while in admin-only mode, exit admin-only mode
+    if (adminOnly) {
+      setAdminOnly(false);
+    }
     setAssignedRoles((prev) => {
       const exists = prev.includes(upper);
       if (exists) {
@@ -458,18 +462,23 @@ export default function ListViewsSettings() {
     setDirty(true);
   };
 
-  // Determine if the view is currently Admin-only. When assignedRoles is empty, only Admin will be saved.
-  const isAdminOnly = assignedRoles.length === 0;
+  // Track whether the view is currently Admin-only. When true, only Admin can access the view.
+  const [adminOnly, setAdminOnly] = useState(false);
+  // Derived flag used in the UI; mirrors the adminOnly state. We keep this separate to avoid undefined references.
+  const isAdminOnly = adminOnly;
 
-  // Toggle the Admin-only state. If toggled on, clear all assigned roles (Admin will still be included implicitly when saving).
+  // Toggle the Admin-only state.  When toggled on, clear all assigned roles and retain only Admin in default roles.
   const toggleAdminOnly = () => {
-    if (isAdminOnly) {
-      // Turning off Admin-only: no action here; user can check other roles manually.
-      return;
+    if (!adminOnly) {
+      // Turning on Admin-only: clear assigned roles and keep only Admin in default roles
+      setAdminOnly(true);
+      setAssignedRoles([]);
+      setDefaultRoles((prev) => prev.filter((r) => r.toUpperCase() === 'ADMIN'));
+    } else {
+      // Turning off Admin-only: allow roles to be selected manually
+      setAdminOnly(false);
+      // Do not modify assignedRoles here; the user can choose roles after turning off Admin-only
     }
-    // Turning on Admin-only: clear assigned roles and default roles (except Admin if present)
-    setAssignedRoles([]);
-    setDefaultRoles((prev) => prev.filter((r) => r.toUpperCase() === 'ADMIN'));
     setDirty(true);
   };
 
@@ -905,7 +914,6 @@ export default function ListViewsSettings() {
                         value={r}
                         checked={assignedRoles.includes(r)}
                         onChange={() => toggleAssignedRole(r)}
-                        disabled={isAdminOnly}
                       />
                       <span>{r.charAt(0) + r.slice(1).toLowerCase()}</span>
                     </label>
