@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
-import { useSettings } from "../../context/SettingsContext"; // ✅ NEW
+import { useSettings } from "../../context/SettingsContext";
 
 // Simple slugify for view slugs
 function slugify(str) {
@@ -144,7 +144,10 @@ export default function ListViewsSettings() {
         });
 
         setContentTypes(list);
-        if (list.length && !selectedTypeId) {
+        // If no type is specified in the URL and no type has been selected yet, default to the first type.
+        // Otherwise, respect the slug from the route. This prevents refreshing from switching to the first type.
+        const hasParam = params?.typeSlug || params?.typeId;
+        if (list.length && !hasParam && !selectedTypeId) {
           setSelectedTypeId(list[0].id);
         }
       } catch (err) {
