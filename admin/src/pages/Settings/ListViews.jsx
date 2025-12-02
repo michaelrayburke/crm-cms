@@ -202,11 +202,12 @@ export default function ListViewsSettings() {
 
         const [ctRes, viewsRes] = await Promise.all([
           api.get(`/api/content-types/${selectedTypeId}`),
-          // Append role and a cache-busting param so the API returns 200 OK instead of 304 Not Modified.
+          // Fetch all views for this type. Include all views in the list settings page so
+          // admins can edit views regardless of assignment. Use a cache-busting param.
           api.get(
             `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(
               role,
-            )}&_=${Date.now()}`,
+            )}&all=true&_=${Date.now()}`,
           ),
         ]);
 
@@ -542,15 +543,17 @@ export default function ListViewsSettings() {
     try {
       setLoading(true);
 
-      // Remove any existing rows for this slug that correspond to roles no longer
-      // assigned. We call api.del for each unassigned role to clean up old
-      // views before re-creating them.
+      // Always include ADMIN when saving so that admins can manage views even if
+      // they are not assigned. Build a list of roles to save that includes
+      // all roles in assignedRoles plus 'ADMIN'.
+      // Filter defaultRoles so admin cannot be set as default; admin views are for editing only.
+      const effectiveDefaultRoles = defaultRoles.filter((r) => r !== 'ADMIN');
+      const rolesToSave = Array.from(new Set([...assignedRoles, 'ADMIN']));
+      // Remove any existing rows for this slug that correspond to roles no
+      // longer in rolesToSave. This avoids leaving stale records in the DB.
       try {
-        // Determine which roles need to be deleted: allRoles not in assignedRoles
-        const rolesToDelete = allRoles.filter((r) => !assignedRoles.includes(r));
+        const rolesToDelete = allRoles.filter((r) => !rolesToSave.includes(r));
         for (const r of rolesToDelete) {
-          // Delete the view for this role if it exists. Use encodeURIComponent
-          // for the slug and role.
           const encodedSlugDel = encodeURIComponent(slug);
           const encodedRoleDel = encodeURIComponent(r);
           try {
@@ -558,7 +561,6 @@ export default function ListViewsSettings() {
               `/api/content-types/${selectedTypeId}/list-view/${encodedSlugDel}?role=${encodedRoleDel}`,
             );
           } catch (delErr) {
-            // Ignore errors during deletion (view might not exist for this role)
             console.warn('[ListViews] ignore delete role error', delErr);
           }
         }
@@ -566,21 +568,16 @@ export default function ListViewsSettings() {
         console.error('[ListViews] cleanup before save error', cleanupErr);
       }
 
-      // Save a separate view per assigned role. Each row advertises only its
-      // own role in `roles` and sets `default_roles` per role. We iterate
-      // through assignedRoles and send one PUT request per role. This
-      // prevents the API from returning the same row for multiple roles.
-      for (const r of assignedRoles) {
-        const isDefaultForRole = defaultRoles.includes(r);
+      // Save a separate view per role. Admin rows are always created but never
+      // marked as default unless explicitly included in defaultRoles.
+      for (const r of rolesToSave) {
+        const isDefaultForRole = effectiveDefaultRoles.includes(r);
         const payload = {
           slug,
           label,
-          // Legacy single-role fields for backwards compatibility
           role: r,
           is_default: isDefaultForRole,
-          // New multi-role fields: advertise only the current role for this row
           roles: [r],
-          // Set default_roles per role if it is default for this role; otherwise empty
           default_roles: isDefaultForRole ? [r] : [],
           config: { columns },
         };
