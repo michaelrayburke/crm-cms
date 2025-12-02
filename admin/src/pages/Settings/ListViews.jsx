@@ -873,7 +873,8 @@ export default function ListViewsSettings() {
               <div className="su-field su-mt-sm">
                 <label className="su-label">Assigned roles</label>
                 <div className="su-flex su-gap-sm su-flex-wrap">
-                  {allRoles.map((r) => (
+                  {/* Hide the ADMIN role from the role selection UI. It will still be included when saving. */}
+                  {allRoles.filter((r) => r !== 'ADMIN').map((r) => (
                     <label key={r} className="su-checkbox">
                       <input
                         type="checkbox"
@@ -884,6 +885,8 @@ export default function ListViewsSettings() {
                       <span>{r.charAt(0) + r.slice(1).toLowerCase()}</span>
                     </label>
                   ))}
+                {/* Always show that Admin is assigned */}
+                <span className="su-badge su-badge-soft su-ml-sm">Admin (always)</span>
                 </div>
                 <small className="su-text-muted">
                   Select one or more roles that can use this view. You can mark
@@ -893,7 +896,8 @@ export default function ListViewsSettings() {
               <div className="su-field su-mt-sm">
                 <label className="su-label">Default roles</label>
                 <div className="su-flex su-gap-sm su-flex-wrap">
-                  {assignedRoles.map((r) => (
+                  {/* Hide the ADMIN role from default role selection. Admin cannot be marked default. */}
+                  {assignedRoles.filter((r) => r !== 'ADMIN').map((r) => (
                     <label key={r} className="su-checkbox">
                       <input
                         type="checkbox"
