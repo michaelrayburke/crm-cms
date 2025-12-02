@@ -55,6 +55,18 @@ async function getListViewsForTypeAndRole(contentTypeId, role) {
   // column if the config does not specify roles).  Role names are
   // compared case‑insensitively.
   const roleValue = (role || 'ADMIN').toUpperCase();
+  // If no role or role is falsy, return all rows (used when includeAll=true).
+  if (!role) {
+    return rows;
+  }
+  // Admins should be able to see all list view definitions for editing. When
+  // role is 'ADMIN', the caller can pass all=true to bypass filtering; in
+  // that case, role will be undefined. Otherwise, we still filter views used
+  // by admin so the list page shows only admin-specific views.
+  if (roleValue === 'ADMIN' && role) {
+    // Fall through to filtering below to avoid using views for other roles
+    // when listing entries. Admin editing can use includeAll=true to see all.
+  }
   return rows.filter((row) => {
     const cfg = row.config || {};
     const roles = Array.isArray(cfg.roles)
@@ -85,14 +97,18 @@ router.get(
   async (req, res) => {
     try {
       const { id: idOrSlug } = req.params;
-      const role = (req.query.role || req.user?.role || 'ADMIN').toUpperCase();
+      const roleParam = req.query.role;
+      const allParam = req.query.all;
+      const role = roleParam ? String(roleParam).toUpperCase() : (req.user?.role || 'ADMIN').toUpperCase();
+      const includeAll = String(allParam).toLowerCase() === 'true';
 
       const contentTypeId = await resolveContentTypeId(idOrSlug);
       if (!contentTypeId) {
         return res.status(404).json({ error: 'Content type not found' });
       }
 
-      const views = await getListViewsForTypeAndRole(contentTypeId, role);
+      // If includeAll=true, skip role filtering by passing null/undefined role to helper.
+      const views = await getListViewsForTypeAndRole(contentTypeId, includeAll ? null : role);
 
       // NOTE: returning the raw array keeps existing frontend logic working.
       return res.json(views);
@@ -185,9 +201,16 @@ router.put(
         const isDefaultForRole = defaultRoleList.includes(roleValue);
         // Clear any other list views marked as default for this type+role.
         if (isDefaultForRole) {
+          // Clear any other list views marked as default for this type+role and remove default_roles from their config.
           await client.query(
             `UPDATE entry_list_views
-               SET is_default = FALSE
+               SET is_default = FALSE,
+                   config = jsonb_set(
+                     COALESCE(config, '{}'::jsonb),
+                     '{default_roles}',
+                     '[]'::jsonb,
+                     true
+                   )
              WHERE content_type_id = $1
                AND role = $2`,
             [contentTypeId, roleValue]
