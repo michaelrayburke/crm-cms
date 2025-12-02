@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import {
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom';
 import { api } from '../../lib/api';
-import { useSettings } from '../../context/SettingsContext'; 
+import { useSettings } from '../../context/SettingsContext';
 
 // Built-in columns that exist on every entry coming from the API
 const BUILTIN_KEYS = ['title', 'slug', 'status', 'created_at', 'updated_at'];
@@ -57,9 +61,67 @@ function getIdentifierKeyForType() {
   return 'title';
 }
 
+// Heuristic helpers for rendering values nicely
+function looksLikeDateKey(key) {
+  return /date|_at$/i.test(key);
+}
+
+function looksLikeImageKey(key) {
+  return /image|thumbnail|thumb|cover|photo|featured/i.test(key);
+}
+
+function looksLikeDescriptionKey(key) {
+  return /description|desc|excerpt|summary|bio|content/i.test(key);
+}
+
+function formatDate(value) {
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return value;
+  }
+}
+
+function getImageUrlFromValue(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value) && value.length) {
+    // try first element
+    return getImageUrlFromValue(value[0]);
+  }
+  if (typeof value === 'object') {
+    if (value.url) return value.url;
+    if (value.src) return value.src;
+    // common file-ish shapes
+    if (value.publicUrl) return value.publicUrl;
+  }
+  return null;
+}
+
+function summarizeArray(arr) {
+  const len = arr.length;
+  if (!len) return '';
+  if (len === 1) {
+    const v = arr[0];
+    if (typeof v === 'string') return v;
+    if (v && typeof v === 'object') {
+      return v.title || v.name || v.slug || JSON.stringify(v);
+    }
+    return String(v);
+  }
+  return `${len} items`;
+}
+
 export default function TypeList() {
   const navigate = useNavigate();
   const { type: typeSlugParam, typeSlug: typeSlugAlt } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Depending on how the route is declared it might be :type or :typeSlug
   const typeSlug = typeSlugParam || typeSlugAlt;
@@ -171,8 +233,11 @@ export default function TypeList() {
 
         setListViews(views || []);
 
-        const keySet = new Set(keys);
+        const viewFromUrl = searchParams.get('view') || '';
+        const keysFromRows = keys;
+
         let effectiveCols = [];
+        let chosenView = null;
 
         if (views && views.length) {
           // Prefer view whose config.default_roles includes this role.
@@ -191,30 +256,57 @@ export default function TypeList() {
               return !!v.is_default;
             }) || views[0];
 
-          setActiveViewSlug(defaultView.slug);
-          setActiveViewLabel(defaultView.label || defaultView.slug);
+          // If URL asks for a specific view and it exists, honour it
+          if (viewFromUrl) {
+            const fromUrl = views.find((v) => v.slug === viewFromUrl);
+            chosenView = fromUrl || defaultView;
+          } else {
+            chosenView = defaultView;
+          }
 
-          const cfgCols =
-            (defaultView.config && defaultView.config.columns) || [];
-          const cfgKeys = cfgCols
-            .map((c) => c.key)
-            .filter((k) => k && keySet.has(k));
+          if (chosenView) {
+            setActiveViewSlug(chosenView.slug);
+            setActiveViewLabel(chosenView.label || chosenView.slug);
 
-          if (cfgKeys.length) {
-            effectiveCols = cfgKeys;
+            const cfgCols =
+              (chosenView.config && chosenView.config.columns) || [];
+            // 🔑 Do NOT filter by keysFromRows — we always show configured columns
+            const cfgKeys = cfgCols
+              .map((c) => c.key)
+              .filter(Boolean);
+
+            if (cfgKeys.length) {
+              effectiveCols = cfgKeys;
+            }
           }
         }
 
         // If no view-based configuration, fall back to localStorage or generic defaults
         if (!effectiveCols.length) {
           const storedCols = loadListColumns(typeSlug);
-          const base = storedCols.length ? storedCols : keys;
+          const base = storedCols.length ? storedCols : keysFromRows;
           effectiveCols = base.filter(
             (k) => k && k !== 'id' && k !== '_id',
           );
           if (!views || !views.length) {
             setActiveViewSlug('');
             setActiveViewLabel('');
+            // Clean up any stale ?view= param
+            if (searchParams.get('view')) {
+              const next = new URLSearchParams(searchParams);
+              next.delete('view');
+              setSearchParams(next);
+            }
+          }
+        } else {
+          // Ensure URL matches chosenView when we do have list views
+          if (chosenView) {
+            const currentViewParam = searchParams.get('view');
+            if (currentViewParam !== chosenView.slug) {
+              const next = new URLSearchParams(searchParams);
+              next.set('view', chosenView.slug);
+              setSearchParams(next);
+            }
           }
         }
 
@@ -237,10 +329,10 @@ export default function TypeList() {
     return () => {
       cancelled = true;
     };
-  }, [typeSlug, roleUpper, listViewsVersion]);
+  }, [typeSlug, roleUpper, listViewsVersion, searchParams, setSearchParams]);
 
   // ---------------------------------------------------------------------------
-  // Helpers
+  // Derived state
   // ---------------------------------------------------------------------------
   const activeView = useMemo(() => {
     if (!listViews?.length || !activeViewSlug) return null;
@@ -264,6 +356,9 @@ export default function TypeList() {
     return BUILTIN_KEYS;
   }, [columns]);
 
+  // ---------------------------------------------------------------------------
+  // Navigation + view switching
+  // ---------------------------------------------------------------------------
   function handleClickNew() {
     if (!typeSlug) return;
     navigate(`/content/${typeSlug}/new`);
@@ -283,29 +378,125 @@ export default function TypeList() {
     setActiveViewSlug(slug);
     setActiveViewLabel(v.label || slug);
 
-    const keysFromRows = collectKeysFromRows(rows);
-    const keySet = new Set(keysFromRows);
     const cfgCols = (v.config && v.config.columns) || [];
     const cfgKeys = cfgCols
       .map((c) => c.key)
-      .filter((k) => k && keySet.has(k));
+      .filter(Boolean);
 
+    const keysFromRows = collectKeysFromRows(rows);
     const nextCols = cfgKeys.length ? cfgKeys : keysFromRows;
+
     setColumns(nextCols);
     saveListColumns(typeSlug, nextCols);
+
+    // Update ?view= in the URL for deep-linking
+    const next = new URLSearchParams(searchParams);
+    next.set('view', slug);
+    setSearchParams(next);
   }
 
+  // ---------------------------------------------------------------------------
+  // Render one cell with heuristics for images, text, dates, etc.
+  // ---------------------------------------------------------------------------
   function renderCell(row, key) {
+    let value;
     if (key === 'title') {
-      return row.title || row.name || row.slug || '(untitled)';
+      // Prefer title-ish fields for the main identifier
+      value = row.title || row.name || row.slug || '(untitled)';
+    } else if (key in row) {
+      value = row[key];
+    } else if (row.data && key in row.data) {
+      value = row.data[key];
+    } else {
+      value = undefined;
     }
-    if (key in row) {
-      return row[key];
+
+    if (value === null || typeof value === 'undefined') {
+      return '';
     }
-    if (row.data && key in row.data) {
-      return row.data[key];
+
+    // Booleans
+    if (typeof value === 'boolean') {
+      return value ? 'Yes' : 'No';
     }
-    return '';
+
+    // Arrays
+    if (Array.isArray(value)) {
+      if (looksLikeImageKey(key)) {
+        const url = getImageUrlFromValue(value);
+        if (url) {
+          return (
+            <img
+              src={url}
+              alt=""
+              className="su-table-img-thumb"
+              loading="lazy"
+            />
+          );
+        }
+      }
+      return summarizeArray(value);
+    }
+
+    // Objects
+    if (value && typeof value === 'object') {
+      if (looksLikeImageKey(key)) {
+        const url = getImageUrlFromValue(value);
+        if (url) {
+          return (
+            <img
+              src={url}
+              alt=""
+              className="su-table-img-thumb"
+              loading="lazy"
+            />
+          );
+        }
+      }
+      // Generic object: try some common fields before falling back
+      const labelish =
+        value.title ||
+        value.name ||
+        value.slug ||
+        value.filename ||
+        value.file_name;
+      if (labelish) return labelish;
+      return JSON.stringify(value);
+    }
+
+    // Strings
+    if (typeof value === 'string') {
+      // Date-ish
+      if (looksLikeDateKey(key) || /^\d{4}-\d{2}-\d{2}/.test(value)) {
+        return formatDate(value);
+      }
+
+      // Image-ish string (URL)
+      if (looksLikeImageKey(key) && /^https?:\/\//i.test(value)) {
+        return (
+          <img
+            src={value}
+            alt=""
+            className="su-table-img-thumb"
+            loading="lazy"
+          />
+        );
+      }
+
+      // Description-ish: truncate
+      if (looksLikeDescriptionKey(key)) {
+        const max = 80;
+        if (value.length > max) {
+          return value.slice(0, max - 1) + '…';
+        }
+        return value;
+      }
+
+      return value;
+    }
+
+    // Numbers and anything else
+    return String(value);
   }
 
   // ---------------------------------------------------------------------------
@@ -450,6 +641,7 @@ export default function TypeList() {
                 availableKeys,
                 titleKey,
                 listViewsVersion,
+                urlViewParam: searchParams.get('view'),
               },
               null,
               2,
