@@ -1,27 +1,31 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import { api } from './lib/api';
 
-// SettingsContext holds global settings, a loading flag, and a version counter
-// used to notify list pages when list view definitions change. The
-// bumpListViewsVersion function increments the version so that any
-// component that depends on list views (like TypeList.jsx) can refetch
-// its configuration when a list view is saved or deleted.
+// Create a context for global settings. In addition to the theme and other app
+// settings, we expose a version counter (`listViewsVersion`) and a function
+// (`bumpListViewsVersion`) that consumers can call to signal that list view
+// definitions have changed. Components like ListViews.jsx and TypeList.jsx
+// subscribe to this counter and will refetch when it changes.
 const SettingsContext = createContext(null);
 
 export function SettingsProvider({ children }) {
+  // Settings loaded from the API. This may include theme, app name, etc.
   const [settings, setSettings] = useState(null);
+  // Loading flag to indicate when settings are being fetched.
   const [loading, setLoading] = useState(true);
-  // NEW: global version counter for list views. See ListViews.jsx
-  // and TypeList.jsx for usage.
+  // Global version counter for list views. Increment this whenever a list
+  // view is created, updated, or deleted to force other components to
+  // refetch their list view configuration.
   const [listViewsVersion, setListViewsVersion] = useState(0);
 
-  // Call this function to signal that list views have changed (e.g. after
-  // save or delete). Components that listen for listViewsVersion will
-  // automatically update.
+  // Helper to increment the list views version. This should be called
+  // from within ListViews.jsx after successfully saving or deleting a view.
   const bumpListViewsVersion = () => {
     setListViewsVersion((v) => v + 1);
   };
 
+  // On mount, load the settings from the API. If the call fails, use
+  // fallback values defined here so that the UI still renders.
   useEffect(() => {
     (async () => {
       try {
@@ -58,18 +62,20 @@ export function SettingsProvider({ children }) {
     })();
   }, []);
 
+  // Memoize the context value to avoid unnecessary re-renders.
+  const value = useMemo(
+    () => ({
+      settings,
+      setSettings,
+      loading,
+      listViewsVersion,
+      bumpListViewsVersion,
+    }),
+    [settings, loading, listViewsVersion],
+  );
+
   return (
-    <SettingsContext.Provider
-      value={{
-        settings,
-        setSettings,
-        loading,
-        listViewsVersion,
-        bumpListViewsVersion,
-      }}
-    >
-      {children}
-    </SettingsContext.Provider>
+    <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>
   );
 }
 
