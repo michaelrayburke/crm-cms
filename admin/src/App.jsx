@@ -143,6 +143,20 @@ function App() {
             }
           />
 
+          {/* List pages now support an optional view slug segment.
+             The new route "/admin/content/:typeSlug/view/:viewSlug" must appear
+             before the entry route so it matches when "view" is present. */}
+          <Route
+            path="/admin/content/:typeSlug/view/:viewSlug"
+            element={
+              <RequireAuth>
+                <AdminLayout>
+                  <TypeList />
+                </AdminLayout>
+              </RequireAuth>
+            }
+          />
+
           <Route
             path="/admin/content/:typeSlug"
             element={
