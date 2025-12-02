@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
-import { useSettings } from '../../context/SettingsContext';
+import { useSettings } from '../../context/SettingsContext'; // 🔸 NEW
 
 // Built-in columns that exist on every entry coming from the API
 const BUILTIN_KEYS = ['title', 'slug', 'status', 'created_at', 'updated_at'];
