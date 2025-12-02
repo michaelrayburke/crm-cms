@@ -1,4 +1,4 @@
-// api/routes/listViews.js
+// api/routes/listViews.js (updated version)
 import express from 'express';
 import { pool } from '../dbPool.js';
 import { checkPermission } from '../middleware/checkPermission.js';
@@ -203,6 +203,12 @@ router.put(
           [contentTypeId, slug, roleValue]
         );
         let savedRow;
+        // Build a config that includes only this role and its default status
+        const newConfig = {
+          ...(config || {}),
+          roles: [roleValue],
+          default_roles: isDefaultForRole ? [roleValue] : [],
+        };
         if (existingRows.length > 0) {
           // Update the first existing row and delete duplicates.  This
           // ensures that slugs remain unique per role.  If multiple rows
@@ -228,12 +234,7 @@ router.put(
             [
               label || slug,
               isDefaultForRole,
-              // Merge in roles/default_roles into config
-              {
-                ...(config || {}),
-                roles: roleList,
-                default_roles: defaultRoleList,
-              },
+              newConfig,
               firstId,
             ]
           );
@@ -251,11 +252,7 @@ router.put(
               label || slug,
               roleValue,
               isDefaultForRole,
-              {
-                ...(config || {}),
-                roles: roleList,
-                default_roles: defaultRoleList,
-              },
+              newConfig,
             ]
           );
           savedRow = insertRows[0];
