@@ -59,18 +59,17 @@ function getIdentifierKeyForType() {
 
 export default function TypeList() {
   const navigate = useNavigate();
-  // Depending on how the route is declared it might be :type, :typeSlug or include a view slug.
-  // When using the path pattern "/admin/content/:typeSlug/view/:viewSlug" the viewSlug param is defined.
-  // Otherwise useParams may define :type or :typeSlug. We try all and pick whichever is present.
-  const { type: typeSlugParam, typeSlug: typeSlugAlt, viewSlug } = useParams();
+  const { type: typeSlugParam, typeSlug: typeSlugAlt } = useParams();
 
-  // Determine the content type slug: prefer explicit :type or :typeSlug values.
+  // Depending on how the route is declared it might be :type or :typeSlug
   const typeSlug = typeSlugParam || typeSlugAlt;
 
+  // TODO: wire this to real auth role. For now we assume ADMIN.
   const role = 'ADMIN';
+  const roleUpper = role.toUpperCase();
 
   // 🔔 listen for global “list views changed” bumps
-  const { listViewsVersion } = useSettings(); // 🔸 NEW
+  const { listViewsVersion } = useSettings();
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -113,13 +112,14 @@ export default function TypeList() {
         const idKey = getIdentifierKeyForType();
         setTitleKey(idKey);
 
-        // 2) Try to resolve the content type + its list views
+        // 2) Try to resolve the content type
         let ct = null;
-        let views = [];
 
         try {
           const typesRes = await api.get('/api/content-types');
-          const types = typesRes?.data || typesRes || [];
+          const types = Array.isArray(typesRes)
+            ? typesRes
+            : typesRes?.data || [];
           if (Array.isArray(types)) {
             ct = types.find(
               (t) =>
@@ -140,16 +140,25 @@ export default function TypeList() {
           setContentType(ct || null);
         }
 
+        // 3) Load list views for this content type + role
+        let views = [];
         if (ct && ct.id) {
           try {
-            // Append role and a cache-busting param so the API returns 200 OK instead of 304 Not Modified.
             const viewsRes = await api.get(
-              `/api/content-types/${ct.id}/list-views?role=${encodeURIComponent(role)}&_=${Date.now()}`
+              `/api/content-types/${ct.id}/list-views?role=${encodeURIComponent(
+                roleUpper,
+              )}`,
             );
-            views =
-              (viewsRes.data && viewsRes.data.views) ||
-              viewsRes.data ||
-              [];
+
+            const rawViews =
+              (viewsRes && viewsRes.data) != null ? viewsRes.data : viewsRes;
+            if (Array.isArray(rawViews)) {
+              views = rawViews;
+            } else if (rawViews && Array.isArray(rawViews.views)) {
+              views = rawViews.views;
+            } else {
+              views = [];
+            }
           } catch (err) {
             console.warn(
               '[TypeList] Failed to load list views for type; falling back to local layout',
@@ -166,26 +175,27 @@ export default function TypeList() {
         let effectiveCols = [];
 
         if (views && views.length) {
-          let chosen = null;
-          // If a view slug was provided in the URL, attempt to find that view first.
-          if (viewSlug) {
-            chosen = views.find((v) => v.slug === viewSlug);
-          }
-          // If no view slug or not found, pick the default view for this role if any, else fall back to the first view.
-          if (!chosen) {
-            chosen = views.find((v) => {
-              // Prefer views whose config.default_roles includes the current role or is_default flag is true
-              const defRoles = Array.isArray(v?.config?.default_roles)
-                ? v.config.default_roles.map((r) => String(r || '').toUpperCase())
+          // Prefer view whose config.default_roles includes this role.
+          const defaultView =
+            views.find((v) => {
+              const cfg = v.config || {};
+              const dRoles = Array.isArray(cfg.default_roles)
+                ? cfg.default_roles.map((r) =>
+                    String(r || '').toUpperCase(),
+                  )
                 : [];
-              return defRoles.includes(role.toUpperCase()) || v.is_default;
+              if (dRoles.length) {
+                return dRoles.includes(roleUpper);
+              }
+              // Legacy fallback: use is_default when default_roles not set
+              return !!v.is_default;
             }) || views[0];
-          }
 
-          setActiveViewSlug(chosen.slug);
-          setActiveViewLabel(chosen.label || chosen.slug);
+          setActiveViewSlug(defaultView.slug);
+          setActiveViewLabel(defaultView.label || defaultView.slug);
 
-          const cfgCols = (chosen.config && chosen.config.columns) || [];
+          const cfgCols =
+            (defaultView.config && defaultView.config.columns) || [];
           const cfgKeys = cfgCols
             .map((c) => c.key)
             .filter((k) => k && keySet.has(k));
@@ -202,8 +212,10 @@ export default function TypeList() {
           effectiveCols = base.filter(
             (k) => k && k !== 'id' && k !== '_id',
           );
-          setActiveViewSlug('');
-          setActiveViewLabel('');
+          if (!views || !views.length) {
+            setActiveViewSlug('');
+            setActiveViewLabel('');
+          }
         }
 
         if (cancelled) return;
@@ -225,17 +237,27 @@ export default function TypeList() {
     return () => {
       cancelled = true;
     };
-  }, [typeSlug, role, listViewsVersion, viewSlug]); // 🔸 UPDATED
+  }, [typeSlug, roleUpper, listViewsVersion]);
 
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
   const activeView = useMemo(() => {
     if (!listViews?.length || !activeViewSlug) return null;
-    return (
-      listViews.find((v) => v.slug === activeViewSlug) || null
-    );
+    return listViews.find((v) => v.slug === activeViewSlug) || null;
   }, [listViews, activeViewSlug]);
+
+  const activeViewIsDefaultForRole = useMemo(() => {
+    if (!activeView) return false;
+    const cfg = activeView.config || {};
+    const dRoles = Array.isArray(cfg.default_roles)
+      ? cfg.default_roles.map((r) => String(r || '').toUpperCase())
+      : [];
+    if (dRoles.length) {
+      return dRoles.includes(roleUpper);
+    }
+    return !!activeView.is_default;
+  }, [activeView, roleUpper]);
 
   const displayColumns = useMemo(() => {
     if (columns && columns.length) return columns;
@@ -257,9 +279,6 @@ export default function TypeList() {
     if (!slug) return;
     const v = listViews.find((x) => x.slug === slug);
     if (!v) return;
-
-    // Navigate to the view-specific URL to reflect the selected view in the path.
-    navigate(`/admin/content/${typeSlug}/view/${slug}`);
 
     setActiveViewSlug(slug);
     setActiveViewLabel(v.label || slug);
@@ -305,12 +324,12 @@ export default function TypeList() {
           {activeViewLabel && (
             <p className="su-text-xs su-text-muted">
               Using view: <strong>{activeViewLabel}</strong>{' '}
-              {activeView?.is_default && '(default for this role)'}
+              {activeViewIsDefaultForRole && '(default for this role)'}
             </p>
           )}
           {!activeViewLabel && listViews.length === 0 && (
             <p className="su-text-xs su-text-muted">
-              No list views configured yet for role {role}. Using a
+              No list views configured yet for role {roleUpper}. Using a
               fallback layout. You can customize columns in{' '}
               <strong>Settings → List Views</strong>.
             </p>
@@ -332,22 +351,34 @@ export default function TypeList() {
         <div className="su-card su-mb-md">
           <div className="su-card-body su-flex su-flex-wrap su-gap-sm su-items-center">
             <span className="su-text-sm su-text-muted">Views:</span>
-            {listViews.map((v) => (
-              <button
-                key={v.slug}
-                type="button"
-                className={
-                  'su-chip' +
-                  (v.slug === activeViewSlug ? ' su-chip--active' : '')
-                }
-                onClick={() => handleChooseView(v.slug)}
-              >
-                {v.label || v.slug}
-                {v.is_default && (
-                  <span className="su-chip-badge">default</span>
-                )}
-              </button>
-            ))}
+            {listViews.map((v) => {
+              const cfg = v.config || {};
+              const dRoles = Array.isArray(cfg.default_roles)
+                ? cfg.default_roles.map((r) =>
+                    String(r || '').toUpperCase(),
+                  )
+                : [];
+              const isDefaultForRole = dRoles.length
+                ? dRoles.includes(roleUpper)
+                : !!v.is_default;
+
+              return (
+                <button
+                  key={v.slug}
+                  type="button"
+                  className={
+                    'su-chip' +
+                    (v.slug === activeViewSlug ? ' su-chip--active' : '')
+                  }
+                  onClick={() => handleChooseView(v.slug)}
+                >
+                  {v.label || v.slug}
+                  {isDefaultForRole && (
+                    <span className="su-chip-badge">default</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -408,16 +439,17 @@ export default function TypeList() {
             {JSON.stringify(
               {
                 typeSlug,
-                role,
+                role: roleUpper,
                 hasContentType: !!contentType,
                 listViewsCount: listViews.length,
                 activeViewSlug,
                 activeViewLabel,
+                activeViewIsDefaultForRole,
                 columns: displayColumns,
                 entriesCount: rows.length,
                 availableKeys,
                 titleKey,
-                listViewsVersion, // 👀 helpful debug
+                listViewsVersion,
               },
               null,
               2,
