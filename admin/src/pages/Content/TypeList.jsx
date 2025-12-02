@@ -139,11 +139,10 @@ export default function TypeList() {
 
         if (ct && ct.id) {
           try {
+            // Fetch list views for this content type and role.  Append a
+            // cache‑busting `_` parameter to avoid 304 Not Modified responses.
             const viewsRes = await api.get(
-              `/api/content-types/${ct.id}/list-views`,
-              {
-                params: { role },
-              },
+              `/api/content-types/${ct.id}/list-views?role=${encodeURIComponent(role)}&_=${Date.now()}`
             );
             views =
               (viewsRes.data && viewsRes.data.views) ||
@@ -211,7 +210,7 @@ export default function TypeList() {
     return () => {
       cancelled = true;
     };
-  }, [typeSlug, role, listViewsVersion]); // 🔸 UPDATED: react to version bump
+  }, [typeSlug, role, listViewsVersion]); // 🔸 UPDATED
 
   // ---------------------------------------------------------------------------
   // Helpers
