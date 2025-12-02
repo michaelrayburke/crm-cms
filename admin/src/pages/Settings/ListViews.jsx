@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
-import { useSettings } from "../../context/SettingsContext"; // ✅ NEW
+import { useSettings } from "../../context/SettingsContext";
 
 // Simple slugify for view slugs
 function slugify(str) {
@@ -202,13 +202,11 @@ export default function ListViewsSettings() {
 
         const [ctRes, viewsRes] = await Promise.all([
           api.get(`/api/content-types/${selectedTypeId}`),
-          // Append role and cache‑busting parameter directly in the URL instead of
-          // using the params object.  This prevents the backend from returning
-          // a 304 Not Modified response (which our api helper treats as an error).
+          // Append role and a cache-busting param so the API returns 200 OK instead of 304 Not Modified.
           api.get(
             `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(
               role,
-            )}&_=${Date.now()}`
+            )}&_=${Date.now()}`,
           ),
         ]);
 
@@ -611,8 +609,6 @@ export default function ListViewsSettings() {
       });
 
       try {
-        // Reload the list views using a cache‑busting parameter so we don’t
-        // get a 304 Not Modified response (which our api helper treats as an error).
         const lvRes = await api.get(
           `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(role)}&_=${Date.now()}`
         );
@@ -706,7 +702,6 @@ export default function ListViewsSettings() {
       await api.del(
         `/api/content-types/${selectedTypeId}/list-view/${activeViewSlug}?role=${encodeURIComponent(role)}`
       );
-      // Reload the list views using a cache‑busting parameter to avoid 304 Not Modified responses.
       const lvRes = await api.get(
         `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(role)}&_=${Date.now()}`
       );
