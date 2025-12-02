@@ -1,4 +1,4 @@
- // api/routes/listViews.js (updated version)
+// api/routes/listViews.js (updated version)
 import express from 'express';
 import { pool } from '../dbPool.js';
 import { checkPermission } from '../middleware/checkPermission.js';
@@ -205,7 +205,7 @@ router.put(
                SET is_default = FALSE,
                    config = jsonb_set(
                      COALESCE(config, '{}'::jsonb),
-                     '{default_roles}',
+                     '{default_roles}'::text[],
                      '[]'::jsonb,
                      true
                    )
