@@ -458,6 +458,21 @@ export default function ListViewsSettings() {
     setDirty(true);
   };
 
+  // Determine if the view is currently Admin-only. When assignedRoles is empty, only Admin will be saved.
+  const isAdminOnly = assignedRoles.length === 0;
+
+  // Toggle the Admin-only state. If toggled on, clear all assigned roles (Admin will still be included implicitly when saving).
+  const toggleAdminOnly = () => {
+    if (isAdminOnly) {
+      // Turning off Admin-only: no action here; user can check other roles manually.
+      return;
+    }
+    // Turning on Admin-only: clear assigned roles and default roles (except Admin if present)
+    setAssignedRoles([]);
+    setDefaultRoles((prev) => prev.filter((r) => r.toUpperCase() === 'ADMIN'));
+    setDirty(true);
+  };
+
   const toggleDefaultRole = (roleValue) => {
     const upper = roleValue.toUpperCase();
     setDefaultRoles((prev) => {
@@ -486,7 +501,8 @@ export default function ListViewsSettings() {
           });
         });
       }
-      next = next.filter((r) => assignedRoles.includes(r));
+      // Allow default roles only for assigned roles or ADMIN (which is always implicitly assigned)
+      next = next.filter((r) => assignedRoles.includes(r) || r === 'ADMIN');
       setIsDefault(next.includes(role.toUpperCase()));
 
       setViews((prevViews) => {
@@ -544,10 +560,8 @@ export default function ListViewsSettings() {
       const rolesSet = new Set(assignedRoles.map((r) => r.toUpperCase()));
       rolesSet.add('ADMIN');
       const rolesArray = Array.from(rolesSet);
-      // Filter defaultRoles to exclude ADMIN; admin should never be default
-      const effectiveDefaultRoles = defaultRoles
-        .map((r) => r.toUpperCase())
-        .filter((r) => r !== 'ADMIN');
+      // Use defaultRoles as uppercase without filtering out ADMIN; admin can be default
+      const effectiveDefaultRoles = defaultRoles.map((r) => r.toUpperCase());
       // Build payload for single-row save
       const payload = {
         slug,
@@ -873,7 +887,17 @@ export default function ListViewsSettings() {
               <div className="su-field su-mt-sm">
                 <label className="su-label">Assigned roles</label>
                 <div className="su-flex su-gap-sm su-flex-wrap">
-                  {/* Hide the ADMIN role from the role selection UI. It will still be included when saving. */}
+                  {/* Admin-only toggle. When checked, the view is restricted to Admin only; other roles are cleared. */}
+                  <label className="su-checkbox">
+                    <input
+                      type="checkbox"
+                      value="ADMIN_ONLY"
+                      checked={isAdminOnly}
+                      onChange={toggleAdminOnly}
+                    />
+                    <span>Admin only</span>
+                  </label>
+                  {/* Render checkboxes for other roles. Disable them when Admin-only is selected. */}
                   {allRoles.filter((r) => r !== 'ADMIN').map((r) => (
                     <label key={r} className="su-checkbox">
                       <input
@@ -881,23 +905,21 @@ export default function ListViewsSettings() {
                         value={r}
                         checked={assignedRoles.includes(r)}
                         onChange={() => toggleAssignedRole(r)}
+                        disabled={isAdminOnly}
                       />
                       <span>{r.charAt(0) + r.slice(1).toLowerCase()}</span>
                     </label>
                   ))}
-                {/* Always show that Admin is assigned */}
-                <span className="su-badge su-badge-soft su-ml-sm">Admin (always)</span>
                 </div>
                 <small className="su-text-muted">
-                  Select one or more roles that can use this view. You can mark
-                  individual roles as default below.
+                  Choose one or more roles to use this view. Selecting no roles will make the view Admin-only. You can mark individual roles as default below.
                 </small>
               </div>
               <div className="su-field su-mt-sm">
                 <label className="su-label">Default roles</label>
                 <div className="su-flex su-gap-sm su-flex-wrap">
-                  {/* Hide the ADMIN role from default role selection. Admin cannot be marked default. */}
-                  {assignedRoles.filter((r) => r !== 'ADMIN').map((r) => (
+                  {/* Include Admin and all assigned roles in the default roles selection. */}
+                  {Array.from(new Set(['ADMIN', ...assignedRoles])).map((r) => (
                     <label key={r} className="su-checkbox">
                       <input
                         type="checkbox"
@@ -910,7 +932,7 @@ export default function ListViewsSettings() {
                   ))}
                 </div>
                 <small className="su-text-muted">
-                  Choose which of the assigned roles should use this view by default.
+                  Choose which of the assigned roles (including Admin) should use this view by default.
                 </small>
               </div>
               <div className="su-mt-sm su-text-xs su-text-muted">
