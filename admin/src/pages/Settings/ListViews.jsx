@@ -542,6 +542,30 @@ export default function ListViewsSettings() {
     try {
       setLoading(true);
 
+      // Remove any existing rows for this slug that correspond to roles no longer
+      // assigned. We call api.del for each unassigned role to clean up old
+      // views before re-creating them.
+      try {
+        // Determine which roles need to be deleted: allRoles not in assignedRoles
+        const rolesToDelete = allRoles.filter((r) => !assignedRoles.includes(r));
+        for (const r of rolesToDelete) {
+          // Delete the view for this role if it exists. Use encodeURIComponent
+          // for the slug and role.
+          const encodedSlugDel = encodeURIComponent(slug);
+          const encodedRoleDel = encodeURIComponent(r);
+          try {
+            await api.del(
+              `/api/content-types/${selectedTypeId}/list-view/${encodedSlugDel}?role=${encodedRoleDel}`,
+            );
+          } catch (delErr) {
+            // Ignore errors during deletion (view might not exist for this role)
+            console.warn('[ListViews] ignore delete role error', delErr);
+          }
+        }
+      } catch (cleanupErr) {
+        console.error('[ListViews] cleanup before save error', cleanupErr);
+      }
+
       // Save a separate view per assigned role. Each row advertises only its
       // own role in `roles` and sets `default_roles` per role. We iterate
       // through assignedRoles and send one PUT request per role. This
