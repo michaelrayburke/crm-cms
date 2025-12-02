@@ -23,18 +23,37 @@ const BUILTIN_COLUMNS = [
 ];
 
 export default function ListViewsSettings() {
+  // Read route params and navigation helper.  The list-views page supports
+  // optional `:typeSlug` and `:viewSlug` segments which drive the
+  // current stage.  When neither param is present we show the list of
+  // content types (types stage).  When only `typeSlug` is present we
+  // show the list of views for that type (views stage).  When both
+  // params are present we edit that specific view (edit stage).
   const params = useParams();
   const navigate = useNavigate();
-  const { bumpListViewsVersion } = useSettings(); // ✅ notify others
+  const { bumpListViewsVersion } = useSettings(); // ✅ NEW
 
   const [contentTypes, setContentTypes] = useState([]);
+  // When this page first loads we show a list of content types.  When the
+  // user clicks on a type we switch to the list-view stage for that type.
+  // Editing a view further switches to the edit stage.  This prevents
+  // everything being crammed on one screen and makes the flow more obvious.
   const [stage, setStage] = useState("types"); // 'types' | 'views' | 'edit'
   const [selectedTypeId, setSelectedTypeId] = useState("");
+  // Role used for filtering list views when loading.  This is the single role
+  // the admin is currently editing for.  We still support multiple roles
+  // assigned to a single view via the `assignedRoles` state below.
   const [role, setRole] = useState("ADMIN");
 
+  // Assigned roles for the current view being edited.  A view can be
+  // associated with one or more roles.  When saving, this array is
+  // passed as the `roles` field in the API payload.  If the view is
+  // marked as default, the same list is used for `default_roles`.
   const [assignedRoles, setAssignedRoles] = useState(["ADMIN"]);
+
   const [contentTypeDetail, setContentTypeDetail] = useState(null);
 
+  // All views for this type+role
   const [views, setViews] = useState([]);
   const [activeViewSlug, setActiveViewSlug] = useState("");
   const [currentLabel, setCurrentLabel] = useState("");
@@ -49,26 +68,34 @@ export default function ListViewsSettings() {
   const [saveMessage, setSaveMessage] = useState("");
   const [dirty, setDirty] = useState(false);
 
-  const [allRoles, setAllRoles] = useState([
-    "ADMIN",
-    "EDITOR",
-    "AUTHOR",
-    "VIEWER",
-  ]);
+  // List of all possible roles. We will fetch these from the API
+  // (`/api/roles`) on mount. If the call fails, we fall back to the
+  // default roles below. Each role is stored in uppercase.
+  const [allRoles, setAllRoles] = useState(["ADMIN", "EDITOR", "AUTHOR", "VIEWER"]);
+
+  // Default roles for this view. A view can be default for multiple
+  // roles. When saving, this array is passed as `default_roles`.
   const [defaultRoles, setDefaultRoles] = useState([]);
 
   // ---------------------------------------------
   // Sync stage and selection from the URL params
   // ---------------------------------------------
   useEffect(() => {
+    // We support either :typeSlug or :typeId for backwards compatibility.
+    // Grab whichever is defined.  React Router merges params from nested
+    // routes, so both could exist but at least one will be blank.
     const typeSlug = params.typeSlug || params.typeId;
     const viewSlug = params.viewSlug || "";
     if (!typeSlug) {
+      // No type selected → show list of content types
       setStage("types");
       setSelectedTypeId("");
       setActiveViewSlug("");
       return;
     }
+    // Set the selected type (slug or id) and choose stage based on
+    // whether a view slug is present.  When editing a view we also
+    // preset the activeViewSlug so the form fields populate correctly.
     setSelectedTypeId(typeSlug);
     if (viewSlug) {
       setStage("edit");
@@ -88,29 +115,28 @@ export default function ListViewsSettings() {
     (async () => {
       try {
         setLoadingTypes(true);
-
-        // roles
+        // Fetch available roles. If this call fails, we keep the
+        // existing default roles. Roles endpoint should return an array
+        // of role objects with a `slug` or `name` field.
         try {
           const rolesRes = await api.get("/api/roles");
           const rawRoles = rolesRes?.data || rolesRes || [];
           if (Array.isArray(rawRoles) && rawRoles.length) {
-            const extracted = rawRoles
-              .map((r) =>
-                (r.slug || r.name || r.role || "").toUpperCase()
-              )
-              .filter(Boolean);
+            const extracted = rawRoles.map((r) => (r.slug || r.name || r.role || "").toUpperCase()).filter(Boolean);
             if (extracted.length) {
               setAllRoles(extracted);
             }
           }
-        } catch {
-          // ignore; keep defaults
+        } catch (_e) {
+          // ignore errors; fallback to default roles
         }
 
         const res = await api.get("/api/content-types");
         if (cancelled) return;
+        // API may return a plain array or an object with a `.data` property.
         const list = Array.isArray(res) ? res : res?.data || [];
 
+        // predictable sort
         list.sort((a, b) => {
           const an = (a.name || a.slug || "").toLowerCase();
           const bn = (b.name || b.slug || "").toLowerCase();
@@ -134,7 +160,7 @@ export default function ListViewsSettings() {
     return () => {
       cancelled = true;
     };
-  }, []); // mount only
+  }, []); // run once on mount
 
   // ---------------------------------------------
   // Build available fields = builtins + CT fields
@@ -143,6 +169,7 @@ export default function ListViewsSettings() {
     if (!ct) return BUILTIN_COLUMNS;
     const ctFields = Array.isArray(ct.fields)
       ? ct.fields.map((f) => {
+          // Prefer f.key but fall back to f.field_key if present
           const fieldKey = f.key || f.field_key;
           return {
             key: fieldKey,
@@ -175,20 +202,26 @@ export default function ListViewsSettings() {
 
         const [ctRes, viewsRes] = await Promise.all([
           api.get(`/api/content-types/${selectedTypeId}`),
+          // Append role and cache‑busting parameter directly in the URL instead of
+          // using the params object.  This prevents the backend from returning
+          // a 304 Not Modified response (which our api helper treats as an error).
           api.get(
             `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(
               role,
-            )}`,
+            )}&_=${Date.now()}`
           ),
         ]);
 
         if (cancelled) return;
 
+        // handle both axios response { data: ... } and raw object
         const ct = ctRes?.data || ctRes || null;
         setContentTypeDetail(ct);
+
         const av = computeAvailableFields(ct);
         setAvailableFields(av);
 
+        // ---- handle both array & { views: [] } shapes + expose debug ----
         const rawViews = viewsRes?.data || viewsRes || [];
         const raw = rawViews;
         let loadedViews = [];
@@ -210,8 +243,10 @@ export default function ListViewsSettings() {
           loadedViews,
         };
         console.log("[ListViews] Loaded list views", window.__debugListViews);
+        // ---------------------------------------------------------------------
 
         if (loadedViews.length === 0) {
+          // No views yet: synthesize a default config
           const defaultCols = [
             { key: "title", label: "Title" },
             { key: "status", label: "Status" },
@@ -223,32 +258,26 @@ export default function ListViewsSettings() {
           setColumns(defaultCols);
           setDirty(false);
         } else {
+          // Pick default or first view
           const def =
             loadedViews.find((v) => v.is_default) || loadedViews[0];
           setActiveViewSlug(def.slug);
           setCurrentLabel(def.label);
-
+          // Determine default roles: use config.default_roles if present, otherwise
+          // fall back to the legacy is_default boolean.
           const cfgRoles = Array.isArray(def?.config?.roles)
             ? def.config.roles
             : [];
-          const cfgDefaultRoles = Array.isArray(
-            def?.config?.default_roles,
-          )
+          const cfgDefaultRoles = Array.isArray(def?.config?.default_roles)
             ? def.config.default_roles
             : [];
           const legacyRole = def.role ? [def.role.toUpperCase()] : [];
-          setAssignedRoles(
-            cfgRoles.length ? cfgRoles : legacyRole,
-          );
+          setAssignedRoles(cfgRoles.length ? cfgRoles : legacyRole);
 
-          const normalizedDefaultRoles = cfgDefaultRoles.map((r) =>
-            r.toUpperCase(),
-          );
+          const normalizedDefaultRoles = cfgDefaultRoles.map((r) => r.toUpperCase());
           setDefaultRoles(normalizedDefaultRoles);
           if (normalizedDefaultRoles.length) {
-            setIsDefault(
-              normalizedDefaultRoles.includes(role.toUpperCase()),
-            );
+            setIsDefault(normalizedDefaultRoles.includes(role.toUpperCase()));
           } else {
             setIsDefault(!!def.is_default);
           }
@@ -297,14 +326,18 @@ export default function ListViewsSettings() {
     navigate(`/admin/settings/list-views/${val}`);
   };
 
+  const handleSelectRole = (e) => {
+    setRole(e.target.value);
+  };
+
   const handleSelectView = (slug) => {
     if (!views || !views.length) return;
+
     const v = views.find((x) => x.slug === slug);
     if (!v) return;
 
     setActiveViewSlug(slug);
     setCurrentLabel(v.label);
-
     const vRoles = Array.isArray(v?.config?.roles)
       ? v.config.roles
       : v.role
@@ -344,9 +377,7 @@ export default function ListViewsSettings() {
     const baseLabel = "New view";
     let label = baseLabel;
     let suffix = 1;
-    const existingLabels = (views || []).map((v) =>
-      v.label.toLowerCase(),
-    );
+    const existingLabels = (views || []).map((v) => v.label.toLowerCase());
     while (existingLabels.includes(label.toLowerCase())) {
       suffix += 1;
       label = `${baseLabel} ${suffix}`;
@@ -390,10 +421,7 @@ export default function ListViewsSettings() {
     const field = availableFields.find((f) => f.key === fieldKey);
     if (!field) return;
     if (columns.find((c) => c.key === field.key)) return;
-    setColumns((prev) => [
-      ...prev,
-      { key: field.key, label: field.label },
-    ]);
+    setColumns((prev) => [...prev, { key: field.key, label: field.label }]);
     setDirty(true);
   };
 
@@ -504,14 +532,11 @@ export default function ListViewsSettings() {
     }
 
     const dup = (views || []).find(
-      (v) =>
-        v.slug &&
-        v.slug.toLowerCase() === slug.toLowerCase() &&
-        v.slug !== activeViewSlug,
+      (v) => v.slug && v.slug.toLowerCase() === slug.toLowerCase() && v.slug !== activeViewSlug
     );
     if (dup) {
       setError(
-        `A view with the slug "${slug}" already exists. Please choose a different label or slug.`,
+        `A view with the slug "${slug}" already exists. Please choose a different label or slug.`
       );
       return;
     }
@@ -522,8 +547,10 @@ export default function ListViewsSettings() {
       const payload = {
         slug,
         label,
+        // Legacy single-role fields for backwards compatibility
         role,
         is_default: defaultRoles.includes(role.toUpperCase()),
+        // New multi-role fields
         roles: assignedRoles,
         default_roles: defaultRoles,
         config: { columns },
@@ -531,7 +558,7 @@ export default function ListViewsSettings() {
 
       const res = await api.put(
         `/api/content-types/${selectedTypeId}/list-view`,
-        payload,
+        payload
       );
 
       let savedRow;
@@ -541,7 +568,7 @@ export default function ListViewsSettings() {
           arr.find(
             (v) =>
               (v.role || "").toUpperCase() === role.toUpperCase() &&
-              v.slug === slug,
+              v.slug === slug
           ) || arr.find((v) => v.slug === slug) || arr[0];
       } else if (Array.isArray(res)) {
         const arr = res;
@@ -549,16 +576,14 @@ export default function ListViewsSettings() {
           arr.find(
             (v) =>
               (v.role || "").toUpperCase() === role.toUpperCase() &&
-              v.slug === slug,
+              v.slug === slug
           ) || arr.find((v) => v.slug === slug) || arr[0];
       } else {
         savedRow = res?.data?.view || res?.data || null;
       }
 
       if (!savedRow) {
-        setSaveMessage(
-          "List view saved. Entry lists will use this layout now.",
-        );
+        setSaveMessage("List view saved. Entry lists will use this layout now.");
         setDirty(false);
         bumpListViewsVersion(); // ✅ notify others
         navigate(`/admin/settings/list-views/${selectedTypeId}`);
@@ -586,10 +611,10 @@ export default function ListViewsSettings() {
       });
 
       try {
+        // Reload the list views using a cache‑busting parameter so we don’t
+        // get a 304 Not Modified response (which our api helper treats as an error).
         const lvRes = await api.get(
-          `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(
-            role,
-          )}`,
+          `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(role)}&_=${Date.now()}`
         );
         const lvRaw = lvRes?.data || lvRes || [];
         let newViews;
@@ -601,8 +626,7 @@ export default function ListViewsSettings() {
           newViews = [];
         }
         setViews(newViews);
-        const next =
-          newViews.find((v) => v.slug === slug) || newViews[0] || null;
+        const next = newViews.find((v) => v.slug === slug) || newViews[0] || null;
         if (next) {
           setActiveViewSlug(next.slug);
           setCurrentLabel(next.label);
@@ -617,8 +641,7 @@ export default function ListViewsSettings() {
             : [];
           setDefaultRoles(cfgDefault);
           setIsDefault(
-            cfgDefault.includes(role.toUpperCase()) ||
-              !!next.is_default,
+            cfgDefault.includes(role.toUpperCase()) || !!next.is_default
           );
           const cfgCols = Array.isArray(next?.config?.columns)
             ? next.config.columns
@@ -640,9 +663,7 @@ export default function ListViewsSettings() {
             { key: "updated_at", label: "Updated" },
           ]);
         }
-        setSaveMessage(
-          "List view saved. Entry lists will use this layout now.",
-        );
+        setSaveMessage("List view saved. Entry lists will use this layout now.");
         setDirty(false);
         bumpListViewsVersion(); // ✅ notify others
         navigate(`/admin/settings/list-views/${selectedTypeId}`);
@@ -659,9 +680,7 @@ export default function ListViewsSettings() {
         });
         setActiveViewSlug(savedRow.slug);
         setIsDefault(!!savedRow.is_default);
-        setSaveMessage(
-          "List view saved. Entry lists will use this layout now.",
-        );
+        setSaveMessage("List view saved. Entry lists will use this layout now.");
         setDirty(false);
         bumpListViewsVersion(); // ✅ notify others even on fallback
       }
@@ -674,33 +693,22 @@ export default function ListViewsSettings() {
   };
 
   const handleDeleteCurrentView = async () => {
-    if (
-      !selectedTypeId ||
-      !activeViewSlug ||
-      activeViewSlug === "default"
-    ) {
+    if (!selectedTypeId || !activeViewSlug || activeViewSlug === 'default') {
       return;
     }
-    if (
-      !window.confirm(
-        "Are you sure you want to delete this view? This cannot be undone.",
-      )
-    ) {
+    if (!window.confirm('Are you sure you want to delete this view? This cannot be undone.')) {
       return;
     }
     try {
       setLoading(true);
-      setError("");
-      setSaveMessage("");
+      setError('');
+      setSaveMessage('');
       await api.del(
-        `/api/content-types/${selectedTypeId}/list-view/${activeViewSlug}?role=${encodeURIComponent(
-          role,
-        )}`,
+        `/api/content-types/${selectedTypeId}/list-view/${activeViewSlug}?role=${encodeURIComponent(role)}`
       );
+      // Reload the list views using a cache‑busting parameter to avoid 304 Not Modified responses.
       const lvRes = await api.get(
-        `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(
-          role,
-        )}`,
+        `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(role)}&_=${Date.now()}`
       );
       const lvRaw = lvRes?.data || lvRes || [];
       let newViews;
@@ -713,15 +721,15 @@ export default function ListViewsSettings() {
       }
       setViews(newViews);
       if (newViews.length === 0) {
-        setActiveViewSlug("default");
-        setCurrentLabel("Default list");
+        setActiveViewSlug('default');
+        setCurrentLabel('Default list');
         setIsDefault(true);
         setAssignedRoles([role]);
         setDefaultRoles([]);
         setColumns([
-          { key: "title", label: "Title" },
-          { key: "status", label: "Status" },
-          { key: "updated_at", label: "Updated" },
+          { key: 'title', label: 'Title' },
+          { key: 'status', label: 'Status' },
+          { key: 'updated_at', label: 'Updated' },
         ]);
         setDirty(false);
         bumpListViewsVersion(); // ✅ notify others
@@ -740,25 +748,21 @@ export default function ListViewsSettings() {
           ? first.config.default_roles.map((r) => r.toUpperCase())
           : [];
         setDefaultRoles(dRoles);
-        setIsDefault(
-          dRoles.includes(role.toUpperCase()) || !!first.is_default,
-        );
+        setIsDefault(dRoles.includes(role.toUpperCase()) || !!first.is_default);
         const cfgCols = Array.isArray(first?.config?.columns)
           ? first.config.columns
           : [
-              { key: "title", label: "Title" },
-              { key: "status", label: "Status" },
-              { key: "updated_at", label: "Updated" },
+              { key: 'title', label: 'Title' },
+              { key: 'status', label: 'Status' },
+              { key: 'updated_at', label: 'Updated' },
             ];
         setColumns(cfgCols);
         bumpListViewsVersion(); // ✅ notify others
-        navigate(
-          `/admin/settings/list-views/${selectedTypeId}/${first.slug}`,
-        );
+        navigate(`/admin/settings/list-views/${selectedTypeId}/${first.slug}`);
       }
     } catch (err) {
-      console.error("[ListViews] delete error", err);
-      setError("Failed to delete list view");
+      console.error('[ListViews] delete error', err);
+      setError('Failed to delete list view');
     } finally {
       setLoading(false);
     }
@@ -767,9 +771,7 @@ export default function ListViewsSettings() {
   const availableNotSelected = useMemo(() => {
     if (!availableFields || !availableFields.length) return [];
     const selectedKeys = new Set((columns || []).map((c) => c.key));
-    return (availableFields || []).filter(
-      (f) => !selectedKeys.has(f.key),
-    );
+    return (availableFields || []).filter((f) => !selectedKeys.has(f.key));
   }, [availableFields, columns]);
 
   // ---------------------------------------------
@@ -780,12 +782,13 @@ export default function ListViewsSettings() {
       <div className="su-page-header">
         <h1 className="su-page-title">List Views</h1>
         <p className="su-page-subtitle">
-          Control which columns show in entry lists, per content type,
-          role, and view.
+          Control which columns show in entry lists, per content type, role, and
+          view.
         </p>
       </div>
 
-      {stage === "types" && (
+      {/* Stage: list of content types */}
+      {stage === 'types' && (
         <div className="su-card su-mb-lg">
           <div className="su-card-header">
             <h2 className="su-card-title">Content types</h2>
@@ -802,15 +805,10 @@ export default function ListViewsSettings() {
                 <button
                   key={ct.id || ct.slug}
                   type="button"
-                  onClick={() =>
-                    handleSelectType(ct.slug || ct.id)
-                  }
+                  onClick={() => handleSelectType(ct.slug || ct.id)}
                   className="su-chip"
                 >
-                  {ct.name ||
-                    ct.label_plural ||
-                    ct.label_singular ||
-                    ct.slug}
+                  {ct.name || ct.label_plural || ct.label_singular || ct.slug}
                 </button>
               ))}
             </div>
@@ -818,7 +816,8 @@ export default function ListViewsSettings() {
         </div>
       )}
 
-      {stage === "views" && (
+      {/* Stage: list of views for a selected type */}
+      {stage === 'views' && (
         <div>
           <div className="su-card su-mb-lg">
             <div className="su-card-header su-flex su-items-center su-gap-sm">
@@ -826,58 +825,37 @@ export default function ListViewsSettings() {
                 type="button"
                 className="su-btn su-btn-ghost su-btn-sm"
                 onClick={() => {
-                  navigate("/admin/settings/list-views");
+                  navigate('/admin/settings/list-views');
                 }}
               >
                 ← Back to types
               </button>
               <h2 className="su-card-title su-ml-sm">
-                Views for{" "}
-                {(
-                  contentTypes.find(
-                    (ct) =>
-                      ct.slug === selectedTypeId ||
-                      ct.id === selectedTypeId,
-                  )?.name ||
-                  contentTypes.find(
-                    (ct) =>
-                      ct.slug === selectedTypeId ||
-                      ct.id === selectedTypeId,
-                  )?.label_singular ||
-                  selectedTypeId ||
-                  ""
-                )}
+                Views for {
+                  (contentTypes.find((ct) => ct.slug === selectedTypeId || ct.id === selectedTypeId)?.name ||
+                    contentTypes.find((ct) => ct.slug === selectedTypeId || ct.id === selectedTypeId)?.label_singular ||
+                    selectedTypeId || '')
+                }
               </h2>
             </div>
             <div className="su-card-body">
               {views.length === 0 && (
-                <p className="su-text-muted">
-                  No saved views yet for this role.
-                </p>
+                <p className="su-text-muted">No saved views yet for this role.</p>
               )}
               <div className="su-chip-row su-mb-md">
                 {views.map((v) => {
-                  const viewDefaultRoles = Array.isArray(
-                    v?.config?.default_roles,
-                  )
-                    ? v.config.default_roles.map((r) =>
-                        String(r || "").toUpperCase(),
-                      )
+                  const viewDefaultRoles = Array.isArray(v?.config?.default_roles)
+                    ? v.config.default_roles.map((r) => String(r || '').toUpperCase())
                     : [];
                   const viewRoles = Array.isArray(v?.config?.roles)
-                    ? v.config.roles.map((r) =>
-                        String(r || "").toUpperCase(),
-                      )
+                    ? v.config.roles.map((r) => String(r || '').toUpperCase())
                     : v.role
-                    ? [String(v.role || "").toUpperCase()]
+                    ? [String(v.role || '').toUpperCase()]
                     : [];
                   const isDefaultForCurrentRole =
-                    viewDefaultRoles.length > 0
-                      ? viewDefaultRoles.includes(
-                          role.toUpperCase(),
-                        )
-                      : v.is_default &&
-                        viewRoles.includes(role.toUpperCase());
+                    (viewDefaultRoles.length > 0
+                      ? viewDefaultRoles.includes(role.toUpperCase())
+                      : v.is_default && viewRoles.includes(role.toUpperCase()));
                   return (
                     <button
                       key={v.slug}
@@ -887,9 +865,7 @@ export default function ListViewsSettings() {
                     >
                       {v.label}
                       {isDefaultForCurrentRole && (
-                        <span className="su-chip-badge">
-                          default
-                        </span>
+                        <span className="su-chip-badge">default</span>
                       )}
                     </button>
                   );
@@ -907,7 +883,8 @@ export default function ListViewsSettings() {
         </div>
       )}
 
-      {stage === "edit" && (
+      {/* Stage: edit a specific view */}
+      {stage === 'edit' && (
         <div className="su-layout-grid su-grid-cols-3 su-gap-lg su-mb-xl">
           {/* Left column: edit view details */}
           <div className="su-card">
@@ -916,9 +893,7 @@ export default function ListViewsSettings() {
                 type="button"
                 className="su-btn su-btn-ghost su-btn-sm"
                 onClick={() => {
-                  navigate(
-                    `/admin/settings/list-views/${selectedTypeId}`,
-                  );
+                  navigate(`/admin/settings/list-views/${selectedTypeId}`);
                 }}
               >
                 ← Back to views
@@ -946,16 +921,13 @@ export default function ListViewsSettings() {
                         checked={assignedRoles.includes(r)}
                         onChange={() => toggleAssignedRole(r)}
                       />
-                      <span>
-                        {r.charAt(0) +
-                          r.slice(1).toLowerCase()}
-                      </span>
+                      <span>{r.charAt(0) + r.slice(1).toLowerCase()}</span>
                     </label>
                   ))}
                 </div>
                 <small className="su-text-muted">
-                  Select one or more roles that can use this view. You
-                  can mark individual roles as default below.
+                  Select one or more roles that can use this view. You can mark
+                  individual roles as default below.
                 </small>
               </div>
               <div className="su-field su-mt-sm">
@@ -969,22 +941,17 @@ export default function ListViewsSettings() {
                         checked={defaultRoles.includes(r)}
                         onChange={() => toggleDefaultRole(r)}
                       />
-                      <span>
-                        {r.charAt(0) +
-                          r.slice(1).toLowerCase()}
-                      </span>
+                      <span>{r.charAt(0) + r.slice(1).toLowerCase()}</span>
                     </label>
                   ))}
                 </div>
                 <small className="su-text-muted">
-                  Choose which of the assigned roles should use this
-                  view by default.
+                  Choose which of the assigned roles should use this view by default.
                 </small>
               </div>
               <div className="su-mt-sm su-text-xs su-text-muted">
                 <div>
-                  Slug:{" "}
-                  <code>{activeViewSlug || "(auto)"}</code>
+                  Slug: <code>{activeViewSlug || '(auto)'}</code>
                 </div>
               </div>
               <div className="su-mt-md">
@@ -992,45 +959,28 @@ export default function ListViewsSettings() {
                   type="button"
                   className="su-btn su-btn-primary"
                   onClick={handleSave}
-                  disabled={
-                    loading ||
-                    !selectedTypeId ||
-                    !role ||
-                    !columns.length
-                  }
+                  disabled={loading || !selectedTypeId || !role || !columns.length}
                 >
-                  {loading ? "Saving…" : "Save view"}
+                  {loading ? 'Saving…' : 'Save view'}
                 </button>
                 <button
                   type="button"
                   className="su-btn su-btn-danger su-ml-sm"
                   onClick={handleDeleteCurrentView}
                   disabled={
-                    loading ||
-                    !selectedTypeId ||
-                    !role ||
-                    !activeViewSlug ||
-                    activeViewSlug === "default"
+                    loading || !selectedTypeId || !role || !activeViewSlug || activeViewSlug === 'default'
                   }
                 >
                   Delete view
                 </button>
                 {dirty && (
-                  <span className="su-text-warning su-ml-sm">
-                    Unsaved changes
-                  </span>
+                  <span className="su-text-warning su-ml-sm">Unsaved changes</span>
                 )}
                 {saveMessage && (
-                  <span className="su-text-success su-ml-sm">
-                    {saveMessage}
-                  </span>
+                  <span className="su-text-success su-ml-sm">{saveMessage}</span>
                 )}
               </div>
-              {error && (
-                <div className="su-alert su-alert-danger su-mt-md">
-                  {error}
-                </div>
-              )}
+              {error && <div className="su-alert su-alert-danger su-mt-md">{error}</div>}
             </div>
           </div>
 
@@ -1044,13 +994,9 @@ export default function ListViewsSettings() {
             </div>
             <div className="su-card-body su-list-scroll">
               {!contentTypeDetail ? (
-                <p className="su-text-muted">
-                  Choose a content type to see its fields.
-                </p>
+                <p className="su-text-muted">Choose a content type to see its fields.</p>
               ) : availableNotSelected.length === 0 ? (
-                <p className="su-text-muted">
-                  All fields are already in use for this view.
-                </p>
+                <p className="su-text-muted">All fields are already in use for this view.</p>
               ) : (
                 <ul className="su-list">
                   {availableNotSelected.map((f) => (
@@ -1061,9 +1007,7 @@ export default function ListViewsSettings() {
                         onClick={() => handleAddColumn(f.key)}
                       >
                         <span>{f.label}</span>
-                        <code className="su-badge su-badge-soft">
-                          {f.key}
-                        </code>
+                        <code className="su-badge su-badge-soft">{f.key}</code>
                       </button>
                     </li>
                   ))}
@@ -1075,27 +1019,20 @@ export default function ListViewsSettings() {
           {/* Right: chosen columns */}
           <div className="su-card">
             <div className="su-card-header">
-              <h2 className="su-card-title">
-                Visible columns (order)
-              </h2>
+              <h2 className="su-card-title">Visible columns (order)</h2>
               <p className="su-card-subtitle">
-                Drag &amp; drop would be nice later; for now use the
-                arrows.
+                Drag &amp; drop would be nice later; for now use the arrows.
               </p>
             </div>
             <div className="su-card-body su-list-scroll">
               {(!columns || !columns.length) && (
                 <p className="su-text-muted">
-                  No columns selected. Choose some from &ldquo;Available
-                  fields&rdquo;.
+                  No columns selected. Choose some from &ldquo;Available fields&rdquo;.
                 </p>
               )}
               <ul className="su-list">
                 {columns.map((c, idx) => (
-                  <li
-                    key={c.key}
-                    className="su-list-item su-flex su-items-center su-gap-sm"
-                  >
+                  <li key={c.key} className="su-list-item su-flex su-items-center su-gap-sm">
                     <div className="su-flex-1">
                       <div>{c.label}</div>
                       <div className="su-text-xs su-text-muted">
@@ -1106,9 +1043,7 @@ export default function ListViewsSettings() {
                       <button
                         type="button"
                         className="su-btn su-btn-icon su-btn-xs"
-                        onClick={() =>
-                          moveColumn(c.key, "up")
-                        }
+                        onClick={() => moveColumn(c.key, 'up')}
                         disabled={idx === 0}
                       >
                         ↑
@@ -1116,9 +1051,7 @@ export default function ListViewsSettings() {
                       <button
                         type="button"
                         className="su-btn su-btn-icon su-btn-xs"
-                        onClick={() =>
-                          moveColumn(c.key, "down")
-                        }
+                        onClick={() => moveColumn(c.key, 'down')}
                         disabled={idx === columns.length - 1}
                       >
                         ↓
@@ -1126,9 +1059,7 @@ export default function ListViewsSettings() {
                       <button
                         type="button"
                         className="su-btn su-btn-icon su-btn-xs su-btn-danger"
-                        onClick={() =>
-                          handleRemoveColumn(c.key)
-                        }
+                        onClick={() => handleRemoveColumn(c.key)}
                       >
                         ✕
                       </button>
@@ -1160,7 +1091,7 @@ export default function ListViewsSettings() {
                 columns,
               },
               null,
-              2,
+              2
             )}
           </pre>
         </div>
