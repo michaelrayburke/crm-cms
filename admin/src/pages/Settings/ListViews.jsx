@@ -202,12 +202,9 @@ export default function ListViewsSettings() {
 
         const [ctRes, viewsRes] = await Promise.all([
           api.get(`/api/content-types/${selectedTypeId}`),
-          // Fetch all views for this type. Include all views in the list settings page so
-          // admins can edit views regardless of assignment. Use a cache-busting param.
+          // Fetch all views for this type for editing. Use all=true and a cache-busting param.
           api.get(
-            `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(
-              role,
-            )}&all=true&_=${Date.now()}`,
+            `/api/content-types/${selectedTypeId}/list-views?all=true&_=${Date.now()}`,
           ),
         ]);
 
@@ -512,24 +509,25 @@ export default function ListViewsSettings() {
 
   const handleSave = async () => {
     if (!selectedTypeId || !role) return;
-    setError("");
-    setSaveMessage("");
+    setError('');
+    setSaveMessage('');
 
-    const label = (currentLabel || "").trim();
+    const label = (currentLabel || '').trim();
     const slug =
-      activeViewSlug && activeViewSlug !== "default"
+      activeViewSlug && activeViewSlug !== 'default'
         ? activeViewSlug
-        : slugify(label || "view");
+        : slugify(label || 'view');
 
+    // Validate label and columns
     if (!label) {
-      setError("Label is required");
+      setError('Label is required');
       return;
     }
     if (!columns || !columns.length) {
-      setError("Please choose at least one column");
+      setError('Please choose at least one column');
       return;
     }
-
+    // Prevent duplicate slug for another view
     const dup = (views || []).find(
       (v) => v.slug && v.slug.toLowerCase() === slug.toLowerCase() && v.slug !== activeViewSlug
     );
@@ -542,58 +540,31 @@ export default function ListViewsSettings() {
 
     try {
       setLoading(true);
-
-      // Always include ADMIN when saving so that admins can manage views even if
-      // they are not assigned. Build a list of roles to save that includes
-      // all roles in assignedRoles plus 'ADMIN'.
-      // Filter defaultRoles so admin cannot be set as default; admin views are for editing only.
-      const effectiveDefaultRoles = defaultRoles.filter((r) => r !== 'ADMIN');
-      const rolesToSave = Array.from(new Set([...assignedRoles, 'ADMIN']));
-      // Remove any existing rows for this slug that correspond to roles no
-      // longer in rolesToSave. This avoids leaving stale records in the DB.
-      try {
-        const rolesToDelete = allRoles.filter((r) => !rolesToSave.includes(r));
-        for (const r of rolesToDelete) {
-          const encodedSlugDel = encodeURIComponent(slug);
-          const encodedRoleDel = encodeURIComponent(r);
-          try {
-            await api.del(
-              `/api/content-types/${selectedTypeId}/list-view/${encodedSlugDel}?role=${encodedRoleDel}`,
-            );
-          } catch (delErr) {
-            console.warn('[ListViews] ignore delete role error', delErr);
-          }
-        }
-      } catch (cleanupErr) {
-        console.error('[ListViews] cleanup before save error', cleanupErr);
-      }
-
-      // Save a separate view per role. Admin rows are always created but never
-      // marked as default unless explicitly included in defaultRoles.
-      for (const r of rolesToSave) {
-        const isDefaultForRole = effectiveDefaultRoles.includes(r);
-        const payload = {
-          slug,
-          label,
-          role: r,
-          is_default: isDefaultForRole,
-          roles: [r],
-          default_roles: isDefaultForRole ? [r] : [],
-          config: { columns },
-        };
-        await api.put(
-          `/api/content-types/${selectedTypeId}/list-view`,
-          payload,
-        );
-      }
-
-      // After saving all roles, reload the list views from the API to ensure
-      // we have the latest data. Use a cache-busting param to avoid 304s.
+      // Always include ADMIN so admins can edit views. Build roles set with ADMIN + assignedRoles
+      const rolesSet = new Set(assignedRoles.map((r) => r.toUpperCase()));
+      rolesSet.add('ADMIN');
+      const rolesArray = Array.from(rolesSet);
+      // Filter defaultRoles to exclude ADMIN; admin should never be default
+      const effectiveDefaultRoles = defaultRoles
+        .map((r) => r.toUpperCase())
+        .filter((r) => r !== 'ADMIN');
+      // Build payload for single-row save
+      const payload = {
+        slug,
+        label,
+        roles: rolesArray,
+        default_roles: effectiveDefaultRoles,
+        config: { columns },
+      };
+      // Send a single PUT request with all roles and default roles
+      await api.put(
+        `/api/content-types/${selectedTypeId}/list-view`,
+        payload,
+      );
+      // Reload list views with all=true so admin sees all rows
       try {
         const lvRes = await api.get(
-          `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(
-            role,
-          )}&_=${Date.now()}`,
+          `/api/content-types/${selectedTypeId}/list-views?all=true&_=${Date.now()}`,
         );
         const lvRaw = lvRes?.data || lvRes || [];
         let newViews;
@@ -605,25 +576,23 @@ export default function ListViewsSettings() {
           newViews = [];
         }
         setViews(newViews);
-        // Find the newly saved view by slug; fall back to the first view
+        // Find the newly saved view by slug; fall back to first
         const next = newViews.find((v) => v.slug === slug) || newViews[0] || null;
         if (next) {
           setActiveViewSlug(next.slug);
           setCurrentLabel(next.label);
-          // Use cfgRoles from next.config.roles or legacy role
           const cfgRoles = Array.isArray(next?.config?.roles)
-            ? next.config.roles
+            ? next.config.roles.map((r) => String(r || '').toUpperCase())
             : next.role
-            ? [next.role.toUpperCase()]
+            ? [String(next.role || '').toUpperCase()]
             : [];
           setAssignedRoles(cfgRoles);
           const cfgDefault = Array.isArray(next?.config?.default_roles)
             ? next.config.default_roles.map((r) => String(r || '').toUpperCase())
             : [];
           setDefaultRoles(cfgDefault);
-          setIsDefault(
-            cfgDefault.includes(role.toUpperCase()) || !!next.is_default,
-          );
+          // Determine if current role is default
+          setIsDefault(cfgDefault.includes(role.toUpperCase()) || !!next.is_default);
           const cfgCols = Array.isArray(next?.config?.columns)
             ? next.config.columns
             : [
@@ -633,7 +602,7 @@ export default function ListViewsSettings() {
               ];
           setColumns(cfgCols);
         } else {
-          // No views returned: fallback to synthesized default layout
+          // fallback to default layout
           setActiveViewSlug('default');
           setCurrentLabel('Default list');
           setIsDefault(true);
@@ -647,46 +616,39 @@ export default function ListViewsSettings() {
         }
       } catch (reloadErr) {
         console.error('[ListViews] reload after save error', reloadErr);
-        // If reload fails, optimistically update the view in local state. Since
-        // each saved role advertises only that role, we update local views
-        // accordingly by replacing or adding the row for this slug and role.
+        // Optimistically update local state with single row
         setViews((prev) => {
           let nextList = [...prev];
-          // Remove any existing rows for this slug (for any role) and
-          // replace them with the newly saved rows per assignedRoles.
+          // remove existing rows for slug
           nextList = nextList.filter((v) => v.slug !== slug);
-          // Create new rows per assigned role
-          const newRows = assignedRoles.map((r) => {
-            const isDef = defaultRoles.includes(r);
-            return {
-              slug,
-              label,
-              role: r,
-              is_default: isDef,
-              config: {
-                roles: [r],
-                default_roles: isDef ? [r] : [],
-                columns,
-              },
-            };
+          // create new row with rolesArray
+          nextList.push({
+            slug,
+            label,
+            role: rolesArray[0],
+            is_default: effectiveDefaultRoles.length > 0,
+            config: {
+              roles: rolesArray,
+              default_roles: effectiveDefaultRoles,
+              columns,
+            },
           });
-          return [...nextList, ...newRows];
+          return nextList;
         });
-        // After optimistic update, set state fields
         setActiveViewSlug(slug);
         setCurrentLabel(label);
-        setAssignedRoles(assignedRoles);
-        setDefaultRoles(defaultRoles);
-        setIsDefault(defaultRoles.includes(role.toUpperCase()));
+        setAssignedRoles(rolesArray);
+        setDefaultRoles(effectiveDefaultRoles);
+        setIsDefault(effectiveDefaultRoles.includes(role.toUpperCase()));
         setColumns(columns);
       }
       setSaveMessage('List view saved. Entry lists will use this layout now.');
       setDirty(false);
-      bumpListViewsVersion(); // ✅ notify others
+      bumpListViewsVersion();
       navigate(`/admin/settings/list-views/${selectedTypeId}`);
     } catch (err) {
-      console.error("[ListViews] save error", err);
-      setError("Failed to save list view");
+      console.error('[ListViews] save error', err);
+      setError('Failed to save list view');
     } finally {
       setLoading(false);
     }
@@ -705,10 +667,9 @@ export default function ListViewsSettings() {
       setSaveMessage('');
       // Encode the slug to safely call the API when it contains special characters.
       const encodedSlug = encodeURIComponent(activeViewSlug);
+      // Call delete without specifying role; with single-row design this removes the entire view
       await api.del(
-        `/api/content-types/${selectedTypeId}/list-view/${encodedSlug}?role=${encodeURIComponent(
-          role,
-        )}`,
+        `/api/content-types/${selectedTypeId}/list-view/${encodedSlug}`,
       );
       // Remove the deleted view from local state and capture the updated list.
       let newViews = [];
