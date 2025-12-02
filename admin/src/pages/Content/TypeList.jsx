@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
-import { useSettings } from '../../context/SettingsContext'; // 🔸 NEW
+import { useSettings } from '../../context/SettingsContext';
 
 // Built-in columns that exist on every entry coming from the API
 const BUILTIN_KEYS = ['title', 'slug', 'status', 'created_at', 'updated_at'];
@@ -139,8 +139,7 @@ export default function TypeList() {
 
         if (ct && ct.id) {
           try {
-            // Fetch list views for this content type and role.  Append a
-            // cache‑busting `_` parameter to avoid 304 Not Modified responses.
+            // Append role and a cache-busting param so the API returns 200 OK instead of 304 Not Modified.
             const viewsRes = await api.get(
               `/api/content-types/${ct.id}/list-views?role=${encodeURIComponent(role)}&_=${Date.now()}`
             );
