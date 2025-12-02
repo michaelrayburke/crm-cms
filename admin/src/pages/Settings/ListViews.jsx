@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
-import { useSettings } from "../../context/SettingsContext";
+import { useSettings } from "../../context/SettingsContext"; // ✅ NEW
 
 // Simple slugify for view slugs
 function slugify(str) {
@@ -588,6 +588,7 @@ export default function ListViewsSettings() {
         return;
       }
 
+      // Update local state with the saved view without reloading from the API.
       setViews((prev) => {
         const idx = prev.findIndex((v) => v.slug === savedRow.slug);
         const updated = {
@@ -607,79 +608,17 @@ export default function ListViewsSettings() {
         nextList[idx] = updated;
         return nextList;
       });
-
-      try {
-        const lvRes = await api.get(
-          `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(role)}&_=${Date.now()}`
-        );
-        const lvRaw = lvRes?.data || lvRes || [];
-        let newViews;
-        if (Array.isArray(lvRaw)) {
-          newViews = lvRaw;
-        } else if (lvRaw && Array.isArray(lvRaw.views)) {
-          newViews = lvRaw.views;
-        } else {
-          newViews = [];
-        }
-        setViews(newViews);
-        const next = newViews.find((v) => v.slug === slug) || newViews[0] || null;
-        if (next) {
-          setActiveViewSlug(next.slug);
-          setCurrentLabel(next.label);
-          const cfgRoles = Array.isArray(next?.config?.roles)
-            ? next.config.roles
-            : next.role
-            ? [next.role.toUpperCase()]
-            : [];
-          setAssignedRoles(cfgRoles);
-          const cfgDefault = Array.isArray(next?.config?.default_roles)
-            ? next.config.default_roles.map((r) => r.toUpperCase())
-            : [];
-          setDefaultRoles(cfgDefault);
-          setIsDefault(
-            cfgDefault.includes(role.toUpperCase()) || !!next.is_default
-          );
-          const cfgCols = Array.isArray(next?.config?.columns)
-            ? next.config.columns
-            : [
-                { key: "title", label: "Title" },
-                { key: "status", label: "Status" },
-                { key: "updated_at", label: "Updated" },
-              ];
-          setColumns(cfgCols);
-        } else {
-          setActiveViewSlug("default");
-          setCurrentLabel("Default list");
-          setIsDefault(true);
-          setAssignedRoles([role]);
-          setDefaultRoles([]);
-          setColumns([
-            { key: "title", label: "Title" },
-            { key: "status", label: "Status" },
-            { key: "updated_at", label: "Updated" },
-          ]);
-        }
-        setSaveMessage("List view saved. Entry lists will use this layout now.");
-        setDirty(false);
-        bumpListViewsVersion(); // ✅ notify others
-        navigate(`/admin/settings/list-views/${selectedTypeId}`);
-      } catch (err) {
-        console.error("[ListViews] reload after save error", err);
-        setViews((prev) => {
-          const idx = prev.findIndex((v) => v.slug === savedRow.slug);
-          if (idx === -1) {
-            return [...prev, savedRow];
-          }
-          const nextList = [...prev];
-          nextList[idx] = savedRow;
-          return nextList;
-        });
-        setActiveViewSlug(savedRow.slug);
-        setIsDefault(!!savedRow.is_default);
-        setSaveMessage("List view saved. Entry lists will use this layout now.");
-        setDirty(false);
-        bumpListViewsVersion(); // ✅ notify others even on fallback
-      }
+      // Update view-related UI state based on the updated view
+      setActiveViewSlug(savedRow.slug);
+      setCurrentLabel(label);
+      setAssignedRoles(assignedRoles);
+      setDefaultRoles(defaultRoles);
+      setIsDefault(defaultRoles.includes(role.toUpperCase()));
+      setColumns(columns);
+      setSaveMessage("List view saved. Entry lists will use this layout now.");
+      setDirty(false);
+      bumpListViewsVersion(); // ✅ notify others
+      navigate(`/admin/settings/list-views/${selectedTypeId}`);
     } catch (err) {
       console.error("[ListViews] save error", err);
       setError("Failed to save list view");
@@ -702,20 +641,13 @@ export default function ListViewsSettings() {
       await api.del(
         `/api/content-types/${selectedTypeId}/list-view/${activeViewSlug}?role=${encodeURIComponent(role)}`
       );
-      const lvRes = await api.get(
-        `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(role)}&_=${Date.now()}`
-      );
-      const lvRaw = lvRes?.data || lvRes || [];
-      let newViews;
-      if (Array.isArray(lvRaw)) {
-        newViews = lvRaw;
-      } else if (lvRaw && Array.isArray(lvRaw.views)) {
-        newViews = lvRaw.views;
-      } else {
-        newViews = [];
-      }
-      setViews(newViews);
-      if (newViews.length === 0) {
+      // Update local views by removing the deleted view without reloading from the API.
+      setViews((prevViews) => {
+        return prevViews.filter((v) => v.slug !== activeViewSlug);
+      });
+      const updatedViews = views.filter((v) => v.slug !== activeViewSlug);
+      if (updatedViews.length === 0) {
+        // No saved views remain: revert to default layout
         setActiveViewSlug('default');
         setCurrentLabel('Default list');
         setIsDefault(true);
@@ -730,7 +662,7 @@ export default function ListViewsSettings() {
         bumpListViewsVersion(); // ✅ notify others
         navigate(`/admin/settings/list-views/${selectedTypeId}`);
       } else {
-        const first = newViews[0];
+        const first = updatedViews[0];
         setActiveViewSlug(first.slug);
         setCurrentLabel(first.label);
         const cfgRoles = Array.isArray(first?.config?.roles)
