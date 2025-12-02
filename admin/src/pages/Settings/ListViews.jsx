@@ -542,53 +542,32 @@ export default function ListViewsSettings() {
     try {
       setLoading(true);
 
-      const payload = {
-        slug,
-        label,
-        // Legacy single-role fields for backwards compatibility
-        role,
-        is_default: defaultRoles.includes(role.toUpperCase()),
-        // New multi-role fields
-        roles: assignedRoles,
-        default_roles: defaultRoles,
-        config: { columns },
-      };
-
-      const res = await api.put(
-        `/api/content-types/${selectedTypeId}/list-view`,
-        payload
-      );
-
-      let savedRow;
-      if (res?.data?.views && Array.isArray(res.data.views)) {
-        const arr = res.data.views;
-        savedRow =
-          arr.find(
-            (v) =>
-              (v.role || "").toUpperCase() === role.toUpperCase() &&
-              v.slug === slug
-          ) || arr.find((v) => v.slug === slug) || arr[0];
-      } else if (Array.isArray(res)) {
-        const arr = res;
-        savedRow =
-          arr.find(
-            (v) =>
-              (v.role || "").toUpperCase() === role.toUpperCase() &&
-              v.slug === slug
-          ) || arr.find((v) => v.slug === slug) || arr[0];
-      } else {
-        savedRow = res?.data?.view || res?.data || null;
+      // Save a separate view per assigned role. Each row advertises only its
+      // own role in `roles` and sets `default_roles` per role. We iterate
+      // through assignedRoles and send one PUT request per role. This
+      // prevents the API from returning the same row for multiple roles.
+      for (const r of assignedRoles) {
+        const isDefaultForRole = defaultRoles.includes(r);
+        const payload = {
+          slug,
+          label,
+          // Legacy single-role fields for backwards compatibility
+          role: r,
+          is_default: isDefaultForRole,
+          // New multi-role fields: advertise only the current role for this row
+          roles: [r],
+          // Set default_roles per role if it is default for this role; otherwise empty
+          default_roles: isDefaultForRole ? [r] : [],
+          config: { columns },
+        };
+        await api.put(
+          `/api/content-types/${selectedTypeId}/list-view`,
+          payload,
+        );
       }
 
-      if (!savedRow) {
-        setSaveMessage("List view saved. Entry lists will use this layout now.");
-        setDirty(false);
-        bumpListViewsVersion(); // ✅ notify others
-        navigate(`/admin/settings/list-views/${selectedTypeId}`);
-        return;
-      }
-
-      // Reload the list views from the API to ensure we have the latest data.
+      // After saving all roles, reload the list views from the API to ensure
+      // we have the latest data. Use a cache-busting param to avoid 304s.
       try {
         const lvRes = await api.get(
           `/api/content-types/${selectedTypeId}/list-views?role=${encodeURIComponent(
@@ -610,6 +589,7 @@ export default function ListViewsSettings() {
         if (next) {
           setActiveViewSlug(next.slug);
           setCurrentLabel(next.label);
+          // Use cfgRoles from next.config.roles or legacy role
           const cfgRoles = Array.isArray(next?.config?.roles)
             ? next.config.roles
             : next.role
@@ -646,27 +626,33 @@ export default function ListViewsSettings() {
         }
       } catch (reloadErr) {
         console.error('[ListViews] reload after save error', reloadErr);
-        // If reload fails, optimistically update the view in local state
+        // If reload fails, optimistically update the view in local state. Since
+        // each saved role advertises only that role, we update local views
+        // accordingly by replacing or adding the row for this slug and role.
         setViews((prev) => {
-          const idx = prev.findIndex((v) => v.slug === savedRow.slug);
-          const updated = {
-            ...savedRow,
-            label,
-            config: {
-              ...(savedRow.config || {}),
-              roles: assignedRoles,
-              default_roles: defaultRoles,
-              columns,
-            },
-          };
-          if (idx === -1) {
-            return [...prev, updated];
-          }
-          const nextList = [...prev];
-          nextList[idx] = updated;
-          return nextList;
+          let nextList = [...prev];
+          // Remove any existing rows for this slug (for any role) and
+          // replace them with the newly saved rows per assignedRoles.
+          nextList = nextList.filter((v) => v.slug !== slug);
+          // Create new rows per assigned role
+          const newRows = assignedRoles.map((r) => {
+            const isDef = defaultRoles.includes(r);
+            return {
+              slug,
+              label,
+              role: r,
+              is_default: isDef,
+              config: {
+                roles: [r],
+                default_roles: isDef ? [r] : [],
+                columns,
+              },
+            };
+          });
+          return [...nextList, ...newRows];
         });
-        setActiveViewSlug(savedRow.slug);
+        // After optimistic update, set state fields
+        setActiveViewSlug(slug);
         setCurrentLabel(label);
         setAssignedRoles(assignedRoles);
         setDefaultRoles(defaultRoles);
