@@ -1,11 +1,26 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 
+// SettingsContext holds global settings, a loading flag, and a version counter
+// used to notify list pages when list view definitions change. The
+// bumpListViewsVersion function increments the version so that any
+// component that depends on list views (like TypeList.jsx) can refetch
+// its configuration when a list view is saved or deleted.
 const SettingsContext = createContext(null);
 
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
+  // NEW: global version counter for list views. See ListViews.jsx
+  // and TypeList.jsx for usage.
+  const [listViewsVersion, setListViewsVersion] = useState(0);
+
+  // Call this function to signal that list views have changed (e.g. after
+  // save or delete). Components that listen for listViewsVersion will
+  // automatically update.
+  const bumpListViewsVersion = () => {
+    setListViewsVersion((v) => v + 1);
+  };
 
   useEffect(() => {
     (async () => {
@@ -44,7 +59,15 @@ export function SettingsProvider({ children }) {
   }, []);
 
   return (
-    <SettingsContext.Provider value={{ settings, setSettings, loading }}>
+    <SettingsContext.Provider
+      value={{
+        settings,
+        setSettings,
+        loading,
+        listViewsVersion,
+        bumpListViewsVersion,
+      }}
+    >
       {children}
     </SettingsContext.Provider>
   );
