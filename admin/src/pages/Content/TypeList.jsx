@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
-import { useSettings } from '../../context/SettingsContext'; // 🔸 NEW
+import { useSettings } from '../../context/SettingsContext'; 
 
 // Built-in columns that exist on every entry coming from the API
 const BUILTIN_KEYS = ['title', 'slug', 'status', 'created_at', 'updated_at'];
@@ -59,9 +59,12 @@ function getIdentifierKeyForType() {
 
 export default function TypeList() {
   const navigate = useNavigate();
-  const { type: typeSlugParam, typeSlug: typeSlugAlt } = useParams();
+  // Depending on how the route is declared it might be :type, :typeSlug or include a view slug.
+  // When using the path pattern "/admin/content/:typeSlug/view/:viewSlug" the viewSlug param is defined.
+  // Otherwise useParams may define :type or :typeSlug. We try all and pick whichever is present.
+  const { type: typeSlugParam, typeSlug: typeSlugAlt, viewSlug } = useParams();
 
-  // Depending on how the route is declared it might be :type or :typeSlug
+  // Determine the content type slug: prefer explicit :type or :typeSlug values.
   const typeSlug = typeSlugParam || typeSlugAlt;
 
   const role = 'ADMIN';
@@ -163,13 +166,26 @@ export default function TypeList() {
         let effectiveCols = [];
 
         if (views && views.length) {
-          const active =
-            views.find((v) => v.is_default) || views[0];
+          let chosen = null;
+          // If a view slug was provided in the URL, attempt to find that view first.
+          if (viewSlug) {
+            chosen = views.find((v) => v.slug === viewSlug);
+          }
+          // If no view slug or not found, pick the default view for this role if any, else fall back to the first view.
+          if (!chosen) {
+            chosen = views.find((v) => {
+              // Prefer views whose config.default_roles includes the current role or is_default flag is true
+              const defRoles = Array.isArray(v?.config?.default_roles)
+                ? v.config.default_roles.map((r) => String(r || '').toUpperCase())
+                : [];
+              return defRoles.includes(role.toUpperCase()) || v.is_default;
+            }) || views[0];
+          }
 
-          setActiveViewSlug(active.slug);
-          setActiveViewLabel(active.label || active.slug);
+          setActiveViewSlug(chosen.slug);
+          setActiveViewLabel(chosen.label || chosen.slug);
 
-          const cfgCols = (active.config && active.config.columns) || [];
+          const cfgCols = (chosen.config && chosen.config.columns) || [];
           const cfgKeys = cfgCols
             .map((c) => c.key)
             .filter((k) => k && keySet.has(k));
@@ -209,7 +225,7 @@ export default function TypeList() {
     return () => {
       cancelled = true;
     };
-  }, [typeSlug, role, listViewsVersion]); // 🔸 UPDATED
+  }, [typeSlug, role, listViewsVersion, viewSlug]); // 🔸 UPDATED
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -241,6 +257,9 @@ export default function TypeList() {
     if (!slug) return;
     const v = listViews.find((x) => x.slug === slug);
     if (!v) return;
+
+    // Navigate to the view-specific URL to reflect the selected view in the path.
+    navigate(`/admin/content/${typeSlug}/view/${slug}`);
 
     setActiveViewSlug(slug);
     setActiveViewLabel(v.label || slug);
