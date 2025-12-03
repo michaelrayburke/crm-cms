@@ -157,6 +157,31 @@ router.put(
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+
+        // ------------------------------------------------------------------
+        // Ensure there is only one default editor view per role.
+        // If any roles are designated as default in this request, clear those
+        // default assignments from all other views for the same content type.
+        // This mirrors the behaviour of list views, so that default roles
+        // cannot be assigned across multiple editor views simultaneously.
+        if (defaultRoleList.length > 0) {
+          for (const dRole of defaultRoleList) {
+            await client.query(
+              `UPDATE entry_editor_views
+                   SET is_default = FALSE,
+                       config = jsonb_set(
+                         COALESCE(config, '{}'::jsonb),
+                         '{default_roles}'::text[],
+                         '[]'::jsonb,
+                         true
+                       )
+                 WHERE content_type_id = $1
+                   AND (config->'default_roles')::jsonb ? $2`,
+              [contentTypeId, dRole]
+            );
+          }
+        }
+
         // Choose legacy role value for backward compatibility
         const legacyRoleValue = roleList[0] || 'ADMIN';
         const isDefaultRow = defaultRoleList.length > 0;
