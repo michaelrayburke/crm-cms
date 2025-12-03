@@ -22,6 +22,12 @@ const PAGE_OPTIONS = [
   { value: '/admin/settings', label: 'Settings' },
 ];
 
+const TARGET_OPTIONS = [
+  { value: '_self', label: 'Same window (default)' },
+  { value: '_blank', label: 'New tab / window' },
+  { value: '_top', label: 'New window (top)' },
+];
+
 export default function SettingsPage() {
   const { settings, setSettings, loading } = useSettings();
   const [form, setForm] = useState(null);
@@ -123,7 +129,7 @@ export default function SettingsPage() {
       ...prev,
       navSidebar: [
         ...(Array.isArray(prev.navSidebar) ? prev.navSidebar : []),
-        { label: 'New link', to: '/admin', roles: [] },
+        { label: 'New link', to: '/admin', roles: [], target: '_self' },
       ],
     }));
   }
@@ -143,7 +149,7 @@ export default function SettingsPage() {
         ...(Array.isArray(prev.navTopbarButtons)
           ? prev.navTopbarButtons
           : []),
-        { label: 'New button', to: '/admin', roles: [] },
+        { label: 'New button', to: '/admin', roles: [], target: '_self' },
       ],
     }));
   }
@@ -178,7 +184,7 @@ export default function SettingsPage() {
       const children = Array.isArray(parent.children)
         ? [...parent.children]
         : [];
-      children.push({ label: 'Child link', to: '/admin' });
+      children.push({ label: 'Child link', to: '/admin', target: '_self' });
       nav[parentIndex] = { ...parent, children };
       return { ...prev, navSidebar: nav };
     });
@@ -224,7 +230,7 @@ export default function SettingsPage() {
       const children = Array.isArray(parent.children)
         ? [...parent.children]
         : [];
-      children.push({ label: 'Child link', to: '/admin' });
+      children.push({ label: 'Child link', to: '/admin', target: '_self' });
       list[parentIndex] = { ...parent, children };
       return { ...prev, navTopbarButtons: list };
     });
@@ -311,7 +317,6 @@ export default function SettingsPage() {
           mode: form.theme?.mode || 'light',
         },
       };
-      // Persist settings using the saveSettings helper which computes the correct path
       const saved = await saveSettings(payload);
       const nextSettings = saved || payload;
       setSettings(nextSettings);
@@ -577,6 +582,28 @@ export default function SettingsPage() {
                     Roles: leave empty to show to all roles.
                   </p>
 
+                  <div className="mt-1">
+                    <label className="su-label text-xs">
+                      Link target
+                    </label>
+                    <select
+                      className="su-select"
+                      value={item.target || '_self'}
+                      onChange={(e) =>
+                        updateNavSidebar(i, 'target', e.target.value)
+                      }
+                    >
+                      {TARGET_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-gray-500">
+                      Controls how this parent link opens when clicked.
+                    </p>
+                  </div>
+
                   {/* Child links */}
                   <div className="mt-3 space-y-2">
                     <div className="flex items-center justify-between">
@@ -598,43 +625,93 @@ export default function SettingsPage() {
                           {item.children.map((child, ci) => (
                             <div
                               key={ci}
-                              className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] gap-2 items-center pl-2"
+                              className="space-y-2 pl-2"
                             >
-                              <input
-                                className="su-input"
-                                placeholder="Child label"
-                                value={child.label || ''}
-                                onChange={(e) =>
-                                  updateSidebarChild(
-                                    i,
-                                    ci,
-                                    'label',
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                              <input
-                                className="su-input"
-                                placeholder="Child path (e.g. /admin/settings/branding)"
-                                value={child.to || ''}
-                                onChange={(e) =>
-                                  updateSidebarChild(
-                                    i,
-                                    ci,
-                                    'to',
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                              <button
-                                type="button"
-                                className="su-btn"
-                                onClick={() =>
-                                  removeSidebarChild(i, ci)
-                                }
-                              >
-                                ✕
-                              </button>
+                              <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] gap-2 items-center">
+                                <input
+                                  className="su-input"
+                                  placeholder="Child label"
+                                  value={child.label || ''}
+                                  onChange={(e) =>
+                                    updateSidebarChild(
+                                      i,
+                                      ci,
+                                      'label',
+                                      e.target.value,
+                                    )
+                                  }
+                                />
+                                <select
+                                  className="su-select"
+                                  value={child.to || ''}
+                                  onChange={(e) =>
+                                    updateSidebarChild(
+                                      i,
+                                      ci,
+                                      'to',
+                                      e.target.value,
+                                    )
+                                  }
+                                >
+                                  <option value="">
+                                    Custom URL…
+                                  </option>
+                                  {PAGE_OPTIONS.map((opt) => (
+                                    <option
+                                      key={opt.value}
+                                      value={opt.value}
+                                    >
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  className="su-btn"
+                                  onClick={() =>
+                                    removeSidebarChild(i, ci)
+                                  }
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr)] gap-2 items-center">
+                                <input
+                                  className="su-input"
+                                  placeholder="Or type a custom path (e.g. /admin/settings/branding)"
+                                  value={child.to || ''}
+                                  onChange={(e) =>
+                                    updateSidebarChild(
+                                      i,
+                                      ci,
+                                      'to',
+                                      e.target.value,
+                                    )
+                                  }
+                                />
+                                <select
+                                  className="su-select"
+                                  value={child.target || '_self'}
+                                  onChange={(e) =>
+                                    updateSidebarChild(
+                                      i,
+                                      ci,
+                                      'target',
+                                      e.target.value,
+                                    )
+                                  }
+                                >
+                                  {TARGET_OPTIONS.map((opt) => (
+                                    <option
+                                      key={opt.value}
+                                      value={opt.value}
+                                    >
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -740,6 +817,28 @@ export default function SettingsPage() {
                     Roles: leave empty to show to all roles.
                   </p>
 
+                  <div className="mt-1">
+                    <label className="su-label text-xs">
+                      Link target
+                    </label>
+                    <select
+                      className="su-select"
+                      value={item.target || '_self'}
+                      onChange={(e) =>
+                        updateTopbar(i, 'target', e.target.value)
+                      }
+                    >
+                      {TARGET_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-gray-500">
+                      Controls how this button opens its link.
+                    </p>
+                  </div>
+
                   {/* Child links */}
                   <div className="mt-3 space-y-2">
                     <div className="flex items-center justify-between">
@@ -761,43 +860,93 @@ export default function SettingsPage() {
                           {item.children.map((child, ci) => (
                             <div
                               key={ci}
-                              className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] gap-2 items-center pl-2"
+                              className="space-y-2 pl-2"
                             >
-                              <input
-                                className="su-input"
-                                placeholder="Child label"
-                                value={child.label || ''}
-                                onChange={(e) =>
-                                  updateTopbarChild(
-                                    i,
-                                    ci,
-                                    'label',
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                              <input
-                                className="su-input"
-                                placeholder="Child path (e.g. /admin/help/docs)"
-                                value={child.to || ''}
-                                onChange={(e) =>
-                                  updateTopbarChild(
-                                    i,
-                                    ci,
-                                    'to',
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                              <button
-                                type="button"
-                                className="su-btn"
-                                onClick={() =>
-                                  removeTopbarChild(i, ci)
-                                }
-                              >
-                                ✕
-                              </button>
+                              <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] gap-2 items-center">
+                                <input
+                                  className="su-input"
+                                  placeholder="Child label"
+                                  value={child.label || ''}
+                                  onChange={(e) =>
+                                    updateTopbarChild(
+                                      i,
+                                      ci,
+                                      'label',
+                                      e.target.value,
+                                    )
+                                  }
+                                />
+                                <select
+                                  className="su-select"
+                                  value={child.to || ''}
+                                  onChange={(e) =>
+                                    updateTopbarChild(
+                                      i,
+                                      ci,
+                                      'to',
+                                      e.target.value,
+                                    )
+                                  }
+                                >
+                                  <option value="">
+                                    Custom URL…
+                                  </option>
+                                  {PAGE_OPTIONS.map((opt) => (
+                                    <option
+                                      key={opt.value}
+                                      value={opt.value}
+                                    >
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  className="su-btn"
+                                  onClick={() =>
+                                    removeTopbarChild(i, ci)
+                                  }
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr)] gap-2 items-center">
+                                <input
+                                  className="su-input"
+                                  placeholder="Or type a custom path (e.g. /admin/help/docs)"
+                                  value={child.to || ''}
+                                  onChange={(e) =>
+                                    updateTopbarChild(
+                                      i,
+                                      ci,
+                                      'to',
+                                      e.target.value,
+                                    )
+                                  }
+                                />
+                                <select
+                                  className="su-select"
+                                  value={child.target || '_self'}
+                                  onChange={(e) =>
+                                    updateTopbarChild(
+                                      i,
+                                      ci,
+                                      'target',
+                                      e.target.value,
+                                    )
+                                  }
+                                >
+                                  {TARGET_OPTIONS.map((opt) => (
+                                    <option
+                                      key={opt.value}
+                                      value={opt.value}
+                                    >
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
                             </div>
                           ))}
                         </div>
