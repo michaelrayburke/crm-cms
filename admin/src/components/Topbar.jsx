@@ -2,7 +2,12 @@ import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
 
-export default function Topbar() {
+export default function Topbar({
+  onToggleSidebar,
+  onToggleCollapse,
+  isSidebarOpen,
+  isCollapsed,
+}) {
   const { settings } = useSettings();
   const [openIndex, setOpenIndex] = useState(null);
 
@@ -16,14 +21,25 @@ export default function Topbar() {
 
   return (
     <header className="su-topbar">
-      {/* Left side: app name / logo area */}
+      {/* Left side: hamburger + app name */}
       <div className="su-topbar-left">
+        {onToggleSidebar && (
+          <button
+            type="button"
+            className="su-btn su-topbar-hamburger"
+            onClick={onToggleSidebar}
+            aria-label={isSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          >
+            ☰
+          </button>
+        )}
+
         <div className="su-topbar-title">
           {settings?.appName || 'ServiceUp Admin'}
         </div>
       </div>
 
-      {/* Right side: topbar nav */}
+      {/* Right side: topbar nav + collapse button */}
       <nav className="su-topbar-nav" aria-label="Top navigation">
         {items.map((item, i) => {
           const hasChildren =
@@ -84,6 +100,17 @@ export default function Topbar() {
             </div>
           );
         })}
+
+        {onToggleCollapse && (
+          <button
+            type="button"
+            className="su-btn su-topbar-link"
+            onClick={onToggleCollapse}
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isCollapsed ? '⤢' : '⤡'}
+          </button>
+        )}
       </nav>
     </header>
   );
