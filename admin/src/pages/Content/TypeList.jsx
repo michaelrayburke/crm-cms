@@ -361,13 +361,15 @@ export default function TypeList() {
   // ---------------------------------------------------------------------------
   function handleClickNew() {
     if (!typeSlug) return;
-    navigate(`/content/${typeSlug}/new`);
+    // Use /admin prefix so it matches routes defined in App.jsx
+    navigate(`/admin/content/${typeSlug}/new`);
   }
 
   function handleClickRow(row) {
     const id = row.id || row._id;
     if (!typeSlug || !id) return;
-    navigate(`/content/${typeSlug}/${id}`);
+    // Use /admin prefix so it matches routes defined in App.jsx
+    navigate(`/admin/content/${typeSlug}/${id}`);
   }
 
   function handleChooseView(slug) {
@@ -401,8 +403,13 @@ export default function TypeList() {
   function renderCell(row, key) {
     let value;
     if (key === 'title') {
-      // Prefer title-ish fields for the main identifier
-      value = row.title || row.name || row.slug || '(untitled)';
+      // Prefer title-ish fields for the main identifier. Fall back to nested data.
+      value =
+        row.title ||
+        row.name ||
+        row.slug ||
+        (row.data && (row.data.title || row.data.name || row.data.slug)) ||
+        '(untitled)';
     } else if (key in row) {
       value = row[key];
     } else if (row.data && key in row.data) {
