@@ -16,10 +16,8 @@ import { api } from "../../lib/api";
  *  - default_roles: roles for which this view is default
  *  - sections: array of widgets { id, title, description, layout, fields }
  *
- * We exclude built-in fields (title, slug, status, created_at, updated_at) from
- * the configurable list because they are always shown in the editor and
- * cannot be reordered or hidden. Custom fields defined in the content type
- * builder are available to assign to widgets.
+ * We now allow BOTH built-in fields (title, slug, status, created_at,
+ * updated_at) AND custom fields to be placed into widgets.
  */
 
 // Simple slugify helper for view slugs
@@ -32,7 +30,7 @@ function slugify(str) {
     .replace(/^-+|-+$/g, "");
 }
 
-// Built-in fields that always appear in the editor; not configurable
+// Built-in fields (now allowed in widgets too)
 const BUILTIN_FIELDS = [
   { key: "title", label: "Title" },
   { key: "slug", label: "Slug" },
@@ -50,7 +48,7 @@ export default function EntryViews() {
 
   // All content types
   const [contentTypes, setContentTypes] = useState([]);
-  // Selected content type key (we use slug in URLs but API accepts id or slug)
+  // Selected content type key (slug or id)
   const [selectedTypeId, setSelectedTypeId] = useState("");
   const [contentTypeDetail, setContentTypeDetail] = useState(null);
 
@@ -70,7 +68,7 @@ export default function EntryViews() {
   // Available roles (loaded from /api/roles)
   const [allRoles, setAllRoles] = useState(["ADMIN"]);
 
-  // Available custom fields for this content type (built-ins removed)
+  // Available fields for this content type (built-ins + custom)
   const [availableFields, setAvailableFields] = useState([]);
 
   // UI state
@@ -141,8 +139,8 @@ export default function EntryViews() {
 
         if (!cancelled) {
           setContentTypes(list);
-          // IMPORTANT: do NOT auto-navigate here.
-          // /admin/settings/entry-views should stay on the content-type picker.
+          // No auto-navigation here: /admin/settings/entry-views should
+          // stay on the content-type picker.
         }
       } catch (err) {
         if (!cancelled) setError("Failed to load content types");
@@ -160,8 +158,8 @@ export default function EntryViews() {
   // Helpers
   // ---------------------------------------------------------------------------
   const computeAvailableFields = (ct) => {
-    if (!ct || !Array.isArray(ct.fields)) return [];
-    return ct.fields
+    // Custom fields from the content type
+    const custom = (ct && Array.isArray(ct.fields) ? ct.fields : [])
       .map((f) => {
         const key = f.key || f.field_key;
         return key
@@ -172,6 +170,15 @@ export default function EntryViews() {
           : null;
       })
       .filter(Boolean);
+
+    // Merge built-in + custom, avoiding duplicates by key
+    const merged = [...BUILTIN_FIELDS];
+    for (const f of custom) {
+      if (!merged.some((b) => b.key === f.key)) {
+        merged.push(f);
+      }
+    }
+    return merged;
   };
 
   // Load content type detail + editor views whenever selectedTypeId or active view changes
@@ -193,7 +200,7 @@ export default function EntryViews() {
 
         setContentTypeDetail(ct);
 
-        // compute available fields
+        // compute available fields (built-ins + custom)
         const av = computeAvailableFields(ct);
         setAvailableFields(av);
 
@@ -214,7 +221,7 @@ export default function EntryViews() {
         if (activeViewSlug) {
           const found = loadedViews.find((v) => v.slug === activeViewSlug);
           if (found) {
-            loadViewForEdit(found, av);
+            loadViewForEdit(found);
           }
         } else {
           // reset form state when switching content types
@@ -241,7 +248,7 @@ export default function EntryViews() {
   }, [selectedTypeId, activeViewSlug]);
 
   // load a view into form state for editing
-  const loadViewForEdit = (view, av) => {
+  const loadViewForEdit = (view) => {
     if (!view) return;
 
     setActiveViewSlug(view.slug);
@@ -268,10 +275,11 @@ export default function EntryViews() {
           title: s.title || `Widget ${idx + 1}`,
           description: s.description || "",
           layout: s.layout || "one-column",
+          // IMPORTANT: keep ALL fields (built-ins + custom)
           fields: Array.isArray(s.fields)
             ? s.fields
                 .map((f) => (typeof f === "string" ? f : f.key))
-                .filter((k) => !BUILTIN_FIELDS.some((b) => b.key === k))
+                .filter(Boolean)
             : [],
         }))
       : [];
@@ -440,7 +448,7 @@ export default function EntryViews() {
   // ---------------------------------------------------------------------------
   const handleSelectType = (val) => {
     if (!val) return;
-    // Use slug in the URL for nicer, stable routes
+    // Use slug or id in the URL
     navigate(`/admin/settings/entry-views/${val}`);
   };
 
@@ -510,20 +518,19 @@ export default function EntryViews() {
     const rolesArray = Array.from(rolesSet);
     const defaults = defaultRoles.map((r) => r.toUpperCase());
 
+    // IMPORTANT: keep all fields (including built-ins) and only drop completely empty widgets
     const payloadSections = sections
       .map((sec) => {
-        const customFields = sec.fields.filter(
-          (k) => !BUILTIN_FIELDS.some((b) => b.key === k)
-        );
+        const cleanedFields = (sec.fields || []).filter(Boolean);
         return {
           id: sec.id,
           title: sec.title,
           description: sec.description,
           layout: sec.layout,
-          fields: customFields,
+          fields: cleanedFields,
         };
       })
-      .filter((s) => s.fields.length);
+      .filter((s) => s.fields && s.fields.length);
 
     if (payloadSections.length === 0) {
       setError("Please add at least one widget with a field");
@@ -554,6 +561,7 @@ export default function EntryViews() {
 
       const newly = newViews.find((v) => v.slug === slug) || null;
       if (newly) {
+        // Mirror loadViewForEdit
         setActiveViewSlug(newly.slug);
         setCurrentLabel(newly.label);
 
@@ -583,7 +591,7 @@ export default function EntryViews() {
               fields: Array.isArray(s.fields)
                 ? s.fields
                     .map((f) => (typeof f === "string" ? f : f.key))
-                    .filter((k) => !BUILTIN_FIELDS.some((b) => b.key === k))
+                    .filter(Boolean)
                 : [],
             }))
           : [];
