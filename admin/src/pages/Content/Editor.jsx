@@ -42,22 +42,42 @@ function buildLayoutFromView(contentType, viewConfig) {
   if (cfgSections && cfgSections.length) {
     for (const sec of cfgSections) {
       const rows = [];
-      for (const fCfg of sec.fields || []) {
-        if (!fCfg || !fCfg.key) continue;
-        const def = fieldsByKey[fCfg.key];
+      // Each section can specify a layout (e.g. "two-column"). Fall back to columns if set.
+      let columns = 1;
+      if (typeof sec.layout === 'string') {
+        if (sec.layout.includes('two')) columns = 2;
+        if (sec.layout.includes('three')) columns = 3;
+      }
+      // If explicit columns property present, respect it
+      if (sec.columns && Number.isInteger(sec.columns)) {
+        columns = sec.columns;
+      }
+      for (const fCfgRaw of sec.fields || []) {
+        // Allow fields to be strings (field keys) or objects with key/width
+        let key;
+        let width = 1;
+        let visible = true;
+        if (typeof fCfgRaw === 'string') {
+          key = fCfgRaw;
+        } else if (fCfgRaw && typeof fCfgRaw === 'object') {
+          key = fCfgRaw.key;
+          width = fCfgRaw.width || 1;
+          if (fCfgRaw.visible === false) visible = false;
+        }
+        if (!key) continue;
+        const def = fieldsByKey[key];
         if (!def) continue;
-        if (fCfg.visible === false) continue;
-
+        if (visible === false) continue;
         rows.push({
           def,
-          width: fCfg.width || 1,
+          width,
         });
       }
       if (rows.length) {
         sections.push({
-          id: sec.id || sec.title || "section-" + sections.length,
-          title: sec.title || "",
-          columns: sec.columns || 1,
+          id: sec.id || sec.title || `section-${sections.length}`,
+          title: sec.title || '',
+          columns,
           rows,
         });
       }
@@ -67,8 +87,8 @@ function buildLayoutFromView(contentType, viewConfig) {
   // Fallback: single section with all fields
   if (!sections.length && fields.length) {
     sections.push({
-      id: "main",
-      title: "Fields",
+      id: 'main',
+      title: 'Fields',
       columns: 1,
       rows: fields.map((def) => ({
         def,
@@ -358,15 +378,20 @@ export default function Editor() {
 
         const created = res.entry || res.data || res;
 
+        const newSlug =
+          created?.slug || created?.entry?.slug || created?.data?.slug || finalSlug;
         const newId =
           created?.id ?? created?.entry?.id ?? created?.data?.id ?? null;
 
-        if (newId) {
-          // Always navigate to the admin path when editing/creating entries
+        // Prefer navigating by slug if available, otherwise fall back to ID
+        if (newSlug) {
+          navigate(`/admin/content/${typeSlug}/${newSlug}`, { replace: true });
+          setSaveMessage('Entry created.');
+        } else if (newId) {
           navigate(`/admin/content/${typeSlug}/${newId}`, { replace: true });
-          setSaveMessage("Entry created.");
+          setSaveMessage('Entry created.');
         } else {
-          setSaveMessage("Entry created (reload list to see it).");
+          setSaveMessage('Entry created (reload list to see it).');
         }
       } else {
         // UPDATE
@@ -398,9 +423,13 @@ export default function Editor() {
           setSlug(loadedSlug);
           setStatus(loadedStatus);
           setData(entryData);
+          // If the slug changed (e.g. title changed), update the URL to point to the slug
+          if (!isNew && entryId && entryId !== loadedSlug && loadedSlug) {
+            navigate(`/admin/content/${typeSlug}/${loadedSlug}`, { replace: true });
+          }
         }
 
-        setSaveMessage("Entry saved.");
+        setSaveMessage('Entry saved.');
       }
     } catch (err) {
       console.error("Failed to save entry", err);
