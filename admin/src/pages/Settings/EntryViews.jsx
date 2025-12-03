@@ -1,141 +1,138 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { api } from "../../lib/api";
+import React, { useEffect, useState, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { api } from '../../lib/api';
 
 /*
- * EntryViews.jsx
+ * EntryViews settings page with widget/section grouping.
  *
- * This settings page allows administrators to configure the layout of the entry
- * editor for each content type. It is intentionally modelled off of the
- * ListViews settings page so you get the same capabilities: multiple role
- * assignment, admin‑only toggling, default roles, slug handling and
- * refresh‑stable routing. Rather than configuring list columns, we allow
- * choosing and ordering which fields appear in the entry editor. The
- * configuration is persisted via the entry‑views API in a single row per view
- * with `roles`, `default_roles` and `sections` arrays.
+ * This component lets administrators build rich entry editor views for each
+ * content type. A view consists of one or more sections (widgets). Each
+ * section has a title, description, column count and an ordered list of
+ * fields. Only one view per slug is stored per content type. Users can
+ * assign the view to multiple roles, set default roles, toggle admin‑only,
+ * and manage slugs and labels. The page mirrors the ListViews settings
+ * behaviour for multi‑role assignment and default role handling.
  */
 
-// Simple slugify for view slugs. Mirrors the slugify in ListViews.jsx.
+// Helper to slugify labels into URL‑friendly strings
 function slugify(str) {
-  return (str || "")
+  return (str || '')
     .toString()
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
-// Built‑in fields that exist on every entry. We mirror the list view built‑ins.
+// Built‑in fields available on every entry. These are shown in the editor
+// outside of the widget configuration. Including them in a widget is
+// optional; if present they will appear in order within that section.
 const BUILTIN_FIELDS = [
-  { key: "title", label: "Title" },
-  { key: "slug", label: "Slug" },
-  { key: "status", label: "Status" },
-  { key: "created_at", label: "Created" },
-  { key: "updated_at", label: "Updated" },
+  { key: 'title', label: 'Title' },
+  { key: 'slug', label: 'Slug' },
+  { key: 'status', label: 'Status' },
+  { key: 'created_at', label: 'Created' },
+  { key: 'updated_at', label: 'Updated' },
 ];
 
 export default function EntryViews() {
   const params = useParams();
   const navigate = useNavigate();
 
-  // Top‑level state. The stages mirror the ListViews page: selecting a type,
-  // selecting/creating a view for that type, then editing the view.
-  const [stage, setStage] = useState("types"); // 'types' | 'views' | 'edit'
+  // Stage: choose type, choose view, edit view
+  const [stage, setStage] = useState('types');
+  // All content types
   const [contentTypes, setContentTypes] = useState([]);
-  const [selectedTypeId, setSelectedTypeId] = useState("");
+  // Currently selected type id (or slug) from params
+  const [selectedTypeId, setSelectedTypeId] = useState('');
+  // Currently selected view slug
+  const [activeViewSlug, setActiveViewSlug] = useState('');
 
-  // The role dropdown is still present to filter views when loading, but
-  // assignment is multi‑select via checkboxes like ListViews.
-  const [role, setRole] = useState("ADMIN");
-  const [allRoles, setAllRoles] = useState(["ADMIN", "EDITOR", "AUTHOR", "VIEWER"]);
-  const [assignedRoles, setAssignedRoles] = useState(["ADMIN"]);
-  const [defaultRoles, setDefaultRoles] = useState([]);
-  const [adminOnly, setAdminOnly] = useState(false);
-  const isAdminOnly = adminOnly;
-
-  // List of views for the selected type. Each view is a single row with
-  // `slug`, `label`, and `config` containing `roles`, `default_roles` and
-  // `sections` (for entry editor layout).
+  // Editor views loaded for selected type
   const [views, setViews] = useState([]);
-  const [activeViewSlug, setActiveViewSlug] = useState("");
-  const [currentLabel, setCurrentLabel] = useState("");
-  const [isDefault, setIsDefault] = useState(false);
-
-  // Fields chosen for the editor layout. Each entry is { key, label }.
-  const [fields, setFields] = useState([]);
+  // Available fields for the selected type (built‑ins + custom)
   const [availableFields, setAvailableFields] = useState([]);
-  const [contentTypeDetail, setContentTypeDetail] = useState(null);
-
-  // UI state
+  // Sections for the view being edited
+  const [sections, setSections] = useState([]);
+  // Index of the currently selected section (for editing)
+  const [selectedSectionIndex, setSelectedSectionIndex] = useState(0);
+  // Assigned roles for this view
+  const [assignedRoles, setAssignedRoles] = useState(['ADMIN']);
+  // Default roles (subset of assignedRoles)
+  const [defaultRoles, setDefaultRoles] = useState([]);
+  // Admin only toggle
+  const [adminOnly, setAdminOnly] = useState(false);
+  // Label and slug for the view
+  const [currentLabel, setCurrentLabel] = useState('');
+  const [currentSlug, setCurrentSlug] = useState('');
+  // Flags
   const [loading, setLoading] = useState(false);
   const [loadingTypes, setLoadingTypes] = useState(true);
-  const [error, setError] = useState("");
-  const [saveMessage, setSaveMessage] = useState("");
+  const [error, setError] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
   const [dirty, setDirty] = useState(false);
 
-  // Sync stage and selection from the URL params. We support either a
-  // `:typeSlug` or `:typeId` parameter to identify the content type and an
-  // optional `:viewSlug` parameter to edit a specific view.
+  // Sync stage and type from route params
   useEffect(() => {
-    const typeSlug = params.typeSlug || params.typeId;
-    const viewSlug = params.viewSlug || "";
-    if (!typeSlug) {
-      setStage("types");
-      setSelectedTypeId("");
-      setActiveViewSlug("");
+    const typeParam = params.typeSlug || params.typeId;
+    const viewParam = params.viewSlug || '';
+    if (!typeParam) {
+      setStage('types');
+      setSelectedTypeId('');
+      setActiveViewSlug('');
       return;
     }
-    setSelectedTypeId(typeSlug);
-    if (viewSlug) {
-      setStage("edit");
-      setActiveViewSlug(viewSlug);
+    setSelectedTypeId(typeParam);
+    if (viewParam) {
+      setStage('edit');
+      setActiveViewSlug(viewParam);
     } else {
-      setStage("views");
-      setActiveViewSlug("");
+      setStage('views');
+      setActiveViewSlug('');
     }
-  }, [params.typeId, params.typeSlug, params.viewSlug]);
+  }, [params.typeSlug, params.typeId, params.viewSlug]);
 
-  // Load content types and available roles on mount.
+  // Load content types and roles on mount
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         setLoadingTypes(true);
-        // Fetch roles first; fall back to defaults on error.
+        setError('');
+        // Fetch roles (for assignment). If fails, we keep defaults.
         try {
-          const rolesRes = await api.get("/api/roles");
+          const rolesRes = await api.get('/api/roles');
           const rawRoles = rolesRes?.data || rolesRes || [];
           if (Array.isArray(rawRoles) && rawRoles.length) {
             const extracted = rawRoles
-              .map((r) => (r.slug || r.name || r.role || "").toUpperCase())
+              .map((r) => (r.slug || r.name || r.role || '').toUpperCase())
               .filter(Boolean);
-            if (extracted.length) {
-              setAllRoles(extracted);
-            }
+            if (extracted.length) setAssignedRoles((prev) => {
+              // ensure ADMIN always included
+              const set = new Set(['ADMIN', ...extracted]);
+              return Array.from(set);
+            });
           }
-        } catch (_err) {
-          // ignore; use defaults
+        } catch (_) {
+          // ignore errors; we use default roles set
         }
-        const res = await api.get("/api/content-types");
-        if (cancelled) return;
-        const list = Array.isArray(res) ? res : res?.data || [];
-        // sort by name for predictable order
+        // Fetch content types
+        const ctRes = await api.get('/api/content-types');
+        const list = Array.isArray(ctRes) ? ctRes : ctRes?.data || [];
         list.sort((a, b) => {
-          const an = (a.name || a.slug || "").toLowerCase();
-          const bn = (b.name || b.slug || "").toLowerCase();
+          const an = (a.name || a.slug || '').toLowerCase();
+          const bn = (b.name || b.slug || '').toLowerCase();
           return an.localeCompare(bn);
         });
         setContentTypes(list);
-        // If nothing selected and no URL param, choose the first type.
+        // If nothing selected and no param, select first type
         const hasParam = params?.typeSlug || params?.typeId;
         if (list.length && !hasParam && !selectedTypeId) {
           setSelectedTypeId(list[0].id);
         }
       } catch (err) {
-        console.error("[EntryViews] failed to load content types", err);
-        if (!cancelled) {
-          setError("Failed to load content types");
-        }
+        console.error('[EntryViews] failed to load content types', err);
+        if (!cancelled) setError('Failed to load content types');
       } finally {
         if (!cancelled) setLoadingTypes(false);
       }
@@ -145,105 +142,137 @@ export default function EntryViews() {
     };
   }, []);
 
-  // Compute available fields for a given content type. We reuse built‑ins and
-  // combine them with the custom fields of the type, ensuring no duplicates.
+  // Compute available fields (built‑ins + custom) for a given content type
   const computeAvailableFields = (ct) => {
     if (!ct) return BUILTIN_FIELDS;
     const ctFields = Array.isArray(ct.fields)
       ? ct.fields.map((f) => {
-          const fieldKey = f.key || f.field_key;
+          const key = f.key || f.field_key;
           return {
-            key: fieldKey,
-            label: f.label || f.name || fieldKey,
+            key: key,
+            label: f.label || f.name || key,
           };
         })
       : [];
     const all = [...BUILTIN_FIELDS];
     for (const f of ctFields) {
-      if (!all.find((x) => x.key === f.key)) {
-        all.push(f);
-      }
+      if (!all.find((x) => x.key === f.key)) all.push(f);
     }
     return all;
   };
 
-  // Load views and content type details whenever the selected type or role changes.
+  // Load views and fields when type changes
   useEffect(() => {
-    if (!selectedTypeId || !role) return;
+    if (!selectedTypeId) return;
     let cancelled = false;
     (async () => {
       try {
         setLoading(true);
-        setError("");
-        setSaveMessage("");
+        setError('');
+        setSaveMessage('');
         setDirty(false);
-
-        const [ctRes, viewsRes] = await Promise.all([
-          api.get(`/api/content-types/${selectedTypeId}`),
-          api.get(
-            `/api/content-types/${selectedTypeId}/editor-views?all=true&_=${Date.now()}`,
-          ),
-        ]);
-        if (cancelled) return;
+        // Fetch full type definition
+        const ctRes = await api.get(`/api/content-types/${selectedTypeId}`);
         const ct = ctRes?.data || ctRes || null;
-        setContentTypeDetail(ct);
-        const av = computeAvailableFields(ct);
-        setAvailableFields(av);
-        // normalize views response
+        setAvailableFields(computeAvailableFields(ct));
+        // Fetch views for this type (all roles)
+        const viewsRes = await api.get(
+          `/api/content-types/${selectedTypeId}/editor-views?all=true&_=${Date.now()}`
+        );
         const rawViews = viewsRes?.data || viewsRes || [];
-        let loaded = [];
-        if (Array.isArray(rawViews)) {
-          loaded = rawViews;
-        } else if (rawViews && Array.isArray(rawViews.views)) {
-          loaded = rawViews.views;
-        }
-        setViews(loaded);
-        // Pick default or first view
-        if (loaded.length === 0) {
-          // no saved views: synthesize default layout using all fields
-          const defaultFields = av.slice(0, 3); // choose three default fields
-          setActiveViewSlug("default");
-          setCurrentLabel("Default editor");
-          setIsDefault(true);
-          setFields(defaultFields);
-          setAssignedRoles([role.toUpperCase()]);
-          setDefaultRoles([role.toUpperCase()]);
-          setAdminOnly(false);
-          setDirty(false);
-        } else {
-          const def = loaded.find((v) => v.is_default) || loaded[0];
+        let loadedViews = [];
+        if (Array.isArray(rawViews)) loadedViews = rawViews;
+        else if (rawViews && Array.isArray(rawViews.views)) loadedViews = rawViews.views;
+        setViews(loadedViews);
+        // If no view slug specified, pick default or first
+        if (!activeViewSlug) {
+          if (loadedViews.length === 0) {
+            setStage('views');
+            return;
+          }
+          const def = loadedViews.find((v) => {
+            const cfg = v.config || {};
+            const dRoles = Array.isArray(cfg.default_roles)
+              ? cfg.default_roles.map((r) => String(r || '').toUpperCase())
+              : [];
+            return dRoles.includes('ADMIN') || !!v.is_default;
+          }) || loadedViews[0];
           setActiveViewSlug(def.slug);
-          setCurrentLabel(def.label);
-          const cfgRoles = Array.isArray(def?.config?.roles)
-            ? def.config.roles.map((r) => String(r || "").toUpperCase())
+          setCurrentLabel(def.label || def.slug);
+          setCurrentSlug(def.slug);
+          // assign roles from view
+          const cfgRoles = Array.isArray(def.config?.roles)
+            ? def.config.roles.map((r) => r.toUpperCase())
             : def.role
-            ? [String(def.role || "").toUpperCase()]
+            ? [String(def.role || '').toUpperCase()]
             : [];
-          setAssignedRoles(cfgRoles);
-          const cfgDefault = Array.isArray(def?.config?.default_roles)
-            ? def.config.default_roles.map((r) => String(r || "").toUpperCase())
+          setAssignedRoles(cfgRoles.length ? cfgRoles : ['ADMIN']);
+          const cfgDefaults = Array.isArray(def.config?.default_roles)
+            ? def.config.default_roles.map((r) => r.toUpperCase())
             : [];
-          setDefaultRoles(cfgDefault);
-          setIsDefault(cfgDefault.includes(role.toUpperCase()) || !!def.is_default);
-          // Flatten fields: use first section or fallback to built‑ins
-          const sect = Array.isArray(def?.config?.sections) && def.config.sections.length
-            ? def.config.sections[0]
-            : null;
-          const fldKeys = sect && Array.isArray(sect.fields)
-            ? sect.fields.map((f) => (typeof f === "string" ? f : f.key))
-            : [];
-          const flds = av.filter((f) => fldKeys.includes(f.key));
-          setFields(flds.length ? flds : av.slice(0, 3));
-          setAdminOnly(false);
-          // Determine adminOnly: if no roles besides ADMIN, mark as admin only.
-          const nonAdminRoles = cfgRoles.filter((r) => r.toUpperCase() !== "ADMIN");
-          setAdminOnly(nonAdminRoles.length === 0);
+          setDefaultRoles(cfgDefaults);
+          setAdminOnly(cfgRoles.length === 0 || cfgRoles.every((r) => r === 'ADMIN'));
+          // load sections
+          const sects = Array.isArray(def.config?.sections) ? def.config.sections : [];
+          setSections(
+            sects.map((sec, idx) => ({
+              id: sec.id || `section-${idx + 1}`,
+              title: sec.title || `Section ${idx + 1}`,
+              description: sec.description || '',
+              columns:
+                typeof sec.columns === 'number'
+                  ? sec.columns
+                  : sec.layout && sec.layout.includes('two')
+                  ? 2
+                  : 1,
+              fields: Array.isArray(sec.fields)
+                ? sec.fields.map((f) => (typeof f === 'string' ? f : f.key))
+                : [],
+            }))
+          );
+          setSelectedSectionIndex(0);
+          setStage('edit');
+        } else {
+          // a specific view slug is in URL; load it
+          const v = loadedViews.find((x) => x.slug === activeViewSlug);
+          if (v) {
+            setCurrentLabel(v.label || v.slug);
+            setCurrentSlug(v.slug);
+            const cfgRoles = Array.isArray(v.config?.roles)
+              ? v.config.roles.map((r) => r.toUpperCase())
+              : v.role
+              ? [String(v.role || '').toUpperCase()]
+              : [];
+            setAssignedRoles(cfgRoles.length ? cfgRoles : ['ADMIN']);
+            const cfgDefaults = Array.isArray(v.config?.default_roles)
+              ? v.config.default_roles.map((r) => r.toUpperCase())
+              : [];
+            setDefaultRoles(cfgDefaults);
+            setAdminOnly(cfgRoles.length === 0 || cfgRoles.every((r) => r === 'ADMIN'));
+            const sects = Array.isArray(v.config?.sections) ? v.config.sections : [];
+            setSections(
+              sects.map((sec, idx) => ({
+                id: sec.id || `section-${idx + 1}`,
+                title: sec.title || `Section ${idx + 1}`,
+                description: sec.description || '',
+                columns:
+                  typeof sec.columns === 'number'
+                    ? sec.columns
+                    : sec.layout && sec.layout.includes('two')
+                    ? 2
+                    : 1,
+                fields: Array.isArray(sec.fields)
+                  ? sec.fields.map((f) => (typeof f === 'string' ? f : f.key))
+                  : [],
+              }))
+            );
+            setSelectedSectionIndex(0);
+            setStage('edit');
+          }
         }
       } catch (err) {
-        console.error("[EntryViews] load error", err);
-        if (!cancelled) {
-          setError("Failed to load editor views");
-        }
+        console.error('[EntryViews] load error', err);
+        if (!cancelled) setError('Failed to load editor views');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -251,154 +280,49 @@ export default function EntryViews() {
     return () => {
       cancelled = true;
     };
-  }, [selectedTypeId, role]);
+  }, [selectedTypeId, activeViewSlug]);
 
-  // Derived: active view object
-  const activeView = useMemo(() => {
-    if (!views || !views.length) return null;
-    return views.find((v) => v.slug === activeViewSlug) || null;
-  }, [views, activeViewSlug]);
-
-  // Handlers -------------------------------------------------------
-  const handleSelectType = (val) => {
-    if (!val) return;
-    navigate(`/admin/settings/entry-views/${val}`);
-  };
-
-  const handleSelectRole = (e) => {
-    setRole(e.target.value);
-  };
-
-  const handleSelectView = (slug) => {
-    if (!views || !views.length) return;
-    const v = views.find((x) => x.slug === slug);
-    if (!v) return;
-    setActiveViewSlug(slug);
-    setCurrentLabel(v.label);
-    const vRoles = Array.isArray(v?.config?.roles)
-      ? v.config.roles.map((r) => String(r || "").toUpperCase())
-      : v.role
-      ? [String(v.role || "").toUpperCase()]
-      : [];
-    setAssignedRoles(vRoles);
-    const vDefault = Array.isArray(v?.config?.default_roles)
-      ? v.config.default_roles.map((r) => String(r || "").toUpperCase())
-      : [];
-    setDefaultRoles(vDefault);
-    setIsDefault(vDefault.includes(role.toUpperCase()) || !!v.is_default);
-    // fields
-    const sect = Array.isArray(v?.config?.sections) && v.config.sections.length
-      ? v.config.sections[0]
-      : null;
-    const keys = sect && Array.isArray(sect.fields)
-      ? sect.fields.map((f) => (typeof f === "string" ? f : f.key))
-      : [];
-    const flds = availableFields.filter((f) => keys.includes(f.key));
-    setFields(flds);
-    const nonAdmin = vRoles.filter((r) => r !== "ADMIN");
-    setAdminOnly(nonAdmin.length === 0);
-    setDirty(false);
-    setSaveMessage("");
-    setError("");
-    navigate(`/admin/settings/entry-views/${selectedTypeId}/${slug}`);
-  };
-
-  const handleNewView = () => {
-    const baseLabel = "New editor";
-    let label = baseLabel;
-    let suffix = 1;
-    const existingLabels = (views || []).map((v) => (v.label || "").toLowerCase());
-    while (existingLabels.includes(label.toLowerCase())) {
-      suffix += 1;
-      label = `${baseLabel} ${suffix}`;
-    }
-    const slug = slugify(label);
-    setActiveViewSlug(slug);
-    setCurrentLabel(label);
-    setIsDefault(false);
-    setAssignedRoles([role.toUpperCase()]);
-    setDefaultRoles([role.toUpperCase()]);
-    // choose default fields
-    if (!fields || !fields.length) {
-      const defaults = availableFields.slice(0, 3);
-      setFields(defaults);
-    }
-    setDirty(true);
-    setSaveMessage("");
-    setError("");
-    navigate(`/admin/settings/entry-views/${selectedTypeId}/${slug}`);
-  };
-
-  const handleLabelChange = (e) => {
-    const val = e.target.value;
-    setCurrentLabel(val);
-    if (!activeView || activeView.slug === "default") {
-      setActiveViewSlug(slugify(val || "view"));
-    }
-    setDirty(true);
-  };
-
-  const handleAddField = (fieldKey) => {
-    const field = availableFields.find((f) => f.key === fieldKey);
-    if (!field) return;
-    if (fields.find((c) => c.key === field.key)) return;
-    setFields((prev) => [...prev, { key: field.key, label: field.label }]);
-    setDirty(true);
-  };
-
-  const handleRemoveField = (fieldKey) => {
-    setFields((prev) => prev.filter((c) => c.key !== fieldKey));
-    setDirty(true);
-  };
-
-  const moveField = (fieldKey, direction) => {
-    setFields((prev) => {
-      const idx = prev.findIndex((c) => c.key === fieldKey);
-      if (idx === -1) return prev;
-      const next = [...prev];
-      const target = direction === "up" ? idx - 1 : idx + 1;
-      if (target < 0 || target >= next.length) return prev;
-      const tmp = next[idx];
-      next[idx] = next[target];
-      next[target] = tmp;
-      return next;
+  // Derived: unassigned fields are those available but not assigned to any section
+  const unassignedFields = useMemo(() => {
+    const allAssigned = new Set();
+    sections.forEach((sec) => {
+      for (const k of sec.fields) allAssigned.add(k);
     });
-    setDirty(true);
-  };
+    return availableFields.filter((f) => !allAssigned.has(f.key));
+  }, [availableFields, sections]);
 
-  const toggleAssignedRole = (roleValue) => {
-    const upper = roleValue.toUpperCase();
-    if (adminOnly) {
-      setAdminOnly(false);
-    }
-    setAssignedRoles((prev) => {
-      const exists = prev.includes(upper);
-      if (exists) {
-        setDefaultRoles((dprev) => {
-          const newList = dprev.filter((r) => r !== upper);
-          setIsDefault(newList.includes(role.toUpperCase()));
-          return newList;
-        });
-        return prev.filter((r) => r !== upper);
-      }
-      return [...prev, upper];
-    });
-    setDirty(true);
-  };
-
-  const toggleAdminOnly = () => {
-    if (!adminOnly) {
+  // Helper to update roles and default roles when toggling adminOnly
+  const applyAdminOnly = (val) => {
+    if (val) {
       setAdminOnly(true);
       setAssignedRoles([]);
-      setDefaultRoles((prev) => prev.filter((r) => r.toUpperCase() === "ADMIN"));
+      setDefaultRoles([]);
     } else {
       setAdminOnly(false);
     }
     setDirty(true);
   };
 
-  const toggleDefaultRole = (roleValue) => {
-    const upper = roleValue.toUpperCase();
+  // Handlers for role assignment
+  const toggleAssignedRole = (role) => {
+    const upper = role.toUpperCase();
+    if (adminOnly) setAdminOnly(false);
+    setAssignedRoles((prev) => {
+      const exists = prev.includes(upper);
+      if (exists) {
+        // remove
+        const next = prev.filter((r) => r !== upper);
+        // remove from defaultRoles as well
+        setDefaultRoles((d) => d.filter((r) => r !== upper));
+        return next;
+      }
+      return [...prev, upper];
+    });
+    setDirty(true);
+  };
+
+  const toggleDefaultRole = (role) => {
+    const upper = role.toUpperCase();
     setDefaultRoles((prev) => {
       const exists = prev.includes(upper);
       let next;
@@ -406,161 +330,264 @@ export default function EntryViews() {
         next = prev.filter((r) => r !== upper);
       } else {
         next = [...prev, upper];
+        // Only allow defaults for assigned roles
+        next = next.filter((r) => assignedRoles.includes(r) || r === 'ADMIN');
       }
-      setIsDefault(next.includes(role.toUpperCase()));
       return next;
     });
     setDirty(true);
   };
 
-  // Save view configuration
+  // Section management
+  const addSection = () => {
+    const index = sections.length + 1;
+    setSections((prev) => [
+      ...prev,
+      {
+        id: `section-${index}`,
+        title: `Section ${index}`,
+        description: '',
+        columns: 1,
+        fields: [],
+      },
+    ]);
+    setSelectedSectionIndex(sections.length);
+    setDirty(true);
+  };
+
+  const selectSection = (idx) => {
+    setSelectedSectionIndex(idx);
+  };
+
+  const deleteSection = (idx) => {
+    setSections((prev) => {
+      const next = prev.filter((_s, i) => i !== idx);
+      // ensure at least one section
+      if (next.length === 0) {
+        return [
+          {
+            id: 'section-1',
+            title: 'Section 1',
+            description: '',
+            columns: 1,
+            fields: [],
+          },
+        ];
+      }
+      return next;
+    });
+    setSelectedSectionIndex((prev) => Math.max(0, prev - 1));
+    setDirty(true);
+  };
+
+  const moveSection = (idx, direction) => {
+    setSections((prev) => {
+      const next = [...prev];
+      const target = direction === 'up' ? idx - 1 : idx + 1;
+      if (target < 0 || target >= next.length) return prev;
+      const tmp = next[idx];
+      next[idx] = next[target];
+      next[target] = tmp;
+      return next;
+    });
+    if (selectedSectionIndex === idx) {
+      setSelectedSectionIndex(direction === 'up' ? idx - 1 : idx + 1);
+    } else if (selectedSectionIndex === idx - 1 && direction === 'down') {
+      setSelectedSectionIndex(idx);
+    } else if (selectedSectionIndex === idx + 1 && direction === 'up') {
+      setSelectedSectionIndex(idx);
+    }
+    setDirty(true);
+  };
+
+  // Update section title/description/columns
+  const updateSectionField = (idx, field, value) => {
+    setSections((prev) => {
+      const next = [...prev];
+      next[idx] = {
+        ...next[idx],
+        [field]: value,
+      };
+      return next;
+    });
+    setDirty(true);
+  };
+
+  // Add a field to a section; ensure field is removed from other sections
+  const addFieldToSection = (sectionIdx, fieldKey) => {
+    setSections((prev) => {
+      const next = prev.map((sec, idx) => {
+        const keys = sec.fields || [];
+        if (idx === sectionIdx) {
+          // skip if already exists
+          if (keys.includes(fieldKey)) return sec;
+          return {
+            ...sec,
+            fields: [...keys, fieldKey],
+          };
+        }
+        // remove if present in other sections
+        return {
+          ...sec,
+          fields: keys.filter((k) => k !== fieldKey),
+        };
+      });
+      return next;
+    });
+    setDirty(true);
+  };
+
+  // Remove field from a section
+  const removeFieldFromSection = (sectionIdx, fieldKey) => {
+    setSections((prev) => {
+      const next = [...prev];
+      next[sectionIdx] = {
+        ...next[sectionIdx],
+        fields: next[sectionIdx].fields.filter((k) => k !== fieldKey),
+      };
+      return next;
+    });
+    setDirty(true);
+  };
+
+  // Reorder fields within a section
+  const moveFieldInSection = (sectionIdx, fieldKey, direction) => {
+    setSections((prev) => {
+      const next = [...prev];
+      const sec = next[sectionIdx];
+      const idx = sec.fields.indexOf(fieldKey);
+      if (idx === -1) return prev;
+      const target = direction === 'up' ? idx - 1 : idx + 1;
+      if (target < 0 || target >= sec.fields.length) return prev;
+      const arr = [...sec.fields];
+      const tmp = arr[idx];
+      arr[idx] = arr[target];
+      arr[target] = tmp;
+      next[sectionIdx] = { ...sec, fields: arr };
+      return next;
+    });
+    setDirty(true);
+  };
+
+  // Save handler
   const handleSave = async () => {
-    if (!currentLabel.trim()) {
-      setError("Label is required");
+    if (!selectedTypeId) return;
+    setError('');
+    setSaveMessage('');
+    const label = (currentLabel || '').trim();
+    const slug = currentSlug || slugify(label || 'view');
+    if (!label) {
+      setError('Label is required');
       return;
     }
-    const slug = slugify(currentLabel);
-    // Validate fields
-    if (!fields || !fields.length) {
-      setError("Please choose at least one field");
+    // Ensure at least one section
+    if (!sections || !sections.length) {
+      setError('Please add at least one section');
       return;
     }
-    // Prevent duplicate slug for another view
+    // Each section must have at least one field
+    if (sections.some((sec) => !sec.fields || sec.fields.length === 0)) {
+      setError('Each section must contain at least one field');
+      return;
+    }
+    // Duplicate slug detection
     const dup = (views || []).find(
-      (v) => v.slug && v.slug.toLowerCase() === slug.toLowerCase() && v.slug !== activeViewSlug,
+      (v) => v.slug && v.slug.toLowerCase() === slug.toLowerCase() && v.slug !== activeViewSlug
     );
     if (dup) {
-      setError(
-        `A view with the slug "${slug}" already exists. Please choose a different label or slug.`,
-      );
+      setError(`A view with the slug "${slug}" already exists. Choose a different label or slug.`);
       return;
     }
     try {
       setLoading(true);
+      // Ensure ADMIN always in roles
       const rolesSet = new Set(assignedRoles.map((r) => r.toUpperCase()));
-      rolesSet.add("ADMIN");
+      rolesSet.add('ADMIN');
       const rolesArray = Array.from(rolesSet);
-      const effectiveDefaults = defaultRoles.map((r) => r.toUpperCase());
-      // Build sections config: one section with all selected fields
-      const section = {
-        id: "main",
-        title: "Main",
-        fields: fields.map((f) => f.key),
-      };
+      // Default roles: only assigned roles
+      const defaults = defaultRoles.filter((r) => rolesArray.includes(r));
+      // Build sections payload: map to objects with id, title, description, layout or columns, and fields
+      const payloadSections = sections.map((sec) => ({
+        id: sec.id,
+        title: sec.title || '',
+        description: sec.description || '',
+        // Use layout string for compatibility
+        layout: sec.columns === 2 ? 'two-column' : 'one-column',
+        fields: sec.fields.map((k) => k),
+      }));
       const payload = {
         slug,
-        label: currentLabel,
+        label,
         roles: rolesArray,
-        default_roles: effectiveDefaults,
-        sections: [section],
+        default_roles: defaults,
+        sections: payloadSections,
       };
-      await api.put(
-        `/api/content-types/${selectedTypeId}/editor-view`,
-        payload,
+      await api.put(`/api/content-types/${selectedTypeId}/editor-view`, payload);
+      // Reload views after save
+      const res = await api.get(
+        `/api/content-types/${selectedTypeId}/editor-views?all=true&_=${Date.now()}`
       );
-      // reload views
-      try {
-        const res = await api.get(
-          `/api/content-types/${selectedTypeId}/editor-views?all=true&_=${Date.now()}`,
-        );
-        const raw = res?.data || res || [];
-        let newViews;
-        if (Array.isArray(raw)) {
-          newViews = raw;
-        } else if (raw && Array.isArray(raw.views)) {
-          newViews = raw.views;
-        } else {
-          newViews = [];
-        }
-        setViews(newViews);
-        const next = newViews.find((v) => v.slug === slug) || newViews[0] || null;
-        if (next) {
-          setActiveViewSlug(next.slug);
-          setCurrentLabel(next.label);
-          const cfgRoles = Array.isArray(next?.config?.roles)
-            ? next.config.roles.map((r) => String(r || "").toUpperCase())
-            : next.role
-            ? [String(next.role || "").toUpperCase()]
-            : [];
-          setAssignedRoles(cfgRoles);
-          const cfgDefault = Array.isArray(next?.config?.default_roles)
-            ? next.config.default_roles.map((r) => String(r || "").toUpperCase())
-            : [];
-          setDefaultRoles(cfgDefault);
-          setIsDefault(
-            cfgDefault.includes(role.toUpperCase()) || !!next.is_default,
-          );
-          const sect2 = Array.isArray(next?.config?.sections) && next.config.sections.length
-            ? next.config.sections[0]
-            : null;
-          const keys2 = sect2 && Array.isArray(sect2.fields)
-            ? sect2.fields.map((f) => (typeof f === "string" ? f : f.key))
-            : [];
-          const flds2 = availableFields.filter((f) => keys2.includes(f.key));
-          setFields(flds2);
-          const nonAdmin2 = cfgRoles.filter((r) => r !== "ADMIN");
-          setAdminOnly(nonAdmin2.length === 0);
-        }
-        setDirty(false);
-        setSaveMessage("View saved.");
-      } catch (_err) {
-        // ignore reload failure
-        setDirty(false);
-        setSaveMessage("View saved.");
-      }
+      const raw = res?.data || res || [];
+      let newViews;
+      if (Array.isArray(raw)) newViews = raw;
+      else if (raw && Array.isArray(raw.views)) newViews = raw.views;
+      else newViews = [];
+      setViews(newViews);
+      setSaveMessage('Editor view saved');
+      setDirty(false);
+      // Navigate back to view list
+      navigate(`/admin/settings/entry-views/${selectedTypeId}`);
     } catch (err) {
-      console.error("[EntryViews] save error", err);
-      setError(err.message || "Failed to save view");
+      console.error('[EntryViews] save error', err);
+      setError('Failed to save editor view');
     } finally {
       setLoading(false);
     }
   };
 
+  // Delete handler
   const handleDelete = async () => {
-    if (!activeViewSlug) return;
-    if (!window.confirm("Delete this entry editor view?")) return;
+    if (!selectedTypeId || !activeViewSlug) return;
+    if (!window.confirm('Are you sure you want to delete this view? This cannot be undone.')) return;
     try {
       setLoading(true);
-      await api.delete(
-        `/api/content-types/${selectedTypeId}/editor-view/${activeViewSlug}`,
+      await api.del(`/api/content-types/${selectedTypeId}/editor-view/${encodeURIComponent(activeViewSlug)}`);
+      // reload views
+      const res = await api.get(
+        `/api/content-types/${selectedTypeId}/editor-views?all=true&_=${Date.now()}`
       );
-      // remove locally
-      const nextViews = views.filter((v) => v.slug !== activeViewSlug);
-      setViews(nextViews);
-      // choose next view or go back to list
-      if (nextViews.length) {
-        const next = nextViews[0];
-        handleSelectView(next.slug);
-      } else {
-        setActiveViewSlug("");
-        setCurrentLabel("");
-        setFields([]);
-        setAssignedRoles([role.toUpperCase()]);
-        setDefaultRoles([]);
-        setAdminOnly(false);
-        setDirty(false);
-        setSaveMessage("");
-        navigate(`/admin/settings/entry-views/${selectedTypeId}`);
-      }
+      const raw = res?.data || res || [];
+      let newViews;
+      if (Array.isArray(raw)) newViews = raw;
+      else if (raw && Array.isArray(raw.views)) newViews = raw.views;
+      else newViews = [];
+      setViews(newViews);
+      setSaveMessage('Editor view deleted');
+      // Reset view slug and navigate back
+      setActiveViewSlug('');
+      setCurrentLabel('');
+      setCurrentSlug('');
+      setSections([]);
+      navigate(`/admin/settings/entry-views/${selectedTypeId}`);
     } catch (err) {
-      console.error("[EntryViews] delete error", err);
-      setError(err.message || "Failed to delete view");
+      console.error('[EntryViews] delete error', err);
+      setError('Failed to delete view');
     } finally {
       setLoading(false);
     }
   };
 
-  // UI rendering helpers ----------------------------------------------------
-  const renderTypeStage = () => (
-    <div className="su-card">
-      <div className="su-card-body su-flex su-flex-wrap su-gap-sm">
+  // Render functions
+  const renderTypeSelection = () => (
+    <div className="su-card su-mb-md">
+      <div className="su-card-body su-flex su-flex-wrap su-gap-sm su-items-center">
+        <span className="su-text-sm su-text-muted">Content types:</span>
         {contentTypes.map((ct) => (
           <button
             key={ct.id}
-            className={
-              "su-chip" + (ct.id === selectedTypeId ? " su-chip--active" : "")
-            }
-            onClick={() => handleSelectType(ct.id)}
+            type="button"
+            className={`su-chip${selectedTypeId === ct.id || selectedTypeId === ct.slug ? ' su-chip--active' : ''}`}
+            onClick={() => navigate(`/admin/settings/entry-views/${ct.id}`)}
           >
             {ct.name || ct.label || ct.slug}
           </button>
@@ -569,245 +596,307 @@ export default function EntryViews() {
     </div>
   );
 
-  const renderViewsStage = () => (
-    <>
-      <div className="su-card su-mb-md">
-        <div className="su-card-body su-flex su-flex-wrap su-gap-sm su-items-center">
-          <span className="su-text-sm su-text-muted">Views:</span>
-          {views.map((v) => {
-            const cfg = v.config || {};
-            const dRoles = Array.isArray(cfg.default_roles)
-              ? cfg.default_roles.map((r) => String(r || "").toUpperCase())
-              : [];
-            const isDef = dRoles.includes(role.toUpperCase()) || !!v.is_default;
-            return (
-              <button
-                key={v.slug}
-                className={
-                  "su-chip" + (v.slug === activeViewSlug ? " su-chip--active" : "")
-                }
-                onClick={() => handleSelectView(v.slug)}
-              >
-                {v.label || v.slug}
-                {isDef && <span className="su-chip-badge">default</span>}
-              </button>
-            );
-          })}
-          <button className="su-chip" onClick={handleNewView}>
-            + New editor view
-          </button>
-        </div>
+  const renderViewSelection = () => (
+    <div className="su-card su-mb-md">
+      <div className="su-card-body su-flex su-flex-wrap su-gap-sm su-items-center">
+        <span className="su-text-sm su-text-muted">Views:</span>
+        {views.map((v) => {
+          const cfg = v.config || {};
+          const dRoles = Array.isArray(cfg.default_roles)
+            ? cfg.default_roles.map((r) => String(r || '').toUpperCase())
+            : [];
+          const isDefaultForRole = dRoles.includes('ADMIN') || !!v.is_default;
+          return (
+            <button
+              key={v.slug}
+              type="button"
+              className={`su-chip${v.slug === activeViewSlug ? ' su-chip--active' : ''}`}
+              onClick={() => navigate(`/admin/settings/entry-views/${selectedTypeId}/${v.slug}`)}
+            >
+              {v.label || v.slug}
+              {isDefaultForRole && <span className="su-chip-badge">default</span>}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          className="su-chip new"
+          onClick={() => {
+            // Start new view with default settings
+            const baseLabel = 'New editor';
+            let label = baseLabel;
+            let suffix = 1;
+            const existing = views.map((v) => (v.label || '').toLowerCase());
+            while (existing.includes(label.toLowerCase())) {
+              suffix += 1;
+              label = `${baseLabel} ${suffix}`;
+            }
+            const slug = slugify(label);
+            setCurrentLabel(label);
+            setCurrentSlug(slug);
+            setActiveViewSlug(slug);
+            setAssignedRoles(['ADMIN']);
+            setDefaultRoles([]);
+            setAdminOnly(false);
+            // initialize one empty section
+            setSections([
+              {
+                id: 'section-1',
+                title: 'Section 1',
+                description: '',
+                columns: 1,
+                fields: [],
+              },
+            ]);
+            setSelectedSectionIndex(0);
+            setDirty(true);
+            navigate(`/admin/settings/entry-views/${selectedTypeId}/${slug}`);
+            setStage('edit');
+          }}
+        >
+          + New editor view
+        </button>
       </div>
-      <div className="su-card">
-        <div className="su-card-body">
-          <p className="su-text-sm su-text-muted">
-            Choose an existing view or create a new one to configure which fields appear in the
-            entry editor.
-          </p>
-        </div>
-      </div>
-    </>
+    </div>
   );
 
-  const renderEditStage = () => (
-    <>
-      <div className="su-card su-mb-md">
-        <div className="su-card-body">
-          <div className="su-flex su-gap-sm">
+  const renderSectionList = () => (
+    <div className="su-card su-mb-md">
+      <div className="su-card-header">
+        <h3 className="su-card-title">Sections</h3>
+      </div>
+      <div className="su-card-body">
+        {sections.map((sec, idx) => (
+          <div key={sec.id} style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
             <button
               type="button"
-              className="su-chip"
-              onClick={() => navigate(-1)}
+              onClick={() => selectSection(idx)}
+              className={`su-btn${idx === selectedSectionIndex ? ' su-btn-primary' : ''}`}
+              style={{ flexGrow: 1 }}
             >
-              ← Back
+              {sec.title || sec.id}
             </button>
+            <button type="button" className="su-btn sm" onClick={() => moveSection(idx, 'up')} disabled={idx === 0}>
+              ↑
+            </button>
+            <button type="button" className="su-btn sm" onClick={() => moveSection(idx, 'down')} disabled={idx === sections.length - 1}>
+              ↓
+            </button>
+            <button type="button" className="su-btn sm" onClick={() => deleteSection(idx)} disabled={sections.length === 1}>
+              ✕
+            </button>
+          </div>
+        ))}
+        <button type="button" className="su-btn" onClick={addSection} style={{ marginTop: 8 }}>
+          + Add section
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderSectionEditor = () => {
+    const sec = sections[selectedSectionIndex] || null;
+    if (!sec) return null;
+    // fields in this section
+    const fieldsInSection = sec.fields
+      .map((key) => availableFields.find((f) => f.key === key))
+      .filter(Boolean);
+    return (
+      <div className="su-card">
+        <div className="su-card-header">
+          <h3 className="su-card-title">Edit section</h3>
+        </div>
+        <div className="su-card-body">
+          <label className="su-label" style={{ marginBottom: 6 }}>
+            Title
+            <input
+              className="su-input"
+              type="text"
+              value={sec.title}
+              onChange={(e) => updateSectionField(selectedSectionIndex, 'title', e.target.value)}
+            />
+          </label>
+          <label className="su-label" style={{ marginBottom: 6 }}>
+            Description
+            <textarea
+              className="su-input"
+              value={sec.description}
+              onChange={(e) => updateSectionField(selectedSectionIndex, 'description', e.target.value)}
+              placeholder="Optional description or helper text"
+            />
+          </label>
+          <label className="su-label" style={{ marginBottom: 6 }}>
+            Columns
+            <select
+              className="su-select"
+              value={sec.columns}
+              onChange={(e) => updateSectionField(selectedSectionIndex, 'columns', parseInt(e.target.value, 10))}
+            >
+              <option value={1}>One column</option>
+              <option value={2}>Two columns</option>
+            </select>
+          </label>
+          <div style={{ marginTop: 12 }}>
+            <strong>Fields in this section</strong>
+            {fieldsInSection.length === 0 && <p className="su-text-muted" style={{ fontSize: 12 }}>No fields assigned</p>}
+            {fieldsInSection.map((f, idx) => (
+              <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <span style={{ flexGrow: 1 }}>{f.label}</span>
+                <button type="button" className="su-btn sm" onClick={() => moveFieldInSection(selectedSectionIndex, f.key, 'up')} disabled={idx === 0}>
+                  ↑
+                </button>
+                <button type="button" className="su-btn sm" onClick={() => moveFieldInSection(selectedSectionIndex, f.key, 'down')} disabled={idx === fieldsInSection.length - 1}>
+                  ↓
+                </button>
+                <button type="button" className="su-btn sm" onClick={() => removeFieldFromSection(selectedSectionIndex, f.key)}>
+                  ✕
+                </button>
+              </div>
+            ))}
+            <div style={{ marginTop: 8 }}>
+              <strong>Available fields</strong>
+              {unassignedFields.length === 0 && <p className="su-text-muted" style={{ fontSize: 12 }}>No unassigned fields</p>}
+              {unassignedFields.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  className="su-btn sm"
+                  onClick={() => addFieldToSection(selectedSectionIndex, f.key)}
+                  style={{ marginRight: 4, marginBottom: 4 }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
-      <div className="su-grid md:grid-cols-2 gap-md">
-        {/* Left column: details and roles */}
-        <div className="su-card">
-          <div className="su-card-body su-space-y-md">
-            <div>
-              <label className="su-form-label" htmlFor="view-label">
+    );
+  };
+
+  const renderEditView = () => (
+    <div>
+      {error && (
+        <div className="su-alert su-alert-danger" style={{ marginBottom: 12 }}>{error}</div>
+      )}
+      {saveMessage && (
+        <div className="su-alert su-alert-success" style={{ marginBottom: 12 }}>{saveMessage}</div>
+      )}
+      <div className="su-grid cols-2" style={{ gap: 16 }}>
+        {/* Left: view details */}
+        <div>
+          <div className="su-card su-mb-md">
+            <div className="su-card-header">
+              <h3 className="su-card-title">View Details</h3>
+            </div>
+            <div className="su-card-body">
+              <label className="su-label" style={{ marginBottom: 6 }}>
                 Label
+                <input
+                  className="su-input"
+                  type="text"
+                  value={currentLabel}
+                  onChange={(e) => {
+                    setCurrentLabel(e.target.value);
+                    setCurrentSlug(slugify(e.target.value || 'view'));
+                    setDirty(true);
+                  }}
+                />
               </label>
-              <input
-                id="view-label"
-                className="su-input"
-                value={currentLabel}
-                onChange={handleLabelChange}
-              />
-            </div>
-            <div>
-              <label className="su-form-label" htmlFor="view-slug">
+              <label className="su-label" style={{ marginBottom: 6 }}>
                 Slug
+                <input
+                  className="su-input"
+                  type="text"
+                  value={currentSlug}
+                  onChange={(e) => {
+                    setCurrentSlug(slugify(e.target.value));
+                    setDirty(true);
+                  }}
+                />
               </label>
-              <input
-                id="view-slug"
-                className="su-input"
-                value={activeViewSlug}
-                onChange={(e) => setActiveViewSlug(slugify(e.target.value))}
-                disabled={!!activeView && !!activeView.slug && activeView.slug !== "default"}
-              />
-            </div>
-            <div>
-              <label className="su-form-label">Assigned roles</label>
-              <div className="su-flex su-flex-wrap su-gap-sm">
-                {allRoles.map((r) => (
-                  <label key={r} className="su-chip su-items-center su-gap-xs">
+              <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--su-muted)' }}>
+                Slug preview: /admin/content/{selectedTypeId}/{currentSlug || slugify(currentLabel || 'view')}
+              </div>
+              {/* Roles assignment */}
+              <div style={{ marginBottom: 6 }}>
+                <strong>Assigned roles</strong>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                  {['ADMIN', 'EDITOR', 'AUTHOR', 'VIEWER'].map((r) => (
+                    <label key={r} style={{ fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={assignedRoles.includes(r)}
+                        onChange={() => toggleAssignedRole(r)}
+                      />{' '}
+                      {r}
+                    </label>
+                  ))}
+                  <label style={{ fontSize: 13 }}>
                     <input
                       type="checkbox"
-                      checked={assignedRoles.includes(r)}
-                      onChange={() => toggleAssignedRole(r)}
-                    />
-                    {r}
+                      checked={adminOnly}
+                      onChange={() => applyAdminOnly(!adminOnly)}
+                    />{' '}
+                    Admin only
                   </label>
-                ))}
-                <label className="su-chip su-items-center su-gap-xs">
-                  <input
-                    type="checkbox"
-                    checked={adminOnly}
-                    onChange={toggleAdminOnly}
-                  />
-                  Admin only
-                </label>
+                </div>
               </div>
-            </div>
-            <div>
-              <label className="su-form-label">Default roles</label>
-              <div className="su-flex su-flex-wrap su-gap-sm">
-                {assignedRoles
-                  .filter((r) => !adminOnly || r === "ADMIN")
-                  .map((r) => (
-                    <label key={r} className="su-chip su-items-center su-gap-xs">
+              {/* Default roles */}
+              <div style={{ marginBottom: 6 }}>
+                <strong>Default roles</strong>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                  {['ADMIN', 'EDITOR', 'AUTHOR', 'VIEWER'].map((r) => (
+                    <label key={r} style={{ fontSize: 13 }}>
                       <input
                         type="checkbox"
                         checked={defaultRoles.includes(r)}
                         onChange={() => toggleDefaultRole(r)}
-                      />
+                        disabled={!assignedRoles.includes(r) && !(r === 'ADMIN')}
+                      />{' '}
                       {r}
                     </label>
                   ))}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button type="button" className="su-btn primary" onClick={handleSave} disabled={loading}>
+                  {loading ? 'Saving…' : 'Save view'}
+                </button>
+                {activeViewSlug && (
+                  <button type="button" className="su-btn" onClick={handleDelete} disabled={loading}>
+                    Delete view
+                  </button>
+                )}
+                <button type="button" className="su-btn" onClick={() => navigate(-1)} disabled={loading}>
+                  Back
+                </button>
               </div>
             </div>
-            <div>
-              <small className="su-text-xs su-text-muted">
-                Slug preview: /admin/content/{contentTypeDetail?.slug || contentTypeDetail?.key || selectedTypeId}/
-                <strong>{activeViewSlug || slugify(currentLabel || "view")}</strong>
-              </small>
-            </div>
-            <div className="su-flex su-gap-sm">
-              <button
-                className="su-btn su-btn-primary"
-                type="button"
-                onClick={handleSave}
-                disabled={!dirty || loading}
-              >
-                {loading ? "Saving…" : "Save"}
-              </button>
-              {activeView && activeView.slug && activeView.slug !== "default" && (
-                <button
-                  className="su-btn su-btn-error"
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={loading}
-                >
-                  Delete
-                </button>
-              )}
-              {saveMessage && (
-                <span className="su-text-xs su-text-success">{saveMessage}</span>
-              )}
-            </div>
-            {error && (
-              <div className="su-alert su-alert-danger su-mt-sm">{error}</div>
-            )}
           </div>
         </div>
-        {/* Right column: field selection */}
-        <div className="su-card">
-          <div className="su-card-body">
-            <h3 className="su-card-title">Fields</h3>
-            <p className="su-text-sm su-text-muted">
-              Choose which fields should appear in the entry editor. Drag to reorder.
-            </p>
-            <div className="su-grid md:grid-cols-2 gap-md su-mt-md">
-              {/* Available fields */}
-              <div>
-                <h4 className="su-text-sm su-font-semibold">Available</h4>
-                <div className="su-space-y-xs">
-                  {availableFields
-                    .filter((f) => !fields.find((c) => c.key === f.key))
-                    .map((f) => (
-                      <button
-                        key={f.key}
-                        className="su-chip su-w-full su-justify-between"
-                        onClick={() => handleAddField(f.key)}
-                      >
-                        {f.label || f.key}
-                        <span className="su-chip-badge">Add</span>
-                      </button>
-                    ))}
-                </div>
-              </div>
-              {/* Selected fields */}
-              <div>
-                <h4 className="su-text-sm su-font-semibold">In view</h4>
-                {fields.length === 0 && (
-                  <p className="su-text-sm su-text-muted">No fields selected.</p>
-                )}
-                <div className="su-space-y-xs">
-                  {fields.map((f, idx) => (
-                    <div key={f.key} className="su-chip su-w-full su-justify-between">
-                      <span>
-                        <strong>{f.label || f.key}</strong>
-                      </span>
-                      <span className="su-flex su-gap-xs">
-                        <button
-                          className="su-icon-btn"
-                          onClick={() => moveField(f.key, "up")}
-                          disabled={idx === 0}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          className="su-icon-btn"
-                          onClick={() => moveField(f.key, "down")}
-                          disabled={idx === fields.length - 1}
-                        >
-                          ↓
-                        </button>
-                        <button className="su-icon-btn" onClick={() => handleRemoveField(f.key)}>
-                          ✕
-                        </button>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* Right: sections builder */}
+        <div>
+          {renderSectionList()}
+          {renderSectionEditor()}
         </div>
       </div>
-    </>
+    </div>
   );
 
   return (
     <div className="su-page">
-      <div className="su-page-header su-flex su-justify-between su-items-center su-mb-md">
-        <h1 className="su-page-title">Entry Editor Views</h1>
-        <p className="su-page-subtitle">Configure the entry editor for your content types.</p>
-      </div>
-      {loadingTypes ? (
-        <p>Loading…</p>
-      ) : stage === "types" ? (
-        renderTypeStage()
-      ) : stage === "views" ? (
-        renderViewsStage()
-      ) : (
-        renderEditStage()
+      <h2 className="su-page-title">Entry Editor Views</h2>
+      <p className="su-page-subtitle">Configure the entry editor for your content types.</p>
+      {loadingTypes && <p>Loading types…</p>}
+      {!loadingTypes && stage === 'types' && renderTypeSelection()}
+      {!loadingTypes && stage === 'views' && (
+        <>
+          {renderTypeSelection()}
+          {renderViewSelection()}
+        </>
       )}
+      {!loadingTypes && stage === 'edit' && renderEditView()}
     </div>
   );
 }
