@@ -61,12 +61,11 @@ export const api = {
 
 // Settings helpers
 export async function fetchSettings() {
-  // Loads the global settings. This will call GET /api/settings via API_BASE
+  // Loads the global settings via GET
   return api.get('/settings');
 }
 
 export async function saveSettings(settings) {
-  // Persists the provided settings. Uses PUT so that it replaces the existing
-  // document in the database and triggers the updated_at trigger.
+  // Persists the provided settings via PUT
   return api.put('/settings', settings);
 }
