@@ -12,7 +12,7 @@ import permissionsRouter from './routes/permissions.js';
 import settingsRouter from './routes/settings.js';
 import dashboardRouter from "./routes/dashboard.js";
 import contentTypesRouter from './routes/contentTypes.js';
-import editorViewsRouter from './routes/editorViews.js';
+import editorViewsRouter from './routes/entryViews.js';
 import listViewsRouter from './routes/listViews.js';
 
 dotenv.config();
