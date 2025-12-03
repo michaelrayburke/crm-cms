@@ -182,8 +182,14 @@ router.put(
           }
         }
 
-        // Choose legacy role value for backward compatibility
-        const legacyRoleValue = roleList[0] || 'ADMIN';
+        // Choose a legacy role value to store in the legacy `role` column.
+        // We intentionally avoid using the first role from `roleList` to
+        // circumvent unique constraints on (content_type_id, role).  Instead,
+        // we use the slug as a stand‑in, ensuring uniqueness per view while
+        // preserving the true roles in config.roles.  This mirrors the
+        // updated list views API behaviour where the `role` column is no
+        // longer used for filtering.
+        const legacyRoleValue = slug.toUpperCase();
         const isDefaultRow = defaultRoleList.length > 0;
         const newConfig = {
           roles: roleList,
