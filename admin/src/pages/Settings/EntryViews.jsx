@@ -406,57 +406,21 @@ export default function EntryViews() {
         next = prev.filter((r) => r !== upper);
       } else {
         next = [...prev, upper];
-        // remove as default from other views for this role
-        setViews((oldViews) => {
-          return oldViews.map((v) => {
-            if (v.slug === activeViewSlug) return v;
-            const cfg = v.config || {};
-            const dRoles = Array.isArray(cfg.default_roles)
-              ? cfg.default_roles.map((r) => r.toUpperCase())
-              : [];
-            if (dRoles.includes(upper)) {
-              const newDRoles = dRoles.filter((r) => r !== upper);
-              return {
-                ...v,
-                is_default: false,
-                config: { ...cfg, default_roles: newDRoles },
-              };
-            }
-            return v;
-          });
-        });
       }
-      // Only allow defaults for assigned roles or ADMIN
-      next = next.filter((r) => assignedRoles.includes(r) || r === "ADMIN");
       setIsDefault(next.includes(role.toUpperCase()));
-      setViews((prevViews) => {
-        return prevViews.map((v) => {
-          if (v.slug === activeViewSlug) {
-            const cfg = v.config || {};
-            return {
-              ...v,
-              is_default: next.includes(role.toUpperCase()),
-              config: { ...cfg, default_roles: next },
-            };
-          }
-          return v;
-        });
-      });
       return next;
     });
     setDirty(true);
   };
 
+  // Save view configuration
   const handleSave = async () => {
-    if (!selectedTypeId || !role) return;
-    setError("");
-    setSaveMessage("");
-    const label = (currentLabel || "").trim();
-    const slug = activeViewSlug && activeViewSlug !== "default" ? activeViewSlug : slugify(label || "view");
-    if (!label) {
+    if (!currentLabel.trim()) {
       setError("Label is required");
       return;
     }
+    const slug = slugify(currentLabel);
+    // Validate fields
     if (!fields || !fields.length) {
       setError("Please choose at least one field");
       return;
@@ -485,7 +449,7 @@ export default function EntryViews() {
       };
       const payload = {
         slug,
-        label,
+        label: currentLabel,
         roles: rolesArray,
         default_roles: effectiveDefaults,
         sections: [section],
@@ -523,443 +487,327 @@ export default function EntryViews() {
             ? next.config.default_roles.map((r) => String(r || "").toUpperCase())
             : [];
           setDefaultRoles(cfgDefault);
-          setIsDefault(cfgDefault.includes(role.toUpperCase()) || !!next.is_default);
-          const sect = Array.isArray(next?.config?.sections) && next.config.sections.length
+          setIsDefault(
+            cfgDefault.includes(role.toUpperCase()) || !!next.is_default,
+          );
+          const sect2 = Array.isArray(next?.config?.sections) && next.config.sections.length
             ? next.config.sections[0]
             : null;
-          const keys = sect && Array.isArray(sect.fields)
-            ? sect.fields.map((k) => (typeof k === "string" ? k : k.key))
+          const keys2 = sect2 && Array.isArray(sect2.fields)
+            ? sect2.fields.map((f) => (typeof f === "string" ? f : f.key))
             : [];
-          const flds = availableFields.filter((f) => keys.includes(f.key));
-          setFields(flds);
-        } else {
-          setActiveViewSlug("default");
-          setCurrentLabel("Default editor");
-          setIsDefault(true);
-          setAssignedRoles([role.toUpperCase()]);
-          setDefaultRoles([]);
-          setFields(availableFields.slice(0, 3));
+          const flds2 = availableFields.filter((f) => keys2.includes(f.key));
+          setFields(flds2);
+          const nonAdmin2 = cfgRoles.filter((r) => r !== "ADMIN");
+          setAdminOnly(nonAdmin2.length === 0);
         }
-      } catch (reloadErr) {
-        console.error("[EntryViews] reload after save error", reloadErr);
-        // optimistic update
-        setViews((prev) => {
-          let nextList = [...prev];
-          nextList = nextList.filter((v) => v.slug !== slug);
-          nextList.push({
-            slug,
-            label,
-            role: rolesArray[0],
-            is_default: effectiveDefaults.length > 0,
-            config: {
-              roles: rolesArray,
-              default_roles: effectiveDefaults,
-              sections: [section],
-            },
-          });
-          return nextList;
-        });
-        setActiveViewSlug(slug);
-        setCurrentLabel(label);
-        setAssignedRoles(rolesArray);
-        setDefaultRoles(effectiveDefaults);
-        setIsDefault(effectiveDefaults.includes(role.toUpperCase()));
-        setFields(fields);
+        setDirty(false);
+        setSaveMessage("View saved.");
+      } catch (_err) {
+        // ignore reload failure
+        setDirty(false);
+        setSaveMessage("View saved.");
       }
-      setSaveMessage("Editor view saved. Entry editor will use this layout now.");
-      setDirty(false);
-      // bump version if there's a context mechanism; omitted here.
-      navigate(`/admin/settings/entry-views/${selectedTypeId}`);
     } catch (err) {
       console.error("[EntryViews] save error", err);
-      setError("Failed to save editor view");
+      setError(err.message || "Failed to save view");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteCurrentView = async () => {
-    if (!selectedTypeId || !activeViewSlug || activeViewSlug === "default") {
-      return;
-    }
-    if (!window.confirm("Are you sure you want to delete this view? This cannot be undone.")) {
-      return;
-    }
+  const handleDelete = async () => {
+    if (!activeViewSlug) return;
+    if (!window.confirm("Delete this entry editor view?")) return;
     try {
       setLoading(true);
-      setError("");
-      setSaveMessage("");
-      const encodedSlug = encodeURIComponent(activeViewSlug);
-      await api.del(`/api/content-types/${selectedTypeId}/editor-view/${encodedSlug}`);
-      let newViews = [];
-      setViews((prevViews) => {
-        const filtered = prevViews.filter((v) => v.slug !== activeViewSlug);
-        newViews = filtered;
-        return filtered;
-      });
-      if (newViews.length === 0) {
-        setActiveViewSlug("default");
-        setCurrentLabel("Default editor");
-        setIsDefault(true);
+      await api.delete(
+        `/api/content-types/${selectedTypeId}/editor-view/${activeViewSlug}`,
+      );
+      // remove locally
+      const nextViews = views.filter((v) => v.slug !== activeViewSlug);
+      setViews(nextViews);
+      // choose next view or go back to list
+      if (nextViews.length) {
+        const next = nextViews[0];
+        handleSelectView(next.slug);
+      } else {
+        setActiveViewSlug("");
+        setCurrentLabel("");
+        setFields([]);
         setAssignedRoles([role.toUpperCase()]);
         setDefaultRoles([]);
-        setFields(availableFields.slice(0, 3));
+        setAdminOnly(false);
         setDirty(false);
+        setSaveMessage("");
         navigate(`/admin/settings/entry-views/${selectedTypeId}`);
-      } else {
-        const first = newViews[0];
-        setActiveViewSlug(first.slug);
-        setCurrentLabel(first.label);
-        const cfgRoles = Array.isArray(first?.config?.roles)
-          ? first.config.roles.map((r) => String(r || "").toUpperCase())
-          : first.role
-          ? [String(first.role || "").toUpperCase()]
-          : [];
-        setAssignedRoles(cfgRoles);
-        const dRoles = Array.isArray(first?.config?.default_roles)
-          ? first.config.default_roles.map((r) => String(r || "").toUpperCase())
-          : [];
-        setDefaultRoles(dRoles);
-        setIsDefault(dRoles.includes(role.toUpperCase()) || !!first.is_default);
-        const sect = Array.isArray(first?.config?.sections) && first.config.sections.length
-          ? first.config.sections[0]
-          : null;
-        const keys = sect && Array.isArray(sect.fields)
-          ? sect.fields.map((k) => (typeof k === "string" ? k : k.key))
-          : [];
-        const flds = availableFields.filter((f) => keys.includes(f.key));
-        setFields(flds);
-        navigate(`/admin/settings/entry-views/${selectedTypeId}/${first.slug}`);
       }
     } catch (err) {
       console.error("[EntryViews] delete error", err);
-      setError("Failed to delete editor view");
+      setError(err.message || "Failed to delete view");
     } finally {
       setLoading(false);
     }
   };
 
-  const availableNotSelected = useMemo(() => {
-    if (!availableFields || !availableFields.length) return [];
-    const selectedKeys = new Set((fields || []).map((c) => c.key));
-    return (availableFields || []).filter((f) => !selectedKeys.has(f.key));
-  }, [availableFields, fields]);
-
-  // Render ---------------------------------------------------------
-  return (
-    <div className="su-page su-page-settings">
-      <div className="su-page-header">
-        <h1 className="su-page-title">Editor Views</h1>
-        <p className="su-page-subtitle">
-          Control which fields show in the entry editor, per content type, role and view.
-        </p>
+  // UI rendering helpers ----------------------------------------------------
+  const renderTypeStage = () => (
+    <div className="su-card">
+      <div className="su-card-body su-flex su-flex-wrap su-gap-sm">
+        {contentTypes.map((ct) => (
+          <button
+            key={ct.id}
+            className={
+              "su-chip" + (ct.id === selectedTypeId ? " su-chip--active" : "")
+            }
+            onClick={() => handleSelectType(ct.id)}
+          >
+            {ct.name || ct.label || ct.slug}
+          </button>
+        ))}
       </div>
-      {loadingTypes ? (
-        <p>Loading…</p>
-      ) : null}
-      {error && (
-        <div className="su-alert su-alert-error su-mb-md">{error}</div>
-      )}
-      {saveMessage && (
-        <div className="su-alert su-alert-success su-mb-md">{saveMessage}</div>
-      )}
-      {/* Stage: list of content types */}
-      {stage === "types" && (
-        <div className="su-card su-mb-lg">
-          <div className="su-card-header">
-            <h2 className="su-card-title">Content types</h2>
-            <p className="su-card-subtitle">Choose a content type to manage its editor views.</p>
-          </div>
-          <div className="su-card-body">
-            {contentTypes.length === 0 && (
-              <p className="su-text-muted">No content types yet.</p>
-            )}
-            <div className="su-chip-row su-mb-md">
-              {contentTypes.map((ct) => (
-                <button
-                  key={ct.id || ct.slug}
-                  type="button"
-                  onClick={() => handleSelectType(ct.slug || ct.id)}
-                  className="su-chip"
-                >
-                  {ct.name || ct.label_plural || ct.label_singular || ct.slug}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Stage: list of views for a selected type */}
-      {stage === "views" && (
-        <div>
-          <div className="su-card su-mb-lg">
-            <div className="su-card-header su-flex su-items-center su-gap-sm">
+    </div>
+  );
+
+  const renderViewsStage = () => (
+    <>
+      <div className="su-card su-mb-md">
+        <div className="su-card-body su-flex su-flex-wrap su-gap-sm su-items-center">
+          <span className="su-text-sm su-text-muted">Views:</span>
+          {views.map((v) => {
+            const cfg = v.config || {};
+            const dRoles = Array.isArray(cfg.default_roles)
+              ? cfg.default_roles.map((r) => String(r || "").toUpperCase())
+              : [];
+            const isDef = dRoles.includes(role.toUpperCase()) || !!v.is_default;
+            return (
               <button
-                type="button"
-                className="su-btn su-btn-ghost su-btn-sm"
-                onClick={() => {
-                  navigate("/admin/settings/entry-views");
-                }}
-              >
-                ← Back to types
-              </button>
-              <h2 className="su-card-title su-ml-sm">
-                Views for {
-                  contentTypes.find((ct) => ct.slug === selectedTypeId || ct.id === selectedTypeId)?.name ||
-                  contentTypes.find((ct) => ct.slug === selectedTypeId || ct.id === selectedTypeId)?.label_singular ||
-                  selectedTypeId || ""
+                key={v.slug}
+                className={
+                  "su-chip" + (v.slug === activeViewSlug ? " su-chip--active" : "")
                 }
-              </h2>
-            </div>
-            <div className="su-card-body">
-              {views.length === 0 && (
-                <p className="su-text-muted">No saved views yet for this type.</p>
-              )}
-              <div className="su-chip-row su-mb-md">
-                {views.map((v) => {
-                  const viewDefaultRoles = Array.isArray(v?.config?.default_roles)
-                    ? v.config.default_roles.map((r) => String(r || "").toUpperCase())
-                    : [];
-                  const viewRoles = Array.isArray(v?.config?.roles)
-                    ? v.config.roles.map((r) => String(r || "").toUpperCase())
-                    : v.role
-                    ? [String(v.role || "").toUpperCase()]
-                    : [];
-                  const isDefaultForCurrentRole = viewDefaultRoles.length > 0
-                    ? viewDefaultRoles.includes(role.toUpperCase())
-                    : v.is_default && viewRoles.includes(role.toUpperCase());
-                  return (
-                    <button
-                      key={v.slug}
-                      type="button"
-                      onClick={() => handleSelectView(v.slug)}
-                      className="su-chip"
-                    >
-                      {v.label}
-                      {isDefaultForCurrentRole && <span className="su-chip-badge">default</span>}
-                    </button>
-                  );
-                })}
-                <button
-                  type="button"
-                  className="su-chip su-chip--ghost"
-                  onClick={handleNewView}
-                >
-                  + New editor view
-                </button>
-              </div>
-            </div>
+                onClick={() => handleSelectView(v.slug)}
+              >
+                {v.label || v.slug}
+                {isDef && <span className="su-chip-badge">default</span>}
+              </button>
+            );
+          })}
+          <button className="su-chip" onClick={handleNewView}>
+            + New editor view
+          </button>
+        </div>
+      </div>
+      <div className="su-card">
+        <div className="su-card-body">
+          <p className="su-text-sm su-text-muted">
+            Choose an existing view or create a new one to configure which fields appear in the
+            entry editor.
+          </p>
+        </div>
+      </div>
+    </>
+  );
+
+  const renderEditStage = () => (
+    <>
+      <div className="su-card su-mb-md">
+        <div className="su-card-body">
+          <div className="su-flex su-gap-sm">
+            <button
+              type="button"
+              className="su-chip"
+              onClick={() => navigate(-1)}
+            >
+              ← Back
+            </button>
           </div>
         </div>
-      )}
-      {/* Stage: edit a specific view */}
-      {stage === "edit" && (
-        <div className="su-layout-grid su-grid-cols-3 su-gap-lg su-mb-xl">
-          {/* Left column: edit view details */}
-          <div className="su-card">
-            <div className="su-card-header su-flex su-items-center su-gap-sm">
-              <button
-                type="button"
-                className="su-btn su-btn-ghost su-btn-sm"
-                onClick={() => {
-                  navigate(`/admin/settings/entry-views/${selectedTypeId}`);
-                }}
-              >
-                ← Back to views
-              </button>
-              <h2 className="su-card-title su-ml-sm">Edit editor view</h2>
+      </div>
+      <div className="su-grid md:grid-cols-2 gap-md">
+        {/* Left column: details and roles */}
+        <div className="su-card">
+          <div className="su-card-body su-space-y-md">
+            <div>
+              <label className="su-form-label" htmlFor="view-label">
+                Label
+              </label>
+              <input
+                id="view-label"
+                className="su-input"
+                value={currentLabel}
+                onChange={handleLabelChange}
+              />
             </div>
-            <div className="su-card-body">
-              <div className="su-field">
-                <label className="su-label">View label</label>
-                <input
-                  className="su-input"
-                  value={currentLabel}
-                  onChange={handleLabelChange}
-                  placeholder="e.g. SEO editor"
-                />
-              </div>
-              <div className="su-field su-mt-sm">
-                <label className="su-label">Assigned roles</label>
-                <div className="su-flex su-gap-sm su-flex-wrap">
-                  <label className="su-checkbox">
+            <div>
+              <label className="su-form-label" htmlFor="view-slug">
+                Slug
+              </label>
+              <input
+                id="view-slug"
+                className="su-input"
+                value={activeViewSlug}
+                onChange={(e) => setActiveViewSlug(slugify(e.target.value))}
+                disabled={!!activeView && !!activeView.slug && activeView.slug !== "default"}
+              />
+            </div>
+            <div>
+              <label className="su-form-label">Assigned roles</label>
+              <div className="su-flex su-flex-wrap su-gap-sm">
+                {allRoles.map((r) => (
+                  <label key={r} className="su-chip su-items-center su-gap-xs">
                     <input
                       type="checkbox"
-                      value="ADMIN_ONLY"
-                      checked={isAdminOnly}
-                      onChange={toggleAdminOnly}
+                      checked={assignedRoles.includes(r)}
+                      onChange={() => toggleAssignedRole(r)}
                     />
-                    <span>Admin only</span>
+                    {r}
                   </label>
-                  {allRoles.filter((r) => r !== "ADMIN").map((r) => (
-                    <label key={r} className="su-checkbox">
-                      <input
-                        type="checkbox"
-                        value={r}
-                        checked={assignedRoles.includes(r)}
-                        onChange={() => toggleAssignedRole(r)}
-                      />
-                      <span>{r.charAt(0) + r.slice(1).toLowerCase()}</span>
-                    </label>
-                  ))}
-                </div>
-                <small className="su-text-muted">
-                  Choose one or more roles to use this view. Selecting no roles will make the view Admin‑only. You can mark individual roles as default below.
-                </small>
+                ))}
+                <label className="su-chip su-items-center su-gap-xs">
+                  <input
+                    type="checkbox"
+                    checked={adminOnly}
+                    onChange={toggleAdminOnly}
+                  />
+                  Admin only
+                </label>
               </div>
-              <div className="su-field su-mt-sm">
-                <label className="su-label">Default roles</label>
-                <div className="su-flex su-gap-sm su-flex-wrap">
-                  {Array.from(new Set(["ADMIN", ...assignedRoles])).map((r) => (
-                    <label key={r} className="su-checkbox">
+            </div>
+            <div>
+              <label className="su-form-label">Default roles</label>
+              <div className="su-flex su-flex-wrap su-gap-sm">
+                {assignedRoles
+                  .filter((r) => !adminOnly || r === "ADMIN")
+                  .map((r) => (
+                    <label key={r} className="su-chip su-items-center su-gap-xs">
                       <input
                         type="checkbox"
-                        value={r}
                         checked={defaultRoles.includes(r)}
                         onChange={() => toggleDefaultRole(r)}
                       />
-                      <span>{r.charAt(0) + r.slice(1).toLowerCase()}</span>
+                      {r}
                     </label>
                   ))}
-                </div>
-                <small className="su-text-muted">
-                  Choose which of the assigned roles (including Admin) should use this view by default.
-                </small>
               </div>
-              <div className="su-mt-sm su-text-xs su-text-muted">
-                <div>Slug: <code>{activeViewSlug || '(auto)'}</code></div>
-              </div>
-              <div className="su-mt-md">
-                <button
-                  type="button"
-                  className="su-btn su-btn-primary"
-                  onClick={handleSave}
-                  disabled={loading || !selectedTypeId || !role || !fields.length}
-                >
-                  {loading ? 'Saving…' : 'Save view'}
-                </button>
-                <button
-                  type="button"
-                  className="su-btn su-btn-danger su-ml-sm"
-                  onClick={handleDeleteCurrentView}
-                  disabled={
-                    loading || !selectedTypeId || !role || !activeViewSlug || activeViewSlug === 'default'
-                  }
-                >
-                  Delete view
-                </button>
-                {dirty && <span className="su-text-warning su-ml-sm">Unsaved changes</span>}
-                {saveMessage && <span className="su-text-success su-ml-sm">{saveMessage}</span>}
-              </div>
-              {error && <div className="su-alert su-alert-danger su-mt-md">{error}</div>}
             </div>
+            <div>
+              <small className="su-text-xs su-text-muted">
+                Slug preview: /admin/content/{contentTypeDetail?.slug || contentTypeDetail?.key || selectedTypeId}/
+                <strong>{activeViewSlug || slugify(currentLabel || "view")}</strong>
+              </small>
+            </div>
+            <div className="su-flex su-gap-sm">
+              <button
+                className="su-btn su-btn-primary"
+                type="button"
+                onClick={handleSave}
+                disabled={!dirty || loading}
+              >
+                {loading ? "Saving…" : "Save"}
+              </button>
+              {activeView && activeView.slug && activeView.slug !== "default" && (
+                <button
+                  className="su-btn su-btn-error"
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={loading}
+                >
+                  Delete
+                </button>
+              )}
+              {saveMessage && (
+                <span className="su-text-xs su-text-success">{saveMessage}</span>
+              )}
+            </div>
+            {error && (
+              <div className="su-alert su-alert-danger su-mt-sm">{error}</div>
+            )}
           </div>
-          {/* Middle column: available fields */}
-          <div className="su-card">
-            <div className="su-card-header">
-              <h2 className="su-card-title">Available fields</h2>
-              <p className="su-card-subtitle">Click to add a field to this editor view.</p>
-            </div>
-            <div className="su-card-body su-list-scroll">
-              {!contentTypeDetail ? (
-                <p className="su-text-muted">Choose a content type to see its fields.</p>
-              ) : availableNotSelected.length === 0 ? (
-                <p className="su-text-muted">All fields are already in use for this view.</p>
-              ) : (
-                <ul className="su-list">
-                  {availableNotSelected.map((f) => (
-                    <li key={f.key} className="su-list-item">
+        </div>
+        {/* Right column: field selection */}
+        <div className="su-card">
+          <div className="su-card-body">
+            <h3 className="su-card-title">Fields</h3>
+            <p className="su-text-sm su-text-muted">
+              Choose which fields should appear in the entry editor. Drag to reorder.
+            </p>
+            <div className="su-grid md:grid-cols-2 gap-md su-mt-md">
+              {/* Available fields */}
+              <div>
+                <h4 className="su-text-sm su-font-semibold">Available</h4>
+                <div className="su-space-y-xs">
+                  {availableFields
+                    .filter((f) => !fields.find((c) => c.key === f.key))
+                    .map((f) => (
                       <button
-                        type="button"
-                        className="su-btn su-btn-ghost su-btn-sm su-w-full su-justify-between"
+                        key={f.key}
+                        className="su-chip su-w-full su-justify-between"
                         onClick={() => handleAddField(f.key)}
                       >
-                        <span>{f.label}</span>
-                        <code className="su-badge su-badge-soft">{f.key}</code>
+                        {f.label || f.key}
+                        <span className="su-chip-badge">Add</span>
                       </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-          {/* Right column: chosen fields */}
-          <div className="su-card">
-            <div className="su-card-header">
-              <h2 className="su-card-title">Visible fields (order)</h2>
-              <p className="su-card-subtitle">Use the arrows to reorder fields.</p>
-            </div>
-            <div className="su-card-body su-list-scroll">
-              {(!fields || !fields.length) && (
-                <p className="su-text-muted">
-                  No fields selected. Choose some from “Available fields”.
-                </p>
-              )}
-              <ul className="su-list">
-                {fields.map((c, idx) => (
-                  <li key={c.key} className="su-list-item su-flex su-items-center su-gap-sm">
-                    <div className="su-flex-1">
-                      <div>{c.label}</div>
-                      <div className="su-text-xs su-text-muted">
-                        <code>{c.key}</code>
-                      </div>
-                    </div>
-                    <div className="su-btn-group">
-                      <button
-                        type="button"
-                        className="su-btn su-btn-icon su-btn-xs"
-                        onClick={() => moveField(c.key, 'up')}
-                        disabled={idx === 0}
-                      >
-                        ↑
-                      </button>
+                    ))}
+                </div>
+              </div>
+              {/* Selected fields */}
+              <div>
+                <h4 className="su-text-sm su-font-semibold">In view</h4>
+                {fields.length === 0 && (
+                  <p className="su-text-sm su-text-muted">No fields selected.</p>
+                )}
+                <div className="su-space-y-xs">
+                  {fields.map((f, idx) => (
+                    <div key={f.key} className="su-chip su-w-full su-justify-between">
+                      <span>
+                        <strong>{f.label || f.key}</strong>
+                      </span>
+                      <span className="su-flex su-gap-xs">
                         <button
-                          type="button"
-                          className="su-btn su-btn-icon su-btn-xs"
-                          onClick={() => moveField(c.key, 'down')}
+                          className="su-icon-btn"
+                          onClick={() => moveField(f.key, "up")}
+                          disabled={idx === 0}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          className="su-icon-btn"
+                          onClick={() => moveField(f.key, "down")}
                           disabled={idx === fields.length - 1}
                         >
                           ↓
                         </button>
-                        <button
-                          type="button"
-                          className="su-btn su-btn-icon su-btn-xs su-btn-danger"
-                          onClick={() => handleRemoveField(c.key)}
-                        >
+                        <button className="su-icon-btn" onClick={() => handleRemoveField(f.key)}>
                           ✕
                         </button>
+                      </span>
                     </div>
-                  </li>
-                ))}
-              </ul>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      )}
-      {/* Debug JSON (optional) */}
-      <div className="su-card su-mt-lg">
-        <div className="su-card-header">
-          <h2 className="su-card-title">Debug JSON</h2>
-        </div>
-        <div className="su-card-body">
-          <pre className="su-code-block">
-            {JSON.stringify(
-              {
-                stage,
-                contentTypeId: selectedTypeId,
-                role,
-                activeViewSlug,
-                label: currentLabel,
-                isDefault,
-                defaultRoles,
-                fields,
-              },
-              null,
-              2,
-            )}
-          </pre>
-        </div>
       </div>
+    </>
+  );
+
+  return (
+    <div className="su-page">
+      <div className="su-page-header su-flex su-justify-between su-items-center su-mb-md">
+        <h1 className="su-page-title">Entry Editor Views</h1>
+        <p className="su-page-subtitle">Configure the entry editor for your content types.</p>
+      </div>
+      {loadingTypes ? (
+        <p>Loading…</p>
+      ) : stage === "types" ? (
+        renderTypeStage()
+      ) : stage === "views" ? (
+        renderViewsStage()
+      ) : (
+        renderEditStage()
+      )}
     </div>
   );
-}
+            }
