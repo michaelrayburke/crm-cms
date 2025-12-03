@@ -1,12 +1,7 @@
 import usersRouter from './routes/users.js';
 import taxonomiesRouter from './routes/taxonomies.js';
 import rolesRouter from './routes/roles.js';
-import {
-  normalizeEmail,
-  normalizePhoneE164,
-  normalizeUrl,
-  normalizeAddress,
-} from './lib/fieldUtils.js';
+import { normalizeEmail, normalizePhoneE164, normalizeUrl, normalizeAddress } from './lib/fieldUtils.js';
 import mountExtraRoutes from './extra-routes.js';
 import express from 'express';
 import dotenv from 'dotenv';
@@ -19,23 +14,6 @@ import dashboardRouter from './routes/dashboard.js';
 import contentTypesRouter from './routes/contentTypes.js';
 import entryViewsRouter from './routes/entryViews.js';
 import listViewsRouter from './routes/listViews.js';
-
-/**
- * This file defines the main Express app for the ServiceUp API.  It is
- * largely identical to the original `api/index.js` in your repository
- * but includes two important enhancements:
- *
- *   1. Entry lookups now accept either an ID or a slug.  When
- *      requesting or updating a single entry, the second path
- *      parameter can be a UUID (id) or the entry slug.  The server
- *      checks whether the value looks like a UUID; if not it
- *      performs the query using the `slug` column instead of `id`.
- *
- *   2. Field definitions used for data normalization are pulled
- *      from `content_fields` rather than `fields`.  This ensures
- *      that all fields defined via the Content Type builder are
- *      taken into account when normalizing data before insert/update.
- */
 
 dotenv.config();
 
@@ -150,13 +128,6 @@ function listRoutes(appRef) {
   return table;
 }
 
-// Detect if a string is a UUID (used for entry lookup)
-function isUuid(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    String(value || '').trim(),
-  );
-}
-
 // Normalize incoming entry data based on field types
 function normalizeEntryData(fieldDefs, dataIn) {
   try {
@@ -253,7 +224,7 @@ app.get('/api/content/:slug', async (req, res) => {
 // Create entry
 app.post('/api/content/:slug', authMiddleware, async (req, res) => {
   const typeSlug = req.params.slug;
-  const { title, slug: entrySlug, status, data } = req.body || {};
+  const { title, slug, status, data } = req.body || {};
 
   function slugify(str) {
     return (str || '')
@@ -277,12 +248,11 @@ app.post('/api/content/:slug', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Title is required' });
     }
 
-    const finalSlug = typeof entrySlug === 'string' && entrySlug.trim() ? entrySlug.trim() : slugify(safeTitle);
+    const finalSlug = typeof slug === 'string' && slug.trim() ? slug.trim() : slugify(safeTitle);
 
     const finalStatus = typeof status === 'string' && status.trim() ? status.trim() : 'draft';
 
-    // Fetch field definitions from content_fields instead of fields
-    const { rows: fieldsRows } = await pool.query('SELECT field_key AS key, type FROM content_fields WHERE content_type_id = $1', [typeId]);
+    const { rows: fieldsRows } = await pool.query('SELECT key, type FROM fields WHERE content_type_id = $1', [typeId]);
 
     const normalizedData = normalizeEntryData(fieldsRows, data || {});
 
@@ -306,7 +276,7 @@ app.post('/api/content/:slug', authMiddleware, async (req, res) => {
   }
 });
 
-// Get single entry (accepts ID or slug)
+// Get single entry
 app.get('/api/content/:slug/:id', authMiddleware, async (req, res) => {
   const { slug: typeSlug, id } = req.params;
 
@@ -318,19 +288,13 @@ app.get('/api/content/:slug/:id', authMiddleware, async (req, res) => {
 
     const typeId = ctRows[0].id;
 
-    let entryQuery;
-    let entryParams;
-    if (isUuid(id)) {
-      // Look up by ID
-      entryQuery = `SELECT * FROM entries WHERE id = $1 AND content_type_id = $2 LIMIT 1`;
-      entryParams = [id, typeId];
-    } else {
-      // Look up by slug
-      entryQuery = `SELECT * FROM entries WHERE slug = $1 AND content_type_id = $2 LIMIT 1`;
-      entryParams = [id, typeId];
-    }
-
-    const { rows } = await pool.query(entryQuery, entryParams);
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM entries
+       WHERE id = $1 AND content_type_id = $2
+       LIMIT 1`,
+      [id, typeId],
+    );
 
     if (!rows.length) {
       return res.status(404).json({ error: 'Entry not found' });
@@ -343,10 +307,10 @@ app.get('/api/content/:slug/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// Update entry (accepts ID or slug)
+// Update entry
 app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
   const { slug: typeSlug, id } = req.params;
-  const { title, slug: entrySlug, status, data } = req.body || {};
+  const { title, slug, status, data } = req.body || {};
 
   function slugify(str) {
     return (str || '')
@@ -370,48 +334,30 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Title is required' });
     }
 
-    const finalSlug = typeof entrySlug === 'string' && entrySlug.trim() ? entrySlug.trim() : slugify(safeTitle);
+    const finalSlug = typeof slug === 'string' && slug.trim() ? slug.trim() : slugify(safeTitle);
 
     const finalStatus = typeof status === 'string' && status.trim() ? status.trim() : 'draft';
 
-    // Fetch field definitions from content_fields
-    const { rows: fieldsRows } = await pool.query('SELECT field_key AS key, type FROM content_fields WHERE content_type_id = $1', [typeId]);
+    const { rows: fieldsRows } = await pool.query('SELECT key, type FROM fields WHERE content_type_id = $1', [typeId]);
     const normalizedData = normalizeEntryData(fieldsRows, data || {});
 
-    let updated;
-    if (isUuid(id)) {
-      // Update by ID
-      updated = await pool.query(
-        `UPDATE entries
-         SET title = $1,
-             slug = $2,
-             status = $3,
-             data = $4,
-             updated_at = now()
-         WHERE id = $5 AND content_type_id = $6
-         RETURNING *`,
-        [safeTitle, finalSlug, finalStatus, normalizedData, id, typeId],
-      );
-    } else {
-      // Update by slug
-      updated = await pool.query(
-        `UPDATE entries
-         SET title = $1,
-             slug = $2,
-             status = $3,
-             data = $4,
-             updated_at = now()
-         WHERE slug = $5 AND content_type_id = $6
-         RETURNING *`,
-        [safeTitle, finalSlug, finalStatus, normalizedData, id, typeId],
-      );
-    }
+    const { rows } = await pool.query(
+      `UPDATE entries
+       SET title = $1,
+           slug = $2,
+           status = $3,
+           data = $4,
+           updated_at = now()
+       WHERE id = $5 AND content_type_id = $6
+       RETURNING *`,
+      [safeTitle, finalSlug, finalStatus, normalizedData, id, typeId],
+    );
 
-    if (!updated.rows.length) {
+    if (!rows.length) {
       return res.status(404).json({ error: 'Entry not found' });
     }
 
-    res.json(updated.rows[0]);
+    res.json(rows[0]);
   } catch (err) {
     console.error('[PUT /api/content/:slug/:id] error', err);
 
@@ -432,19 +378,9 @@ app.delete('/api/content/:slug/:id', authMiddleware, async (req, res) => {
     if (!typeRes.rows.length) return res.status(404).json({ error: 'Not found' });
     const typeId = typeRes.rows[0].id;
 
-    if (isUuid(id)) {
-      await pool.query('DELETE FROM entry_versions WHERE entry_id = $1', [id]);
-      const del = await pool.query('DELETE FROM entries WHERE id = $1 AND content_type_id = $2 RETURNING id', [id, typeId]);
-      if (!del.rows.length) return res.status(404).json({ error: 'Not found' });
-    } else {
-      // Delete by slug
-      const { rows: entryRows } = await pool.query('SELECT id FROM entries WHERE slug = $1 AND content_type_id = $2 LIMIT 1', [id, typeId]);
-      if (!entryRows.length) return res.status(404).json({ error: 'Not found' });
-      const entryId = entryRows[0].id;
-      await pool.query('DELETE FROM entry_versions WHERE entry_id = $1', [entryId]);
-      const del = await pool.query('DELETE FROM entries WHERE id = $1 AND content_type_id = $2 RETURNING id', [entryId, typeId]);
-      if (!del.rows.length) return res.status(404).json({ error: 'Not found' });
-    }
+    await pool.query('DELETE FROM entry_versions WHERE entry_id = $1', [id]);
+    const del = await pool.query('DELETE FROM entries WHERE id = $1 AND content_type_id = $2 RETURNING id', [id, typeId]);
+    if (!del.rows.length) return res.status(404).json({ error: 'Not found' });
 
     res.json({ ok: true });
   } catch (err) {
@@ -476,7 +412,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 /*
- * The original code exposed an in-memory settings object via GET/POST on
+ * The original code exposed an in‑memory settings object via GET/POST on
  * /api/settings and /settings. Those endpoints are removed in favor of
  * persisting settings in the `app_settings` table and serving them via
  * the new settings router. If you need to access settings, use GET/PUT
@@ -492,7 +428,7 @@ app.use('/api/permissions', authMiddleware, permissionsRouter);
 
 // Mount the settings router at /api/settings. In the client, calls to
 // `api.get('/settings')` or `api.put('/settings', ...)` will be prefixed
-// with API_BASE (usually '/api'), yielding the correct path.
+// with API_BASE (usually "/api"), yielding the correct path.
 app.use('/api/settings', settingsRouter);
 
 app.use('/api/dashboard', authMiddleware, dashboardRouter);
