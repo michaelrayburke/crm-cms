@@ -26,14 +26,17 @@ function slugify(value) {
 function buildLayoutFromView(contentType, viewConfig) {
   if (!contentType) return [];
 
-  // Build a lookup of custom fields by key. Do NOT include built‑in fields
+  // Build a lookup of custom fields by key. Do NOT include built-in fields
   const rawFields = Array.isArray(contentType.fields) ? contentType.fields : [];
-  const fields = rawFields.map((f) => {
-    if (!f) return null;
-    // Normalize field definitions: ensure .key exists (some APIs return field_key)
-    const key = f.key || f.field_key;
-    return key ? { ...f, key } : null;
-  }).filter(Boolean);
+  const fields = rawFields
+    .map((f) => {
+      if (!f) return null;
+      // Normalize field definitions: ensure .key exists (some APIs return field_key)
+      const key = f.key || f.field_key;
+      return key ? { ...f, key } : null;
+    })
+    .filter(Boolean);
+
   const fieldsByKey = {};
   fields.forEach((f) => {
     if (f && f.key) fieldsByKey[f.key] = f;
@@ -50,9 +53,9 @@ function buildLayoutFromView(contentType, viewConfig) {
       const rows = [];
       // Each section can specify a layout (e.g. "two-column"). Fall back to columns if set.
       let columns = 1;
-      if (typeof sec.layout === 'string') {
-        if (sec.layout.includes('two')) columns = 2;
-        if (sec.layout.includes('three')) columns = 3;
+      if (typeof sec.layout === "string") {
+        if (sec.layout.includes("two")) columns = 2;
+        if (sec.layout.includes("three")) columns = 3;
       }
       // If explicit columns property present, respect it
       if (sec.columns && Number.isInteger(sec.columns)) {
@@ -63,9 +66,9 @@ function buildLayoutFromView(contentType, viewConfig) {
         let key;
         let width = 1;
         let visible = true;
-        if (typeof fCfgRaw === 'string') {
+        if (typeof fCfgRaw === "string") {
           key = fCfgRaw;
-        } else if (fCfgRaw && typeof fCfgRaw === 'object') {
+        } else if (fCfgRaw && typeof fCfgRaw === "object") {
           key = fCfgRaw.key;
           width = fCfgRaw.width || 1;
           if (fCfgRaw.visible === false) visible = false;
@@ -83,7 +86,7 @@ function buildLayoutFromView(contentType, viewConfig) {
       if (rows.length) {
         sections.push({
           id: sec.id || sec.title || `section-${sections.length}`,
-          title: sec.title || '',
+          title: sec.title || "",
           columns,
           rows,
         });
@@ -91,11 +94,11 @@ function buildLayoutFromView(contentType, viewConfig) {
     }
   }
 
-  // Fallback: single section with all custom fields. Do not include built‑ins
+  // Fallback: single section with all custom fields. Do not include built-ins
   if (!sections.length && fields.length) {
     sections.push({
-      id: 'main',
-      title: 'Fields',
+      id: "main",
+      title: "Fields",
       columns: 1,
       rows: fields.map((def) => ({
         def,
@@ -144,6 +147,17 @@ export default function Editor() {
 
   const overallLoading = loadingEntry || loadingType;
 
+  // Derived label for the title field (so you can later make it "Name", etc.)
+  const titleLabel = useMemo(() => {
+    if (!contentType) return "Title";
+    return (
+      contentType.title_label ||
+      contentType.titleLabel ||
+      contentType.display_title_label ||
+      "Title"
+    );
+  }, [contentType]);
+
   // ---------------------------------------------------------------------------
   // Load content type (with fields) + editor views for the current role
   // ---------------------------------------------------------------------------
@@ -181,7 +195,10 @@ export default function Editor() {
           const fullRes = await api.get(`/api/content-types/${basicCt.id}`);
           fullCt = fullRes?.data || fullRes || basicCt;
         } catch (e) {
-          console.warn("Failed to load full content type, falling back to basic", e);
+          console.warn(
+            "Failed to load full content type, falling back to basic",
+            e
+          );
           fullCt = basicCt;
         }
 
@@ -193,7 +210,9 @@ export default function Editor() {
         if (fullCt && fullCt.id) {
           try {
             const vRes = await api.get(
-              `/api/content-types/${fullCt.id}/editor-views?role=${encodeURIComponent(roleUpper)}`
+              `/api/content-types/${fullCt.id}/editor-views?role=${encodeURIComponent(
+                roleUpper
+              )}`
             );
             const rawViews = vRes?.data ?? vRes;
             if (Array.isArray(rawViews)) {
@@ -202,7 +221,10 @@ export default function Editor() {
               views = rawViews.views;
             }
           } catch (err) {
-            console.warn('[Editor] Failed to load editor views for type; falling back to auto layout', err?.response?.data || err);
+            console.warn(
+              "[Editor] Failed to load editor views for type; falling back to auto layout",
+              err?.response?.data || err
+            );
           }
         }
         if (!cancelled) {
@@ -212,13 +234,15 @@ export default function Editor() {
         // Determine which view to use: URL parameter or default roles
         let chosenView = null;
         if (views && views.length) {
-          const viewFromUrl = searchParams.get('view') || '';
+          const viewFromUrl = searchParams.get("view") || "";
           // Find a default view for the current role (default_roles or legacy is_default)
           const defaultView =
             views.find((v) => {
               const cfg = v.config || {};
               const dRoles = Array.isArray(cfg.default_roles)
-                ? cfg.default_roles.map((r) => String(r || '').toUpperCase())
+                ? cfg.default_roles.map((r) =>
+                    String(r || "").toUpperCase()
+                  )
                 : [];
               if (dRoles.length) return dRoles.includes(roleUpper);
               return !!v.is_default;
@@ -238,23 +262,23 @@ export default function Editor() {
             setEditorViewConfig(chosenView.config || {});
           }
           // Ensure the URL has the correct ?view parameter
-          const currentViewParam = searchParams.get('view');
+          const currentViewParam = searchParams.get("view");
           if (currentViewParam !== chosenView.slug) {
             const next = new URLSearchParams(searchParams);
-            next.set('view', chosenView.slug);
+            next.set("view", chosenView.slug);
             setSearchParams(next);
           }
         } else {
           // No views configured: fall back to auto layout
           if (!cancelled) {
-            setActiveViewSlug('');
-            setActiveViewLabel('');
+            setActiveViewSlug("");
+            setActiveViewLabel("");
             setEditorViewConfig({});
           }
           // Clean up any stale ?view param
-          if (searchParams.get('view')) {
+          if (searchParams.get("view")) {
             const next = new URLSearchParams(searchParams);
-            next.delete('view');
+            next.delete("view");
             setSearchParams(next);
           }
         }
@@ -308,7 +332,35 @@ export default function Editor() {
         const entry = res.entry || res.data || res;
         if (cancelled) return;
 
-        const entryData = entry.data || {};
+        // --- NORMALIZE entry.data (handles old "undefined" shape) ---
+        let entryData =
+          entry && entry.data && typeof entry.data === "object"
+            ? { ...entry.data }
+            : {};
+
+        if (entryData && typeof entryData === "object") {
+          const keys = Object.keys(entryData);
+          if (
+            keys.length === 1 &&
+            keys[0] === "undefined" &&
+            entryData.undefined &&
+            typeof entryData.undefined === "object"
+          ) {
+            // Everything under `undefined` -> lift it up
+            entryData = { ...entryData.undefined };
+          } else if (
+            entryData.undefined &&
+            typeof entryData.undefined === "object"
+          ) {
+            // Merge stray undefined bucket but don't clobber real keys
+            const inner = entryData.undefined;
+            delete entryData.undefined;
+            entryData = {
+              ...inner,
+              ...entryData,
+            };
+          }
+        }
 
         const loadedTitle =
           entry.title ?? entryData.title ?? entryData._title ?? "";
@@ -360,9 +412,9 @@ export default function Editor() {
       // Mirror core fields into data so they survive even if the API
       // mostly persists JSON in entries.data. Sanitize undefined keys.
       const sanitized = {};
-      if (data && typeof data === 'object') {
+      if (data && typeof data === "object") {
         Object.entries(data).forEach(([k, v]) => {
-          if (!k || k === 'undefined') return;
+          if (!k || k === "undefined") return;
           sanitized[k] = v;
         });
       }
@@ -395,11 +447,17 @@ export default function Editor() {
         const newId =
           created?.id ?? created?.entry?.id ?? created?.data?.id ?? null;
         const newSlug =
-          created?.slug ?? created?.entry?.slug ?? created?.data?.slug ?? finalSlug;
+          created?.slug ??
+          created?.entry?.slug ??
+          created?.data?.slug ??
+          finalSlug;
+
         if (newId) {
           // Prefer slug if available; fall back to ID. Navigate to admin path so slug works via API.
           const slugOrId = newSlug || newId;
-          navigate(`/admin/content/${typeSlug}/${slugOrId}`, { replace: true });
+          navigate(`/admin/content/${typeSlug}/${slugOrId}`, {
+            replace: true,
+          });
           setSaveMessage("Entry created.");
         } else {
           setSaveMessage("Entry created (reload list to see it).");
@@ -418,10 +476,7 @@ export default function Editor() {
         if (updated) {
           const entryData = updated.data || mergedData;
           const loadedTitle =
-            updated.title ??
-            entryData.title ??
-            entryData._title ??
-            title;
+            updated.title ?? entryData.title ?? entryData._title ?? title;
           const loadedSlug =
             updated.slug ?? entryData.slug ?? entryData._slug ?? finalSlug;
           const loadedStatus =
@@ -437,11 +492,13 @@ export default function Editor() {
           // If slug changed, update the URL for consistency
           const currentSlugParam = entryId;
           if (loadedSlug && loadedSlug !== currentSlugParam) {
-            navigate(`/admin/content/${typeSlug}/${loadedSlug}`, { replace: true });
+            navigate(`/admin/content/${typeSlug}/${loadedSlug}`, {
+              replace: true,
+            });
           }
         }
 
-        setSaveMessage('Entry saved.');
+        setSaveMessage("Entry saved.");
       }
     } catch (err) {
       console.error("Failed to save entry", err);
@@ -546,7 +603,9 @@ export default function Editor() {
               {editorViews.map((v) => {
                 const cfg = v.config || {};
                 const dRoles = Array.isArray(cfg.default_roles)
-                  ? cfg.default_roles.map((r) => String(r || '').toUpperCase())
+                  ? cfg.default_roles.map((r) =>
+                      String(r || "").toUpperCase()
+                    )
                   : [];
                 const isDefaultForRole = dRoles.length
                   ? dRoles.includes(roleUpper)
@@ -556,7 +615,8 @@ export default function Editor() {
                     key={v.slug}
                     type="button"
                     className={
-                      'su-chip' + (v.slug === activeViewSlug ? ' su-chip--active' : '')
+                      "su-chip" +
+                      (v.slug === activeViewSlug ? " su-chip--active" : "")
                     }
                     onClick={() => {
                       // If clicking the active chip, do nothing
@@ -565,7 +625,7 @@ export default function Editor() {
                       setActiveViewLabel(v.label || v.slug);
                       setEditorViewConfig(v.config || {});
                       const next = new URLSearchParams(searchParams);
-                      next.set('view', v.slug);
+                      next.set("view", v.slug);
                       setSearchParams(next);
                     }}
                   >
@@ -620,12 +680,16 @@ export default function Editor() {
           {/* Core fields */}
           <div style={{ display: "grid", gap: 12, marginBottom: 20 }}>
             <label style={{ fontSize: 13 }}>
-              Title
+              {titleLabel}
               <input
                 className="su-input"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="My great entry"
+                placeholder={
+                  titleLabel === "Title"
+                    ? "My great entry"
+                    : titleLabel || "My great entry"
+                }
               />
             </label>
 
@@ -703,7 +767,9 @@ export default function Editor() {
                   style={{
                     display: "grid",
                     gap: 12,
-                    gridTemplateColumns: `repeat(${section.columns || 1}, minmax(0, 1fr))`,
+                    gridTemplateColumns: `repeat(${
+                      section.columns || 1
+                    }, minmax(0, 1fr))`,
                   }}
                 >
                   {section.rows.map(({ def, width }) => {
