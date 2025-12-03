@@ -1,7 +1,7 @@
-// admin/src/pages/Settings/index.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSettings } from '../../context/SettingsContext';
-import { api } from '../../lib/api';
+// Import api for general requests and saveSettings helper for persisting
+import { api, saveSettings } from '../../lib/api';
 import { supabase } from '../../lib/supabaseClient';
 
 const TIMEZONES = [
@@ -46,9 +46,7 @@ export default function SettingsPage() {
         poweredByText: settings.poweredByText || '',
         poweredByUrl: settings.poweredByUrl || '',
         navSidebar: Array.isArray(settings.navSidebar) ? settings.navSidebar : [],
-        navTopbarButtons: Array.isArray(settings.navTopbarButtons)
-          ? settings.navTopbarButtons
-          : [],
+        navTopbarButtons: Array.isArray(settings.navTopbarButtons) ? settings.navTopbarButtons : [],
         dashboardWidgets: Array.isArray(settings.dashboardWidgets)
           ? settings.dashboardWidgets
           : settings.dashboardWidgets || [],
@@ -76,20 +74,13 @@ export default function SettingsPage() {
   }, []);
 
   const roleOptions = useMemo(
-    () =>
-      roles.map((r) => ({
-        value: r.slug,
-        label: r.label || r.slug,
-      })),
-    [roles]
+    () => roles.map((r) => ({ value: r.slug, label: r.label || r.slug })),
+    [roles],
   );
 
   function bind(path) {
     return (e) => {
-      const value =
-        e && e.target && e.target.type === 'checkbox'
-          ? e.target.checked
-          : e.target.value;
+      const value = e && e.target && e.target.type === 'checkbox' ? e.target.checked : e.target.value;
       setForm((prev) => {
         const next = { ...prev };
         const parts = path.split('.');
@@ -115,9 +106,7 @@ export default function SettingsPage() {
 
   function updateTopbar(index, field, value) {
     setForm((prev) => {
-      const items = Array.isArray(prev.navTopbarButtons)
-        ? [...prev.navTopbarButtons]
-        : [];
+      const items = Array.isArray(prev.navTopbarButtons) ? [...prev.navTopbarButtons] : [];
       items[index] = { ...(items[index] || {}), [field]: value };
       return { ...prev, navTopbarButtons: items };
     });
@@ -145,9 +134,7 @@ export default function SettingsPage() {
     setForm((prev) => ({
       ...prev,
       navTopbarButtons: [
-        ...(Array.isArray(prev.navTopbarButtons)
-          ? prev.navTopbarButtons
-          : []),
+        ...(Array.isArray(prev.navTopbarButtons) ? prev.navTopbarButtons : []),
         { label: 'New button', to: '/admin', roles: [] },
       ],
     }));
@@ -155,18 +142,14 @@ export default function SettingsPage() {
 
   function removeTopbarItem(index) {
     setForm((prev) => {
-      const items = Array.isArray(prev.navTopbarButtons)
-        ? [...prev.navTopbarButtons]
-        : [];
+      const items = Array.isArray(prev.navTopbarButtons) ? [...prev.navTopbarButtons] : [];
       items.splice(index, 1);
       return { ...prev, navTopbarButtons: items };
     });
   }
 
   function handleMultiRoleChange(kind, index, event) {
-    const selected = Array.from(event.target.selectedOptions).map(
-      (opt) => opt.value
-    );
+    const selected = Array.from(event.target.selectedOptions).map((opt) => opt.value);
     if (kind === 'sidebar') {
       updateNavSidebar(index, 'roles', selected);
     } else {
@@ -222,8 +205,10 @@ export default function SettingsPage() {
           mode: form.theme?.mode || 'light',
         },
       };
-      const res = await api.post('/api/settings', payload);
-      const nextSettings = res?.settings || payload;
+      // Persist settings using the helper. It returns the saved JSON blob.
+      const saved = await saveSettings(payload);
+      // `saved` contains the saved settings. Use it directly.
+      const nextSettings = saved || payload;
       setSettings(nextSettings);
       setSavedMsg('Settings saved.');
     } catch (err) {
@@ -246,12 +231,8 @@ export default function SettingsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold mb-1">
-            {form.appName || 'ServiceUp Admin'}
-          </h1>
-          <p className="text-sm text-gray-500">
-            Configure the admin experience, branding, and navigation.
-          </p>
+          <h1 className="text-2xl font-semibold mb-1">{form.appName || 'ServiceUp Admin'}</h1>
+          <p className="text-sm text-gray-500">Configure the admin experience, branding, and navigation.</p>
         </div>
       </div>
 
@@ -263,20 +244,12 @@ export default function SettingsPage() {
             <div className="space-y-3">
               <div>
                 <label className="su-label">App name</label>
-                <input
-                  className="su-input"
-                  value={form.appName}
-                  onChange={bind('appName')}
-                />
+                <input className="su-input" value={form.appName} onChange={bind('appName')} />
               </div>
 
               <div>
                 <label className="su-label">Theme</label>
-                <select
-                  className="su-select"
-                  value={form.theme?.mode || 'light'}
-                  onChange={bind('theme.mode')}
-                >
+                <select className="su-select" value={form.theme?.mode || 'light'} onChange={bind('theme.mode')}>
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
                 </select>
@@ -284,11 +257,7 @@ export default function SettingsPage() {
 
               <div>
                 <label className="su-label">Timezone</label>
-                <select
-                  className="su-select"
-                  value={form.timezone || 'America/Los_Angeles'}
-                  onChange={bind('timezone')}
-                >
+                <select className="su-select" value={form.timezone || 'America/Los_Angeles'} onChange={bind('timezone')}>
                   {TIMEZONES.map((tz) => (
                     <option key={tz.value} value={tz.value}>
                       {tz.label}
@@ -305,21 +274,10 @@ export default function SettingsPage() {
               <div>
                 <label className="su-label">Logo URL</label>
                 <div className="flex gap-2">
-                  <input
-                    className="su-input"
-                    placeholder="https://…/logo.png"
-                    value={form.logoUrl || ''}
-                    onChange={bind('logoUrl')}
-                  />
+                  <input className="su-input" placeholder="https://…/logo.png" value={form.logoUrl || ''} onChange={bind('logoUrl')} />
                   <label className="su-btn">
                     Upload
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={(e) => uploadBrandingFile(e, 'logoUrl')}
-                      disabled={uploading}
-                    />
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadBrandingFile(e, 'logoUrl')} disabled={uploading} />
                   </label>
                 </div>
               </div>
@@ -327,21 +285,10 @@ export default function SettingsPage() {
               <div>
                 <label className="su-label">Favicon URL</label>
                 <div className="flex gap-2">
-                  <input
-                    className="su-input"
-                    placeholder="https://…/favicon.ico"
-                    value={form.faviconUrl || ''}
-                    onChange={bind('faviconUrl')}
-                  />
+                  <input className="su-input" placeholder="https://…/favicon.ico" value={form.faviconUrl || ''} onChange={bind('faviconUrl')} />
                   <label className="su-btn">
                     Upload
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={(e) => uploadBrandingFile(e, 'faviconUrl')}
-                      disabled={uploading}
-                    />
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadBrandingFile(e, 'faviconUrl')} disabled={uploading} />
                   </label>
                 </div>
               </div>
@@ -349,43 +296,22 @@ export default function SettingsPage() {
               <div>
                 <label className="su-label">App icon URL</label>
                 <div className="flex gap-2">
-                  <input
-                    className="su-input"
-                    placeholder="https://…/app-icon.png"
-                    value={form.appIconUrl || ''}
-                    onChange={bind('appIconUrl')}
-                  />
+                  <input className="su-input" placeholder="https://…/app-icon.png" value={form.appIconUrl || ''} onChange={bind('appIconUrl')} />
                   <label className="su-btn">
                     Upload
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={(e) => uploadBrandingFile(e, 'appIconUrl')}
-                      disabled={uploading}
-                    />
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadBrandingFile(e, 'appIconUrl')} disabled={uploading} />
                   </label>
                 </div>
               </div>
 
               <div>
                 <label className="su-label">Powered-by text</label>
-                <input
-                  className="su-input"
-                  placeholder="serviceup / bmp"
-                  value={form.poweredByText || ''}
-                  onChange={bind('poweredByText')}
-                />
+                <input className="su-input" placeholder="serviceup / bmp" value={form.poweredByText || ''} onChange={bind('poweredByText')} />
               </div>
 
               <div>
                 <label className="su-label">Powered-by URL</label>
-                <input
-                  className="su-input"
-                  placeholder="https://burkemedia.pro/"
-                  value={form.poweredByUrl || ''}
-                  onChange={bind('poweredByUrl')}
-                />
+                <input className="su-input" placeholder="https://burkemedia.pro/" value={form.poweredByUrl || ''} onChange={bind('poweredByUrl')} />
               </div>
             </div>
           </section>
@@ -398,46 +324,22 @@ export default function SettingsPage() {
           {/* Sidebar menu */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-gray-800">
-                Sidebar menu
-              </h3>
-              <button
-                type="button"
-                className="su-btn"
-                onClick={addSidebarItem}
-              >
+              <h3 className="text-sm font-semibold text-gray-800">Sidebar menu</h3>
+              <button type="button" className="su-btn" onClick={addSidebarItem}>
                 + Add sidebar link
               </button>
             </div>
 
-            {(!form.navSidebar || form.navSidebar.length === 0) && (
-              <p className="text-xs text-gray-500">
-                No sidebar items yet. Add links for the left-hand menu.
-              </p>
-            )}
+            {!form.navSidebar || form.navSidebar.length === 0 ? (
+              <p className="text-xs text-gray-500">No sidebar items yet. Add links for the left-hand menu.</p>
+            ) : null}
 
             <div className="space-y-3">
               {form.navSidebar?.map((item, i) => (
-                <div
-                  key={i}
-                  className="border border-gray-200 rounded-lg p-3 space-y-2"
-                >
+                <div key={i} className="border border-gray-200 rounded-lg p-3 space-y-2">
                   <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] gap-2 items-center">
-                    <input
-                      className="su-input"
-                      placeholder="Label"
-                      value={item.label || ''}
-                      onChange={(e) =>
-                        updateNavSidebar(i, 'label', e.target.value)
-                      }
-                    />
-                    <select
-                      className="su-select"
-                      value={item.to || ''}
-                      onChange={(e) =>
-                        updateNavSidebar(i, 'to', e.target.value)
-                      }
-                    >
+                    <input className="su-input" placeholder="Label" value={item.label || ''} onChange={(e) => updateNavSidebar(i, 'label', e.target.value)} />
+                    <select className="su-select" value={item.to || ''} onChange={(e) => updateNavSidebar(i, 'to', e.target.value)}>
                       <option value="">Custom URL…</option>
                       {PAGE_OPTIONS.map((opt) => (
                         <option key={opt.value} value={opt.value}>
@@ -445,32 +347,14 @@ export default function SettingsPage() {
                         </option>
                       ))}
                     </select>
-                    <button
-                      type="button"
-                      className="su-btn"
-                      onClick={() => removeSidebarItem(i)}
-                    >
+                    <button type="button" className="su-btn" onClick={() => removeSidebarItem(i)}>
                       ✕
                     </button>
                   </div>
 
                   <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr)] gap-2 items-center">
-                    <input
-                      className="su-input"
-                      placeholder="Or type a custom path (e.g. /admin/custom)"
-                      value={item.to || ''}
-                      onChange={(e) =>
-                        updateNavSidebar(i, 'to', e.target.value)
-                      }
-                    />
-                    <select
-                      multiple
-                      className="su-select"
-                      value={item.roles || []}
-                      onChange={(e) =>
-                        handleMultiRoleChange('sidebar', i, e)
-                      }
-                    >
+                    <input className="su-input" placeholder="Or type a custom path (e.g. /admin/custom)" value={item.to || ''} onChange={(e) => updateNavSidebar(i, 'to', e.target.value)} />
+                    <select multiple className="su-select" value={item.roles || []} onChange={(e) => handleMultiRoleChange('sidebar', i, e)}>
                       {roleOptions.map((r) => (
                         <option key={r.value} value={r.value}>
                           {r.label}
@@ -478,9 +362,7 @@ export default function SettingsPage() {
                       ))}
                     </select>
                   </div>
-                  <p className="text-[11px] text-gray-500">
-                    Roles: leave empty to show to all roles.
-                  </p>
+                  <p className="text-[11px] text-gray-500">Roles: leave empty to show to all roles.</p>
                 </div>
               ))}
             </div>
@@ -489,46 +371,22 @@ export default function SettingsPage() {
           {/* Topbar buttons */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-gray-800">
-                Topbar buttons
-              </h3>
-              <button
-                type="button"
-                className="su-btn"
-                onClick={addTopbarItem}
-              >
+              <h3 className="text-sm font-semibold text-gray-800">Topbar buttons</h3>
+              <button type="button" className="su-btn" onClick={addTopbarItem}>
                 + Add topbar button
               </button>
             </div>
 
-            {(!form.navTopbarButtons || form.navTopbarButtons.length === 0) && (
-              <p className="text-xs text-gray-500">
-                No topbar buttons yet. Add quick links for the top-right area.
-              </p>
-            )}
+            {!form.navTopbarButtons || form.navTopbarButtons.length === 0 ? (
+              <p className="text-xs text-gray-500">No topbar buttons yet. Add quick links for the top-right area.</p>
+            ) : null}
 
             <div className="space-y-3">
               {form.navTopbarButtons?.map((item, i) => (
-                <div
-                  key={i}
-                  className="border border-gray-200 rounded-lg p-3 space-y-2"
-                >
+                <div key={i} className="border border-gray-200 rounded-lg p-3 space-y-2">
                   <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] gap-2 items-center">
-                    <input
-                      className="su-input"
-                      placeholder="Label"
-                      value={item.label || ''}
-                      onChange={(e) =>
-                        updateTopbar(i, 'label', e.target.value)
-                      }
-                    />
-                    <select
-                      className="su-select"
-                      value={item.to || ''}
-                      onChange={(e) =>
-                        updateTopbar(i, 'to', e.target.value)
-                      }
-                    >
+                    <input className="su-input" placeholder="Label" value={item.label || ''} onChange={(e) => updateTopbar(i, 'label', e.target.value)} />
+                    <select className="su-select" value={item.to || ''} onChange={(e) => updateTopbar(i, 'to', e.target.value)}>
                       <option value="">Custom URL…</option>
                       {PAGE_OPTIONS.map((opt) => (
                         <option key={opt.value} value={opt.value}>
@@ -536,32 +394,14 @@ export default function SettingsPage() {
                         </option>
                       ))}
                     </select>
-                    <button
-                      type="button"
-                      className="su-btn"
-                      onClick={() => removeTopbarItem(i)}
-                    >
+                    <button type="button" className="su-btn" onClick={() => removeTopbarItem(i)}>
                       ✕
                     </button>
                   </div>
 
                   <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr)] gap-2 items-center">
-                    <input
-                      className="su-input"
-                      placeholder="Or type a custom path (e.g. /admin/custom)"
-                      value={item.to || ''}
-                      onChange={(e) =>
-                        updateTopbar(i, 'to', e.target.value)
-                      }
-                    />
-                    <select
-                      multiple
-                      className="su-select"
-                      value={item.roles || []}
-                      onChange={(e) =>
-                        handleMultiRoleChange('topbar', i, e)
-                      }
-                    >
+                    <input className="su-input" placeholder="Or type a custom path (e.g. /admin/custom)" value={item.to || ''} onChange={(e) => updateTopbar(i, 'to', e.target.value)} />
+                    <select multiple className="su-select" value={item.roles || []} onChange={(e) => handleMultiRoleChange('topbar', i, e)}>
                       {roleOptions.map((r) => (
                         <option key={r.value} value={r.value}>
                           {r.label}
@@ -569,9 +409,7 @@ export default function SettingsPage() {
                       ))}
                     </select>
                   </div>
-                  <p className="text-[11px] text-gray-500">
-                    Roles: leave empty to show to all roles.
-                  </p>
+                  <p className="text-[11px] text-gray-500">Roles: leave empty to show to all roles.</p>
                 </div>
               ))}
             </div>
@@ -580,16 +418,10 @@ export default function SettingsPage() {
       </div>
 
       <div>
-        <button
-          className="su-btn primary"
-          onClick={save}
-          disabled={saving || uploading}
-        >
+        <button className="su-btn primary" onClick={save} disabled={saving || uploading}>
           {saving ? 'Saving…' : uploading ? 'Uploading…' : 'Save settings'}
         </button>
-        {savedMsg && (
-          <span className="ml-3 text-sm text-gray-600">{savedMsg}</span>
-        )}
+        {savedMsg && <span className="ml-3 text-sm text-gray-600">{savedMsg}</span>}
       </div>
     </div>
   );
