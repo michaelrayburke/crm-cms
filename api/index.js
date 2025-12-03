@@ -10,7 +10,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import permissionsRouter from './routes/permissions.js';
 import settingsRouter from './routes/settings.js';
-import dashboardRouter from "./routes/dashboard.js";
+import dashboardRouter from './routes/dashboard.js';
 import contentTypesRouter from './routes/contentTypes.js';
 import entryViewsRouter from './routes/entryViews.js';
 import listViewsRouter from './routes/listViews.js';
@@ -22,7 +22,7 @@ const app = express();
 /* ----------------------- CORS (credentialed) ----------------------- */
 const ALLOW = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
-  .map(s => s.trim())
+  .map((s) => s.trim())
   .filter(Boolean);
 
 if (ALLOW.length === 0) {
@@ -48,7 +48,11 @@ app.use((req, res, next) => {
   }
 
   if (process.env.NODE_ENV !== 'production') {
-    console.log('[CORS]', { origin, allowed, sent: res.getHeader('Access-Control-Allow-Origin') });
+    console.log('[CORS]', {
+      origin,
+      allowed,
+      sent: res.getHeader('Access-Control-Allow-Origin'),
+    });
   }
 
   if (req.method === 'OPTIONS') return res.sendStatus(204);
@@ -83,7 +87,7 @@ app.use(express.json({ limit: '2mb' })); // adjust if you expect larger payloads
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
-    console.log('[HTTP]', req.method, req.path, '->', res.statusCode, (Date.now() - start) + 'ms');
+    console.log('[HTTP]', req.method, req.path, '->', res.statusCode, Date.now() - start + 'ms');
   });
   next();
 });
@@ -91,7 +95,7 @@ app.use((req, res, next) => {
 /* ----------------------- Postgres ---------------------------------- */
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { require: true, rejectUnauthorized: false }
+  ssl: { require: true, rejectUnauthorized: false },
 });
 
 pool.on('error', (err) => {
@@ -106,12 +110,16 @@ function listRoutes(appRef) {
   const stack = appRef._router?.stack || [];
   stack.forEach((layer) => {
     if (layer.route && layer.route.path) {
-      const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase()).join(',');
+      const methods = Object.keys(layer.route.methods)
+        .map((m) => m.toUpperCase())
+        .join(',');
       table.push({ path: layer.route.path, methods });
     } else if (layer.name === 'router' && layer.handle?.stack) {
-      layer.handle.stack.forEach(r => {
+      layer.handle.stack.forEach((r) => {
         if (r.route) {
-          const methods = Object.keys(r.route.methods).map(m => m.toUpperCase()).join(',');
+          const methods = Object.keys(r.route.methods)
+            .map((m) => m.toUpperCase())
+            .join(',');
           table.push({ path: r.route.path, methods });
         }
       });
@@ -124,16 +132,25 @@ function listRoutes(appRef) {
 function normalizeEntryData(fieldDefs, dataIn) {
   try {
     const out = { ...(dataIn || {}) };
-    for (const f of (fieldDefs || [])) {
+    for (const f of fieldDefs || []) {
       const k = f.key;
       const t = f.type;
       const v = out[k];
       switch (t) {
-        case 'email':   out[k] = normalizeEmail(v); break;
-        case 'phone':   out[k] = normalizePhoneE164(v, 'US'); break;
-        case 'url':     out[k] = normalizeUrl(v); break;
-        case 'address': out[k] = normalizeAddress(v); break;
-        default: break;
+        case 'email':
+          out[k] = normalizeEmail(v);
+          break;
+        case 'phone':
+          out[k] = normalizePhoneE164(v, 'US');
+          break;
+        case 'url':
+          out[k] = normalizeUrl(v);
+          break;
+        case 'address':
+          out[k] = normalizeAddress(v);
+          break;
+        default:
+          break;
       }
     }
     return out;
@@ -186,10 +203,7 @@ app.get('/api/content/:slug', async (req, res) => {
   const { slug } = req.params;
 
   try {
-    const { rows: typeRows } = await pool.query(
-      'SELECT id FROM content_types WHERE slug = $1 LIMIT 1',
-      [slug]
-    );
+    const { rows: typeRows } = await pool.query('SELECT id FROM content_types WHERE slug = $1 LIMIT 1', [slug]);
 
     if (!typeRows.length) {
       return res.status(404).json({ error: 'Content type not found' });
@@ -198,18 +212,12 @@ app.get('/api/content/:slug', async (req, res) => {
     const typeId = typeRows[0].id;
 
     // Use SELECT * to avoid issues if columns change
-    const { rows: entries } = await pool.query(
-      'SELECT * FROM entries WHERE content_type_id = $1 ORDER BY created_at DESC',
-      [typeId]
-    );
+    const { rows: entries } = await pool.query('SELECT * FROM entries WHERE content_type_id = $1 ORDER BY created_at DESC', [typeId]);
 
     res.json(entries);
   } catch (err) {
     console.error('[GET /api/content/:slug] error', err);
-    res.status(500).json({
-      error: 'Server error listing entries',
-      detail: err.message,
-    });
+    res.status(500).json({ error: 'Server error listing entries', detail: err.message });
   }
 });
 
@@ -228,36 +236,23 @@ app.post('/api/content/:slug', authMiddleware, async (req, res) => {
   }
 
   try {
-    const { rows: ctRows } = await pool.query(
-      'SELECT id FROM content_types WHERE slug = $1 LIMIT 1',
-      [typeSlug]
-    );
+    const { rows: ctRows } = await pool.query('SELECT id FROM content_types WHERE slug = $1 LIMIT 1', [typeSlug]);
     if (!ctRows.length) {
       return res.status(404).json({ error: 'Content type not found' });
     }
 
     const typeId = ctRows[0].id;
 
-    const safeTitle =
-      typeof title === 'string' && title.trim() ? title.trim() : null;
+    const safeTitle = typeof title === 'string' && title.trim() ? title.trim() : null;
     if (!safeTitle) {
       return res.status(400).json({ error: 'Title is required' });
     }
 
-    const finalSlug =
-      typeof slug === 'string' && slug.trim()
-        ? slug.trim()
-        : slugify(safeTitle);
+    const finalSlug = typeof slug === 'string' && slug.trim() ? slug.trim() : slugify(safeTitle);
 
-    const finalStatus =
-      typeof status === 'string' && status.trim()
-        ? status.trim()
-        : 'draft';
+    const finalStatus = typeof status === 'string' && status.trim() ? status.trim() : 'draft';
 
-    const { rows: fieldsRows } = await pool.query(
-      'SELECT key, type FROM fields WHERE content_type_id = $1',
-      [typeId]
-    );
+    const { rows: fieldsRows } = await pool.query('SELECT key, type FROM fields WHERE content_type_id = $1', [typeId]);
 
     const normalizedData = normalizeEntryData(fieldsRows, data || {});
 
@@ -265,7 +260,7 @@ app.post('/api/content/:slug', authMiddleware, async (req, res) => {
       `INSERT INTO entries (content_type_id, title, slug, status, data)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [typeId, safeTitle, finalSlug, finalStatus, normalizedData]
+      [typeId, safeTitle, finalSlug, finalStatus, normalizedData],
     );
 
     res.status(201).json(rows[0]);
@@ -274,18 +269,10 @@ app.post('/api/content/:slug', authMiddleware, async (req, res) => {
 
     // Handle unique slug errors nicely
     if (err.code === '23505') {
-      return res.status(409).json({
-        error: 'Slug already exists for this content type',
-        code: err.code,
-        detail: err.detail || err.message,
-      });
+      return res.status(409).json({ error: 'Slug already exists for this content type', code: err.code, detail: err.detail || err.message });
     }
 
-    res.status(500).json({
-      error: 'Failed to create entry',
-      code: err.code || null,
-      detail: err.message,
-    });
+    res.status(500).json({ error: 'Failed to create entry', code: err.code || null, detail: err.message });
   }
 });
 
@@ -294,10 +281,7 @@ app.get('/api/content/:slug/:id', authMiddleware, async (req, res) => {
   const { slug: typeSlug, id } = req.params;
 
   try {
-    const { rows: ctRows } = await pool.query(
-      'SELECT id FROM content_types WHERE slug = $1 LIMIT 1',
-      [typeSlug]
-    );
+    const { rows: ctRows } = await pool.query('SELECT id FROM content_types WHERE slug = $1 LIMIT 1', [typeSlug]);
     if (!ctRows.length) {
       return res.status(404).json({ error: 'Content type not found' });
     }
@@ -309,7 +293,7 @@ app.get('/api/content/:slug/:id', authMiddleware, async (req, res) => {
        FROM entries
        WHERE id = $1 AND content_type_id = $2
        LIMIT 1`,
-      [id, typeId]
+      [id, typeId],
     );
 
     if (!rows.length) {
@@ -338,36 +322,23 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
   }
 
   try {
-    const { rows: ctRows } = await pool.query(
-      'SELECT id FROM content_types WHERE slug = $1 LIMIT 1',
-      [typeSlug]
-    );
+    const { rows: ctRows } = await pool.query('SELECT id FROM content_types WHERE slug = $1 LIMIT 1', [typeSlug]);
     if (!ctRows.length) {
       return res.status(404).json({ error: 'Content type not found' });
     }
 
     const typeId = ctRows[0].id;
 
-    const safeTitle =
-      typeof title === 'string' && title.trim() ? title.trim() : null;
+    const safeTitle = typeof title === 'string' && title.trim() ? title.trim() : null;
     if (!safeTitle) {
       return res.status(400).json({ error: 'Title is required' });
     }
 
-    const finalSlug =
-      typeof slug === 'string' && slug.trim()
-        ? slug.trim()
-        : slugify(safeTitle);
+    const finalSlug = typeof slug === 'string' && slug.trim() ? slug.trim() : slugify(safeTitle);
 
-    const finalStatus =
-      typeof status === 'string' && status.trim()
-        ? status.trim()
-        : 'draft';
+    const finalStatus = typeof status === 'string' && status.trim() ? status.trim() : 'draft';
 
-    const { rows: fieldsRows } = await pool.query(
-      'SELECT key, type FROM fields WHERE content_type_id = $1',
-      [typeId]
-    );
+    const { rows: fieldsRows } = await pool.query('SELECT key, type FROM fields WHERE content_type_id = $1', [typeId]);
     const normalizedData = normalizeEntryData(fieldsRows, data || {});
 
     const { rows } = await pool.query(
@@ -379,7 +350,7 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
            updated_at = now()
        WHERE id = $5 AND content_type_id = $6
        RETURNING *`,
-      [safeTitle, finalSlug, finalStatus, normalizedData, id, typeId]
+      [safeTitle, finalSlug, finalStatus, normalizedData, id, typeId],
     );
 
     if (!rows.length) {
@@ -391,18 +362,10 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
     console.error('[PUT /api/content/:slug/:id] error', err);
 
     if (err.code === '23505') {
-      return res.status(409).json({
-        error: 'Slug already exists for this content type',
-        code: err.code,
-        detail: err.detail || err.message,
-      });
+      return res.status(409).json({ error: 'Slug already exists for this content type', code: err.code, detail: err.detail || err.message });
     }
 
-    res.status(500).json({
-      error: 'Failed to update entry',
-      code: err.code || null,
-      detail: err.message,
-    });
+    res.status(500).json({ error: 'Failed to update entry', code: err.code || null, detail: err.message });
   }
 });
 
@@ -448,20 +411,13 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
-// In-memory settings (temporary)
-let inMemorySettings = {};
-app.get('/api/settings', (_req, res) => res.json(inMemorySettings));
-app.post('/api/settings', (req, res) => {
-  inMemorySettings = req.body || {};
-  res.json(inMemorySettings);
-});
-
-// Non-/api temporary aliases (optional)
-app.get('/settings', (_req, res) => res.json(inMemorySettings));
-app.post('/settings', (req, res) => {
-  inMemorySettings = req.body || {};
-  res.json(inMemorySettings);
-});
+/*
+ * The original code exposed an in‑memory settings object via GET/POST on
+ * /api/settings and /settings. Those endpoints are removed in favor of
+ * persisting settings in the `app_settings` table and serving them via
+ * the new settings router. If you need to access settings, use GET/PUT
+ * on /api/settings (base path /settings from the client).
+ */
 
 /* ----------------------- Routers ----------------------------------- */
 app.use('/api/content-types', authMiddleware, contentTypesRouter);
@@ -469,8 +425,13 @@ app.use('/api/users', authMiddleware, usersRouter);
 app.use('/api/taxonomies', taxonomiesRouter);
 app.use('/api/roles', authMiddleware, rolesRouter);
 app.use('/api/permissions', authMiddleware, permissionsRouter);
+
+// Mount the settings router at /api/settings. In the client, calls to
+// `api.get('/settings')` or `api.put('/settings', ...)` will be prefixed
+// with API_BASE (usually "/api"), yielding the correct path.
 app.use('/api/settings', settingsRouter);
-app.use("/api/dashboard", authMiddleware, dashboardRouter);
+
+app.use('/api/dashboard', authMiddleware, dashboardRouter);
 
 // NEW: editor + list views routers, no corsMiddleware/jsonParser needed here
 app.use('/api', entryViewsRouter);
