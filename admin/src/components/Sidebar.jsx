@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
 
+const canSee = (itemRoles, role) => {
+  if (!Array.isArray(itemRoles) || itemRoles.length === 0) return true;
+  if (!role) return false;
+  return itemRoles.includes(role);
+};
+
 const SidebarLink = ({ to, label, target }) => (
   <NavLink
     to={to}
@@ -15,11 +21,10 @@ const SidebarLink = ({ to, label, target }) => (
   </NavLink>
 );
 
-export default function Sidebar({ onClose }) {
+export default function Sidebar({ onClose, role = 'ADMIN' }) {
   const { settings } = useSettings();
   const location = useLocation();
 
-  // Prefer DB-driven sidebar nav, but fall back to old static list
   const items =
     (Array.isArray(settings?.navSidebar) && settings.navSidebar.length > 0
       ? settings.navSidebar
@@ -32,27 +37,27 @@ export default function Sidebar({ onClose }) {
       { label: 'Users', to: '/admin/users' },
       { label: 'Taxonomies', to: '/admin/taxonomies' },
       { label: 'Content', to: '/admin/content' },
-      { label: 'Quick Builder', to: '/quick-builder' },
+      { label: 'Quick Builder', to: '/admin/quick-builder' },
     ];
 
-  // Track which parent items are expanded
+  // Track which parents are expanded
   const [openParents, setOpenParents] = useState({});
 
-  // Auto-open parents if one of their children matches the current route
+  // Open any parent whose child matches current route
   useEffect(() => {
     const path = location.pathname;
-    const nextOpen = {};
+    const next = {};
     items.forEach((item, index) => {
       if (
         Array.isArray(item.children) &&
         item.children.some(
-          (child) => child.to && path.startsWith(child.to)
+          (child) => child.to && path.startsWith(child.to),
         )
       ) {
-        nextOpen[index] = true;
+        next[index] = true;
       }
     });
-    setOpenParents((prev) => ({ ...prev, ...nextOpen }));
+    setOpenParents((prev) => ({ ...prev, ...next }));
   }, [location.pathname, items]);
 
   const toggleParent = (index) => {
@@ -64,6 +69,7 @@ export default function Sidebar({ onClose }) {
 
   return (
     <aside className="su-sidebar" aria-label="Main navigation">
+      {/* Mobile close button */}
       {onClose && (
         <button
           type="button"
@@ -78,10 +84,12 @@ export default function Sidebar({ onClose }) {
       <div className="su-nav-header">Menu</div>
 
       {items.map((item, i) => {
+        if (!canSee(item.roles, role)) return null;
+
         const hasChildren =
           Array.isArray(item.children) && item.children.length > 0;
 
-        // Simple link (no children)
+        // Simple link
         if (!hasChildren) {
           if (!item.to) return null;
           return (
@@ -96,6 +104,23 @@ export default function Sidebar({ onClose }) {
 
         // Parent with children
         const isOpen = !!openParents[i];
+
+        const visibleChildren = item.children.filter((child) =>
+          canSee(child.roles, role),
+        );
+
+        // If no visible children, we can still show the parent as a direct link
+        if (visibleChildren.length === 0) {
+          if (!item.to) return null;
+          return (
+            <SidebarLink
+              key={i}
+              to={item.to}
+              label={item.label || 'Untitled'}
+              target={item.target}
+            />
+          );
+        }
 
         return (
           <div
@@ -117,7 +142,7 @@ export default function Sidebar({ onClose }) {
 
             {isOpen && (
               <div className="su-nav-children">
-                {item.children.map((child, ci) =>
+                {visibleChildren.map((child, ci) =>
                   child.to ? (
                     <SidebarLink
                       key={ci}
@@ -125,7 +150,7 @@ export default function Sidebar({ onClose }) {
                       label={child.label || 'Link'}
                       target={child.target || item.target}
                     />
-                  ) : null
+                  ) : null,
                 )}
               </div>
             )}
