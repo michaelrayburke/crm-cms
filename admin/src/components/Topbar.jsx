@@ -2,12 +2,7 @@ import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
 
-export default function Topbar({
-  onToggleSidebar,
-  onToggleCollapse,
-  isSidebarOpen,
-  isCollapsed,
-}) {
+export default function Topbar({ onToggleSidebar, isSidebarOpen }) {
   const { settings } = useSettings();
   const [openIndex, setOpenIndex] = useState(null);
 
@@ -28,7 +23,9 @@ export default function Topbar({
             type="button"
             className="su-btn su-topbar-hamburger"
             onClick={onToggleSidebar}
-            aria-label={isSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-label={
+              isSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'
+            }
           >
             ☰
           </button>
@@ -39,7 +36,7 @@ export default function Topbar({
         </div>
       </div>
 
-      {/* Right side: topbar nav + collapse button */}
+      {/* Right side: topbar nav */}
       <nav className="su-topbar-nav" aria-label="Top navigation">
         {items.map((item, i) => {
           const hasChildren =
@@ -52,6 +49,7 @@ export default function Topbar({
               <NavLink
                 key={i}
                 to={item.to}
+                target={item.target || '_self'}
                 className={({ isActive }) =>
                   'su-btn su-topbar-link' + (isActive ? ' primary' : '')
                 }
@@ -88,6 +86,7 @@ export default function Topbar({
                       <NavLink
                         key={ci}
                         to={child.to}
+                        target={child.target || item.target || '_self'}
                         className="su-topbar-dropdown-link"
                         role="menuitem"
                       >
@@ -100,17 +99,6 @@ export default function Topbar({
             </div>
           );
         })}
-
-        {onToggleCollapse && (
-          <button
-            type="button"
-            className="su-btn su-topbar-link"
-            onClick={onToggleCollapse}
-            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {isCollapsed ? '⤢' : '⤡'}
-          </button>
-        )}
       </nav>
     </header>
   );
