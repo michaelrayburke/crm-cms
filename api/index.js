@@ -473,7 +473,7 @@ app.use('/api/settings', settingsRouter);
 app.use("/api/dashboard", authMiddleware, dashboardRouter);
 
 // NEW: editor + list views routers, no corsMiddleware/jsonParser needed here
-app.use('/api', editorViewsRouter);
+app.use('/api', entryViewsRouter);
 app.use('/api', listViewsRouter);
 
 // Simple redirects for old paths
