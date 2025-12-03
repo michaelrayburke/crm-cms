@@ -24,10 +24,6 @@ import QuickBuilderPage from "./pages/ContentTypes/QuickBuilder";
 import EntryViews from "./pages/Settings/EntryViews.jsx";
 import ListViewsSettings from "./pages/Settings/ListViews.jsx";
 
-
-
-
-
 function RequireAuth({ children }) {
   // Very simple auth gate for now: just check for token in localStorage.
   const token =
@@ -179,6 +175,7 @@ function App() {
             }
           />
 
+          {/* Role and permissions settings */}
           <Route
             path="/admin/settings/roles"
             element={
@@ -192,7 +189,7 @@ function App() {
             }
           />
 
-		 <Route
+          <Route
             path="/admin/settings/dashboards"
             element={
               <RequireAuth>
@@ -218,62 +215,62 @@ function App() {
             }
           />
 
+          {/* Entry editor view configuration page */}
           <Route
             path="/admin/settings/entry-views"
             element={
               <RequireAuth>
                 <RequirePermission slug="roles.manage">
                   <AdminLayout>
-                    <EntryViews  />
+                    <EntryViews />
                   </AdminLayout>
                 </RequirePermission>
               </RequireAuth>
             }
           />
-		
-        {/* List views settings: allow dynamic segments for type slug and view slug.
-           The type segment uses the content type slug to mirror the content
-           editing URLs (e.g. /admin/settings/list-views/songs).  When both
-           :typeSlug and :viewSlug are present we render the edit stage; with only
-           :typeSlug we render the list of views; with none we list all
-           content types. */}
-        <Route
-          path="/admin/settings/list-views/:typeSlug/:viewSlug"
-          element={
-            <RequireAuth>
-              <RequirePermission slug="roles.manage">
-                <AdminLayout>
-                  <ListViewsSettings />
-                </AdminLayout>
-              </RequirePermission>
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/admin/settings/list-views/:typeSlug"
-          element={
-            <RequireAuth>
-              <RequirePermission slug="roles.manage">
-                <AdminLayout>
-                  <ListViewsSettings />
-                </AdminLayout>
-              </RequirePermission>
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/admin/settings/list-views"
-          element={
-            <RequireAuth>
-              <RequirePermission slug="roles.manage">
-                <AdminLayout>
-                  <ListViewsSettings />
-                </AdminLayout>
-              </RequirePermission>
-            </RequireAuth>
-          }
-        />
 
+          {/* List views settings: allow dynamic segments for type slug and view slug.
+             The type segment uses the content type slug to mirror the content
+             editing URLs (e.g. /admin/settings/list-views/songs).  When both
+             :typeSlug and :viewSlug are present we render the edit stage; with only
+             :typeSlug we render the list of views; with none we list all
+             content types. */}
+          <Route
+            path="/admin/settings/list-views/:typeSlug/:viewSlug"
+            element={
+              <RequireAuth>
+                <RequirePermission slug="roles.manage">
+                  <AdminLayout>
+                    <ListViewsSettings />
+                  </AdminLayout>
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/settings/list-views/:typeSlug"
+            element={
+              <RequireAuth>
+                <RequirePermission slug="roles.manage">
+                  <AdminLayout>
+                    <ListViewsSettings />
+                  </AdminLayout>
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/settings/list-views"
+            element={
+              <RequireAuth>
+                <RequirePermission slug="roles.manage">
+                  <AdminLayout>
+                    <ListViewsSettings />
+                  </AdminLayout>
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
 
           <Route
             path="admin/quick-builder"
@@ -281,8 +278,8 @@ function App() {
                <RequireAuth>
                 <RequirePermission slug="roles.manage">
                   <AdminLayout>
-					<QuickBuilderPage  />
-				  </AdminLayout>
+                    <QuickBuilderPage />
+                  </AdminLayout>
                 </RequirePermission>
               </RequireAuth>
             }
