@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSettings } from '../../context/SettingsContext';
-// Import the API client only; we'll call api.put directly rather than using saveSettings
-// Import both the API client and the helper to persist settings.
 import { api, saveSettings } from '../../lib/api';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -84,7 +82,9 @@ export default function SettingsPage() {
   function bind(path) {
     return (e) => {
       const value =
-        e && e.target && e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+        e && e.target && e.target.type === 'checkbox'
+          ? e.target.checked
+          : e.target.value;
       setForm((prev) => {
         const next = { ...prev };
         const parts = path.split('.');
@@ -110,7 +110,9 @@ export default function SettingsPage() {
 
   function updateTopbar(index, field, value) {
     setForm((prev) => {
-      const items = Array.isArray(prev.navTopbarButtons) ? [...prev.navTopbarButtons] : [];
+      const items = Array.isArray(prev.navTopbarButtons)
+        ? [...prev.navTopbarButtons]
+        : [];
       items[index] = { ...(items[index] || {}), [field]: value };
       return { ...prev, navTopbarButtons: items };
     });
@@ -138,7 +140,9 @@ export default function SettingsPage() {
     setForm((prev) => ({
       ...prev,
       navTopbarButtons: [
-        ...(Array.isArray(prev.navTopbarButtons) ? prev.navTopbarButtons : []),
+        ...(Array.isArray(prev.navTopbarButtons)
+          ? prev.navTopbarButtons
+          : []),
         { label: 'New button', to: '/admin', roles: [] },
       ],
     }));
@@ -146,19 +150,117 @@ export default function SettingsPage() {
 
   function removeTopbarItem(index) {
     setForm((prev) => {
-      const items = Array.isArray(prev.navTopbarButtons) ? [...prev.navTopbarButtons] : [];
+      const items = Array.isArray(prev.navTopbarButtons)
+        ? [...prev.navTopbarButtons]
+        : [];
       items.splice(index, 1);
       return { ...prev, navTopbarButtons: items };
     });
   }
 
   function handleMultiRoleChange(kind, index, event) {
-    const selected = Array.from(event.target.selectedOptions).map((opt) => opt.value);
+    const selected = Array.from(event.target.selectedOptions).map(
+      (opt) => opt.value,
+    );
     if (kind === 'sidebar') {
       updateNavSidebar(index, 'roles', selected);
     } else {
       updateTopbar(index, 'roles', selected);
     }
+  }
+
+  // --- SIDEBAR CHILD HELPERS ---
+
+  function addSidebarChild(parentIndex) {
+    setForm((prev) => {
+      const nav = Array.isArray(prev.navSidebar) ? [...prev.navSidebar] : [];
+      const parent = nav[parentIndex] || {};
+      const children = Array.isArray(parent.children)
+        ? [...parent.children]
+        : [];
+      children.push({ label: 'Child link', to: '/admin' });
+      nav[parentIndex] = { ...parent, children };
+      return { ...prev, navSidebar: nav };
+    });
+  }
+
+  function updateSidebarChild(parentIndex, childIndex, field, value) {
+    setForm((prev) => {
+      const nav = Array.isArray(prev.navSidebar) ? [...prev.navSidebar] : [];
+      const parent = nav[parentIndex] || {};
+      const children = Array.isArray(parent.children)
+        ? [...parent.children]
+        : [];
+      children[childIndex] = {
+        ...(children[childIndex] || {}),
+        [field]: value,
+      };
+      nav[parentIndex] = { ...parent, children };
+      return { ...prev, navSidebar: nav };
+    });
+  }
+
+  function removeSidebarChild(parentIndex, childIndex) {
+    setForm((prev) => {
+      const nav = Array.isArray(prev.navSidebar) ? [...prev.navSidebar] : [];
+      const parent = nav[parentIndex] || {};
+      const children = Array.isArray(parent.children)
+        ? [...parent.children]
+        : [];
+      children.splice(childIndex, 1);
+      nav[parentIndex] = { ...parent, children };
+      return { ...prev, navSidebar: nav };
+    });
+  }
+
+  // --- TOPBAR CHILD HELPERS ---
+
+  function addTopbarChild(parentIndex) {
+    setForm((prev) => {
+      const list = Array.isArray(prev.navTopbarButtons)
+        ? [...prev.navTopbarButtons]
+        : [];
+      const parent = list[parentIndex] || {};
+      const children = Array.isArray(parent.children)
+        ? [...parent.children]
+        : [];
+      children.push({ label: 'Child link', to: '/admin' });
+      list[parentIndex] = { ...parent, children };
+      return { ...prev, navTopbarButtons: list };
+    });
+  }
+
+  function updateTopbarChild(parentIndex, childIndex, field, value) {
+    setForm((prev) => {
+      const list = Array.isArray(prev.navTopbarButtons)
+        ? [...prev.navTopbarButtons]
+        : [];
+      const parent = list[parentIndex] || {};
+      const children = Array.isArray(parent.children)
+        ? [...parent.children]
+        : [];
+      children[childIndex] = {
+        ...(children[childIndex] || {}),
+        [field]: value,
+      };
+      list[parentIndex] = { ...parent, children };
+      return { ...prev, navTopbarButtons: list };
+    });
+  }
+
+  function removeTopbarChild(parentIndex, childIndex) {
+    setForm((prev) => {
+      const list = Array.isArray(prev.navTopbarButtons)
+        ? [...prev.navTopbarButtons]
+        : [];
+      const parent = list[parentIndex] || {};
+      const children = Array.isArray(parent.children)
+        ? [...parent.children]
+        : [];
+      children.splice(childIndex, 1);
+      list[parentIndex] = { ...parent, children };
+      return { ...prev, navTopbarButtons: list };
+    });
   }
 
   async function uploadBrandingFile(e, field) {
@@ -172,9 +274,11 @@ export default function SettingsPage() {
       setUploading(true);
       const ext = file.name.split('.').pop() || 'png';
       const path = `${field}-${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('branding').upload(path, file, {
-        upsert: true,
-      });
+      const { error: uploadError } = await supabase.storage
+        .from('branding')
+        .upload(path, file, {
+          upsert: true,
+        });
       if (uploadError) throw uploadError;
 
       const { data } = supabase.storage.from('branding').getPublicUrl(path);
@@ -232,7 +336,9 @@ export default function SettingsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold mb-1">{form.appName || 'ServiceUp Admin'}</h1>
+          <h1 className="text-2xl font-semibold mb-1">
+            {form.appName || 'ServiceUp Admin'}
+          </h1>
           <p className="text-sm text-gray-500">
             Configure the admin experience, branding, and navigation.
           </p>
@@ -247,7 +353,11 @@ export default function SettingsPage() {
             <div className="space-y-3">
               <div>
                 <label className="su-label">App name</label>
-                <input className="su-input" value={form.appName} onChange={bind('appName')} />
+                <input
+                  className="su-input"
+                  value={form.appName}
+                  onChange={bind('appName')}
+                />
               </div>
 
               <div>
@@ -319,7 +429,9 @@ export default function SettingsPage() {
                       type="file"
                       accept="image/*"
                       style={{ display: 'none' }}
-                      onChange={(e) => uploadBrandingFile(e, 'faviconUrl')}
+                      onChange={(e) =>
+                        uploadBrandingFile(e, 'faviconUrl')
+                      }
                       disabled={uploading}
                     />
                   </label>
@@ -341,7 +453,9 @@ export default function SettingsPage() {
                       type="file"
                       accept="image/*"
                       style={{ display: 'none' }}
-                      onChange={(e) => uploadBrandingFile(e, 'appIconUrl')}
+                      onChange={(e) =>
+                        uploadBrandingFile(e, 'appIconUrl')
+                      }
                       disabled={uploading}
                     />
                   </label>
@@ -378,8 +492,14 @@ export default function SettingsPage() {
           {/* Sidebar menu */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-gray-800">Sidebar menu</h3>
-              <button type="button" className="su-btn" onClick={addSidebarItem}>
+              <h3 className="text-sm font-semibold text-gray-800">
+                Sidebar menu
+              </h3>
+              <button
+                type="button"
+                className="su-btn"
+                onClick={addSidebarItem}
+              >
                 + Add sidebar link
               </button>
             </div>
@@ -392,18 +512,26 @@ export default function SettingsPage() {
 
             <div className="space-y-3">
               {form.navSidebar?.map((item, i) => (
-                <div key={i} className="border border-gray-200 rounded-lg p-3 space-y-2">
+                <div
+                  key={i}
+                  className="border border-gray-200 rounded-lg p-3 space-y-2"
+                >
+                  {/* Parent config */}
                   <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] gap-2 items-center">
                     <input
                       className="su-input"
                       placeholder="Label"
                       value={item.label || ''}
-                      onChange={(e) => updateNavSidebar(i, 'label', e.target.value)}
+                      onChange={(e) =>
+                        updateNavSidebar(i, 'label', e.target.value)
+                      }
                     />
                     <select
                       className="su-select"
                       value={item.to || ''}
-                      onChange={(e) => updateNavSidebar(i, 'to', e.target.value)}
+                      onChange={(e) =>
+                        updateNavSidebar(i, 'to', e.target.value)
+                      }
                     >
                       <option value="">Custom URL…</option>
                       {PAGE_OPTIONS.map((opt) => (
@@ -412,7 +540,11 @@ export default function SettingsPage() {
                         </option>
                       ))}
                     </select>
-                    <button type="button" className="su-btn" onClick={() => removeSidebarItem(i)}>
+                    <button
+                      type="button"
+                      className="su-btn"
+                      onClick={() => removeSidebarItem(i)}
+                    >
                       ✕
                     </button>
                   </div>
@@ -422,13 +554,17 @@ export default function SettingsPage() {
                       className="su-input"
                       placeholder="Or type a custom path (e.g. /admin/custom)"
                       value={item.to || ''}
-                      onChange={(e) => updateNavSidebar(i, 'to', e.target.value)}
+                      onChange={(e) =>
+                        updateNavSidebar(i, 'to', e.target.value)
+                      }
                     />
                     <select
                       multiple
                       className="su-select"
                       value={item.roles || []}
-                      onChange={(e) => handleMultiRoleChange('sidebar', i, e)}
+                      onChange={(e) =>
+                        handleMultiRoleChange('sidebar', i, e)
+                      }
                     >
                       {roleOptions.map((r) => (
                         <option key={r.value} value={r.value}>
@@ -437,7 +573,78 @@ export default function SettingsPage() {
                       ))}
                     </select>
                   </div>
-                  <p className="text-[11px] text-gray-500">Roles: leave empty to show to all roles.</p>
+                  <p className="text-[11px] text-gray-500">
+                    Roles: leave empty to show to all roles.
+                  </p>
+
+                  {/* Child links */}
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] uppercase tracking-wide text-gray-500">
+                        Child links (submenu)
+                      </span>
+                      <button
+                        type="button"
+                        className="su-btn"
+                        onClick={() => addSidebarChild(i)}
+                      >
+                        + Add child link
+                      </button>
+                    </div>
+
+                    {Array.isArray(item.children) &&
+                      item.children.length > 0 && (
+                        <div className="space-y-2">
+                          {item.children.map((child, ci) => (
+                            <div
+                              key={ci}
+                              className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] gap-2 items-center pl-2"
+                            >
+                              <input
+                                className="su-input"
+                                placeholder="Child label"
+                                value={child.label || ''}
+                                onChange={(e) =>
+                                  updateSidebarChild(
+                                    i,
+                                    ci,
+                                    'label',
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                              <input
+                                className="su-input"
+                                placeholder="Child path (e.g. /admin/settings/branding)"
+                                value={child.to || ''}
+                                onChange={(e) =>
+                                  updateSidebarChild(
+                                    i,
+                                    ci,
+                                    'to',
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                              <button
+                                type="button"
+                                className="su-btn"
+                                onClick={() =>
+                                  removeSidebarChild(i, ci)
+                                }
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                    <p className="text-[11px] text-gray-500">
+                      If you add child links, this item becomes a parent
+                      section with a collapsible submenu in the sidebar.
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -446,32 +653,48 @@ export default function SettingsPage() {
           {/* Topbar buttons */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-gray-800">Topbar buttons</h3>
-              <button type="button" className="su-btn" onClick={addTopbarItem}>
+              <h3 className="text-sm font-semibold text-gray-800">
+                Topbar buttons
+              </h3>
+              <button
+                type="button"
+                className="su-btn"
+                onClick={addTopbarItem}
+              >
                 + Add topbar button
               </button>
             </div>
 
-            {!form.navTopbarButtons || form.navTopbarButtons.length === 0 ? (
+            {!form.navTopbarButtons ||
+            form.navTopbarButtons.length === 0 ? (
               <p className="text-xs text-gray-500">
-                No topbar buttons yet. Add quick links for the top-right area.
+                No topbar buttons yet. Add quick links for the top-right
+                area.
               </p>
             ) : null}
 
             <div className="space-y-3">
               {form.navTopbarButtons?.map((item, i) => (
-                <div key={i} className="border border-gray-200 rounded-lg p-3 space-y-2">
+                <div
+                  key={i}
+                  className="border border-gray-200 rounded-lg p-3 space-y-2"
+                >
+                  {/* Parent config */}
                   <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] gap-2 items-center">
                     <input
                       className="su-input"
                       placeholder="Label"
                       value={item.label || ''}
-                      onChange={(e) => updateTopbar(i, 'label', e.target.value)}
+                      onChange={(e) =>
+                        updateTopbar(i, 'label', e.target.value)
+                      }
                     />
                     <select
                       className="su-select"
                       value={item.to || ''}
-                      onChange={(e) => updateTopbar(i, 'to', e.target.value)}
+                      onChange={(e) =>
+                        updateTopbar(i, 'to', e.target.value)
+                      }
                     >
                       <option value="">Custom URL…</option>
                       {PAGE_OPTIONS.map((opt) => (
@@ -480,7 +703,11 @@ export default function SettingsPage() {
                         </option>
                       ))}
                     </select>
-                    <button type="button" className="su-btn" onClick={() => removeTopbarItem(i)}>
+                    <button
+                      type="button"
+                      className="su-btn"
+                      onClick={() => removeTopbarItem(i)}
+                    >
                       ✕
                     </button>
                   </div>
@@ -490,13 +717,17 @@ export default function SettingsPage() {
                       className="su-input"
                       placeholder="Or type a custom path (e.g. /admin/custom)"
                       value={item.to || ''}
-                      onChange={(e) => updateTopbar(i, 'to', e.target.value)}
+                      onChange={(e) =>
+                        updateTopbar(i, 'to', e.target.value)
+                      }
                     />
                     <select
                       multiple
                       className="su-select"
                       value={item.roles || []}
-                      onChange={(e) => handleMultiRoleChange('topbar', i, e)}
+                      onChange={(e) =>
+                        handleMultiRoleChange('topbar', i, e)
+                      }
                     >
                       {roleOptions.map((r) => (
                         <option key={r.value} value={r.value}>
@@ -505,7 +736,78 @@ export default function SettingsPage() {
                       ))}
                     </select>
                   </div>
-                  <p className="text-[11px] text-gray-500">Roles: leave empty to show to all roles.</p>
+                  <p className="text-[11px] text-gray-500">
+                    Roles: leave empty to show to all roles.
+                  </p>
+
+                  {/* Child links */}
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] uppercase tracking-wide text-gray-500">
+                        Child links (dropdown)
+                      </span>
+                      <button
+                        type="button"
+                        className="su-btn"
+                        onClick={() => addTopbarChild(i)}
+                      >
+                        + Add child link
+                      </button>
+                    </div>
+
+                    {Array.isArray(item.children) &&
+                      item.children.length > 0 && (
+                        <div className="space-y-2">
+                          {item.children.map((child, ci) => (
+                            <div
+                              key={ci}
+                              className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] gap-2 items-center pl-2"
+                            >
+                              <input
+                                className="su-input"
+                                placeholder="Child label"
+                                value={child.label || ''}
+                                onChange={(e) =>
+                                  updateTopbarChild(
+                                    i,
+                                    ci,
+                                    'label',
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                              <input
+                                className="su-input"
+                                placeholder="Child path (e.g. /admin/help/docs)"
+                                value={child.to || ''}
+                                onChange={(e) =>
+                                  updateTopbarChild(
+                                    i,
+                                    ci,
+                                    'to',
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                              <button
+                                type="button"
+                                className="su-btn"
+                                onClick={() =>
+                                  removeTopbarChild(i, ci)
+                                }
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                    <p className="text-[11px] text-gray-500">
+                      If you add child links, this item becomes a dropdown
+                      in the top bar.
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -514,10 +816,18 @@ export default function SettingsPage() {
       </div>
 
       <div>
-        <button className="su-btn primary" onClick={save} disabled={saving || uploading}>
+        <button
+          className="su-btn primary"
+          onClick={save}
+          disabled={saving || uploading}
+        >
           {saving ? 'Saving…' : uploading ? 'Uploading…' : 'Save settings'}
         </button>
-        {savedMsg && <span className="ml-3 text-sm text-gray-600">{savedMsg}</span>}
+        {savedMsg && (
+          <span className="ml-3 text-sm text-gray-600">
+            {savedMsg}
+          </span>
+        )}
       </div>
     </div>
   );
