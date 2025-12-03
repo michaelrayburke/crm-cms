@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
 
-const SidebarLink = ({ to, label }) => (
+const SidebarLink = ({ to, label, target }) => (
   <NavLink
     to={to}
+    target={target || '_self'}
     className={({ isActive }) =>
       'su-btn su-nav-link' + (isActive ? ' primary' : '')
     }
@@ -14,7 +15,7 @@ const SidebarLink = ({ to, label }) => (
   </NavLink>
 );
 
-export default function Sidebar() {
+export default function Sidebar({ onClose }) {
   const { settings } = useSettings();
   const location = useLocation();
 
@@ -63,6 +64,17 @@ export default function Sidebar() {
 
   return (
     <aside className="su-sidebar" aria-label="Main navigation">
+      {onClose && (
+        <button
+          type="button"
+          className="su-btn su-sidebar-close"
+          onClick={onClose}
+          aria-label="Close navigation menu"
+        >
+          ✕ Close
+        </button>
+      )}
+
       <div className="su-nav-header">Menu</div>
 
       {items.map((item, i) => {
@@ -77,6 +89,7 @@ export default function Sidebar() {
               key={i}
               to={item.to}
               label={item.label || 'Untitled'}
+              target={item.target}
             />
           );
         }
@@ -110,6 +123,7 @@ export default function Sidebar() {
                       key={ci}
                       to={child.to}
                       label={child.label || 'Link'}
+                      target={child.target || item.target}
                     />
                   ) : null
                 )}
