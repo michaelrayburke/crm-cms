@@ -12,7 +12,7 @@ export default function AdminLayout({ children, role = 'ADMIN' }) {
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
-  // Close sidebar with ESC key
+  // ESC closes sidebar
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') {
@@ -23,7 +23,7 @@ export default function AdminLayout({ children, role = 'ADMIN' }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Sync body class so the mobile CSS (body.su-sidebar-open .su-sidebar) works
+  // Body class for mobile slide-in
   useEffect(() => {
     if (sidebarOpen) {
       document.body.classList.add('su-sidebar-open');
@@ -33,34 +33,25 @@ export default function AdminLayout({ children, role = 'ADMIN' }) {
   }, [sidebarOpen]);
 
   if (hideChrome) {
-    // Viewer / embed mode – no sidebar/topbar/footer
+    // Viewer / embed mode
     return <main className="su-content">{children}</main>;
   }
 
   return (
     <div className={`su-layout${collapsed ? ' collapsed' : ''}`}>
-      {/* Sidebar lives directly in the layout grid */}
-      <Sidebar />
+      <Sidebar onClose={closeSidebar} role={role} />
 
-      {/* Topbar gets handlers for hamburger + collapse */}
       <Topbar
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
-        onToggleCollapse={() => setCollapsed((v) => !v)}
         isSidebarOpen={sidebarOpen}
-        isCollapsed={collapsed}
+        role={role}
       />
 
       <main className="su-content">{children}</main>
 
       <Footer />
 
-      {sidebarOpen && (
-        <div
-          className="su-backdrop"
-          onClick={closeSidebar}
-          aria-hidden="true"
-        />
-      )}
+      {/* No backdrop anymore – just the sliding panel */}
     </div>
   );
 }
