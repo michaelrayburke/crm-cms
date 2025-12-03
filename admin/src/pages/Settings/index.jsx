@@ -82,7 +82,7 @@ export default function SettingsPage() {
 
   const roleOptions = useMemo(
     () => roles.map((r) => ({ value: r.slug, label: r.label || r.slug })),
-    [roles],
+    [roles]
   );
 
   function bind(path) {
@@ -166,7 +166,7 @@ export default function SettingsPage() {
 
   function handleMultiRoleChange(kind, index, event) {
     const selected = Array.from(event.target.selectedOptions).map(
-      (opt) => opt.value,
+      (opt) => opt.value
     );
     if (kind === 'sidebar') {
       updateNavSidebar(index, 'roles', selected);
@@ -184,7 +184,12 @@ export default function SettingsPage() {
       const children = Array.isArray(parent.children)
         ? [...parent.children]
         : [];
-      children.push({ label: 'Child link', to: '/admin', target: '_self' });
+      children.push({
+        label: 'Child link',
+        to: '/admin',
+        target: '_self',
+        roles: [],
+      });
       nav[parentIndex] = { ...parent, children };
       return { ...prev, navSidebar: nav };
     });
@@ -230,7 +235,12 @@ export default function SettingsPage() {
       const children = Array.isArray(parent.children)
         ? [...parent.children]
         : [];
-      children.push({ label: 'Child link', to: '/admin', target: '_self' });
+      children.push({
+        label: 'Child link',
+        to: '/admin',
+        target: '_self',
+        roles: [],
+      });
       list[parentIndex] = { ...parent, children };
       return { ...prev, navTopbarButtons: list };
     });
@@ -583,9 +593,7 @@ export default function SettingsPage() {
                   </p>
 
                   <div className="mt-1">
-                    <label className="su-label text-xs">
-                      Link target
-                    </label>
+                    <label className="su-label text-xs">Link target</label>
                     <select
                       className="su-select"
                       value={item.target || '_self'}
@@ -623,10 +631,7 @@ export default function SettingsPage() {
                       item.children.length > 0 && (
                         <div className="space-y-2">
                           {item.children.map((child, ci) => (
-                            <div
-                              key={ci}
-                              className="space-y-2 pl-2"
-                            >
+                            <div key={ci} className="space-y-2 pl-2">
                               <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] gap-2 items-center">
                                 <input
                                   className="su-input"
@@ -637,7 +642,7 @@ export default function SettingsPage() {
                                       i,
                                       ci,
                                       'label',
-                                      e.target.value,
+                                      e.target.value
                                     )
                                   }
                                 />
@@ -649,13 +654,11 @@ export default function SettingsPage() {
                                       i,
                                       ci,
                                       'to',
-                                      e.target.value,
+                                      e.target.value
                                     )
                                   }
                                 >
-                                  <option value="">
-                                    Custom URL…
-                                  </option>
+                                  <option value="">Custom URL…</option>
                                   {PAGE_OPTIONS.map((opt) => (
                                     <option
                                       key={opt.value}
@@ -676,7 +679,7 @@ export default function SettingsPage() {
                                 </button>
                               </div>
 
-                              <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr)] gap-2 items-center">
+                              <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),minmax(0,1fr)] gap-2 items-center">
                                 <input
                                   className="su-input"
                                   placeholder="Or type a custom path (e.g. /admin/settings/branding)"
@@ -686,7 +689,7 @@ export default function SettingsPage() {
                                       i,
                                       ci,
                                       'to',
-                                      e.target.value,
+                                      e.target.value
                                     )
                                   }
                                 />
@@ -698,7 +701,7 @@ export default function SettingsPage() {
                                       i,
                                       ci,
                                       'target',
-                                      e.target.value,
+                                      e.target.value
                                     )
                                   }
                                 >
@@ -708,6 +711,31 @@ export default function SettingsPage() {
                                       value={opt.value}
                                     >
                                       {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  multiple
+                                  className="su-select"
+                                  value={child.roles || []}
+                                  onChange={(e) => {
+                                    const selected = Array.from(
+                                      e.target.selectedOptions
+                                    ).map((opt) => opt.value);
+                                    updateSidebarChild(
+                                      i,
+                                      ci,
+                                      'roles',
+                                      selected
+                                    );
+                                  }}
+                                >
+                                  {roleOptions.map((r) => (
+                                    <option
+                                      key={r.value}
+                                      value={r.value}
+                                    >
+                                      {r.label}
                                     </option>
                                   ))}
                                 </select>
@@ -858,10 +886,7 @@ export default function SettingsPage() {
                       item.children.length > 0 && (
                         <div className="space-y-2">
                           {item.children.map((child, ci) => (
-                            <div
-                              key={ci}
-                              className="space-y-2 pl-2"
-                            >
+                            <div key={ci} className="space-y-2 pl-2">
                               <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] gap-2 items-center">
                                 <input
                                   className="su-input"
@@ -872,7 +897,7 @@ export default function SettingsPage() {
                                       i,
                                       ci,
                                       'label',
-                                      e.target.value,
+                                      e.target.value
                                     )
                                   }
                                 />
@@ -884,13 +909,11 @@ export default function SettingsPage() {
                                       i,
                                       ci,
                                       'to',
-                                      e.target.value,
+                                      e.target.value
                                     )
                                   }
                                 >
-                                  <option value="">
-                                    Custom URL…
-                                  </option>
+                                  <option value="">Custom URL…</option>
                                   {PAGE_OPTIONS.map((opt) => (
                                     <option
                                       key={opt.value}
@@ -911,7 +934,7 @@ export default function SettingsPage() {
                                 </button>
                               </div>
 
-                              <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr)] gap-2 items-center">
+                              <div className="grid grid-cols-[minmax(0,1fr),minmax(0,1fr),minmax(0,1fr)] gap-2 items-center">
                                 <input
                                   className="su-input"
                                   placeholder="Or type a custom path (e.g. /admin/help/docs)"
@@ -921,7 +944,7 @@ export default function SettingsPage() {
                                       i,
                                       ci,
                                       'to',
-                                      e.target.value,
+                                      e.target.value
                                     )
                                   }
                                 />
@@ -933,7 +956,7 @@ export default function SettingsPage() {
                                       i,
                                       ci,
                                       'target',
-                                      e.target.value,
+                                      e.target.value
                                     )
                                   }
                                 >
@@ -943,6 +966,31 @@ export default function SettingsPage() {
                                       value={opt.value}
                                     >
                                       {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  multiple
+                                  className="su-select"
+                                  value={child.roles || []}
+                                  onChange={(e) => {
+                                    const selected = Array.from(
+                                      e.target.selectedOptions
+                                    ).map((opt) => opt.value);
+                                    updateTopbarChild(
+                                      i,
+                                      ci,
+                                      'roles',
+                                      selected
+                                    );
+                                  }}
+                                >
+                                  {roleOptions.map((r) => (
+                                    <option
+                                      key={r.value}
+                                      value={r.value}
+                                    >
+                                      {r.label}
                                     </option>
                                   ))}
                                 </select>
