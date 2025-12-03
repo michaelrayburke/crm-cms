@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
+// Import your Supabase client
+import { supabase } from '../lib/supabaseClient';
 
 /**
- * Simple JWT-based login for the main admin UI.
+ * JWT-based login for the admin UI.
  * Calls POST /api/auth/login with { email, password }.
- * Stores token + user in localStorage and redirects to /admin.
+ * Stores token + user in localStorage and then signs into Supabase Auth.
  */
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -23,10 +25,24 @@ export default function LoginPage() {
       if (!res || !res.token) {
         throw new Error('Invalid response from server');
       }
+      // Store JWT and user as before
       localStorage.setItem('serviceup.jwt', res.token);
       if (res.user) {
         localStorage.setItem('serviceup.user', JSON.stringify(res.user));
       }
+      // NEW: sign into Supabase Auth so file/image uploads work
+      try {
+        const { error: sbErr } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (sbErr) {
+          console.warn('[Login] Supabase sign-in failed', sbErr.message);
+        }
+      } catch (sbErr) {
+        console.warn('[Login] Supabase sign-in exception', sbErr);
+      }
+      // Redirect to admin dashboard
       navigate('/admin', { replace: true });
     } catch (err) {
       console.error('Login failed', err);
@@ -60,10 +76,7 @@ export default function LoginPage() {
         </p>
 
         {error && (
-          <div
-            className="su-alert su-error"
-            style={{ marginBottom: 12, fontSize: 14 }}
-          >
+          <div className="su-alert su-error" style={{ marginBottom: 12, fontSize: 14 }}>
             {error}
           </div>
         )}
