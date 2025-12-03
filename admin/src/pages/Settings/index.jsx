@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSettings } from '../../context/SettingsContext';
 // Import the API client only; we'll call api.put directly rather than using saveSettings
-import { api } from '../../lib/api';
+// Import both the API client and the helper to persist settings.
+import { api, saveSettings } from '../../lib/api';
 import { supabase } from '../../lib/supabaseClient';
 
 const TIMEZONES = [
@@ -206,8 +207,8 @@ export default function SettingsPage() {
           mode: form.theme?.mode || 'light',
         },
       };
-      // Persist settings by issuing a PUT request directly through the api client.
-      const saved = await api.put('/settings', payload);
+      // Persist settings using the saveSettings helper which computes the correct path
+      const saved = await saveSettings(payload);
       const nextSettings = saved || payload;
       setSettings(nextSettings);
       setSavedMsg('Settings saved.');

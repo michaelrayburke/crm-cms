@@ -24,40 +24,75 @@ function authHeaders(extra = {}) {
 }
 
 export const api = {
-  get: (url) =>
-    fetch(`${API_BASE}${url}`, {
+  get: (url) => {
+    const finalUrl = normalizeSettingsUrl(url);
+    return fetch(`${API_BASE}${finalUrl}`, {
       method: 'GET',
       headers: authHeaders(),
       credentials: 'include',
-    }).then(handle),
-  post: (url, body) =>
-    fetch(`${API_BASE}${url}`, {
+    }).then(handle);
+  },
+  post: (url, body) => {
+    const finalUrl = normalizeSettingsUrl(url);
+    return fetch(`${API_BASE}${finalUrl}`, {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body || {}),
       credentials: 'include',
-    }).then(handle),
-  patch: (url, body) =>
-    fetch(`${API_BASE}${url}`, {
+    }).then(handle);
+  },
+  patch: (url, body) => {
+    const finalUrl = normalizeSettingsUrl(url);
+    return fetch(`${API_BASE}${finalUrl}`, {
       method: 'PATCH',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body || {}),
       credentials: 'include',
-    }).then(handle),
-  put: (url, body) =>
-    fetch(`${API_BASE}${url}`, {
+    }).then(handle);
+  },
+  put: (url, body) => {
+    const finalUrl = normalizeSettingsUrl(url);
+    return fetch(`${API_BASE}${finalUrl}`, {
       method: 'PUT',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body || {}),
       credentials: 'include',
-    }).then(handle),
-  del: (url) =>
-    fetch(`${API_BASE}${url}`, {
+    }).then(handle);
+  },
+  del: (url) => {
+    const finalUrl = normalizeSettingsUrl(url);
+    return fetch(`${API_BASE}${finalUrl}`, {
       method: 'DELETE',
       headers: authHeaders(),
       credentials: 'include',
-    }).then(handle),
+    }).then(handle);
+  },
 };
+
+// Normalize the settings URL to ensure the correct `/api/settings` path is used.
+// If the client code calls '/settings', we should prefix '/api' when API_BASE
+// does not already end with '/api'. This is necessary because the Express server
+// mounts the settings router at `/api/settings`, and without the prefix the
+// request will 404 on production deployments (where API_BASE is the bare domain).
+function normalizeSettingsUrl(url) {
+  try {
+    // Only rewrite when the request is exactly '/settings' or '/settings/'.
+    const isSettings =
+      url === '/settings' || url === 'settings' || url === '/settings/';
+    if (!isSettings) {
+      return url;
+    }
+    const base = API_BASE || '';
+    // Remove any trailing slashes from the base URL for comparison
+    const baseTrimmed = base.replace(/\/+$/, '');
+    const endsWithApi = baseTrimmed.endsWith('/api');
+    // If API_BASE already ends with '/api', we don't prefix again; otherwise, add '/api'
+    return endsWithApi ? '/settings' : '/api/settings';
+  } catch {
+    // Fallback to safe default
+    return '/api/settings';
+  }
+}
 
 // Settings helpers
 // Determine the correct path for the settings endpoint.

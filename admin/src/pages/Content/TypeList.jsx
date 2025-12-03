@@ -366,10 +366,11 @@ export default function TypeList() {
   }
 
   function handleClickRow(row) {
-    const id = row.id || row._id;
-    if (!typeSlug || !id) return;
-    // Use /admin prefix so it matches routes defined in App.jsx
-    navigate(`/admin/content/${typeSlug}/${id}`);
+    // Prefer slug for navigation; fall back to id if slug is missing
+    if (!typeSlug) return;
+    const slugOrId = row.slug || (row.data && (row.data.slug || row.data._slug)) || row.id || row._id;
+    if (!slugOrId) return;
+    navigate(`/admin/content/${typeSlug}/${slugOrId}`);
   }
 
   function handleChooseView(slug) {

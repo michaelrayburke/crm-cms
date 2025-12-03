@@ -26,14 +26,20 @@ function slugify(value) {
 function buildLayoutFromView(contentType, viewConfig) {
   if (!contentType) return [];
 
-  const fields = Array.isArray(contentType.fields) ? contentType.fields : [];
+  // Build a lookup of custom fields by key. Do NOT include built‑in fields
+  const rawFields = Array.isArray(contentType.fields) ? contentType.fields : [];
+  const fields = rawFields.map((f) => {
+    if (!f) return null;
+    // Normalize field definitions: ensure .key exists (some APIs return field_key)
+    const key = f.key || f.field_key;
+    return key ? { ...f, key } : null;
+  }).filter(Boolean);
   const fieldsByKey = {};
   fields.forEach((f) => {
     if (f && f.key) fieldsByKey[f.key] = f;
   });
 
   const sections = [];
-
   const cfgSections =
     viewConfig && Array.isArray(viewConfig.sections)
       ? viewConfig.sections
@@ -64,6 +70,7 @@ function buildLayoutFromView(contentType, viewConfig) {
           width = fCfgRaw.width || 1;
           if (fCfgRaw.visible === false) visible = false;
         }
+        // Only include custom fields that exist in the content type
         if (!key) continue;
         const def = fieldsByKey[key];
         if (!def) continue;
@@ -84,7 +91,7 @@ function buildLayoutFromView(contentType, viewConfig) {
     }
   }
 
-  // Fallback: single section with all fields
+  // Fallback: single section with all custom fields. Do not include built‑ins
   if (!sections.length && fields.length) {
     sections.push({
       id: 'main',
@@ -351,9 +358,16 @@ export default function Editor() {
       setSaving(true);
 
       // Mirror core fields into data so they survive even if the API
-      // mostly persists JSON in entries.data.
+      // mostly persists JSON in entries.data. Sanitize undefined keys.
+      const sanitized = {};
+      if (data && typeof data === 'object') {
+        Object.entries(data).forEach(([k, v]) => {
+          if (!k || k === 'undefined') return;
+          sanitized[k] = v;
+        });
+      }
       const mergedData = {
-        ...(data || {}),
+        ...sanitized,
         title: title.trim(),
         slug: finalSlug,
         status,
@@ -380,10 +394,12 @@ export default function Editor() {
 
         const newId =
           created?.id ?? created?.entry?.id ?? created?.data?.id ?? null;
-
+        const newSlug =
+          created?.slug ?? created?.entry?.slug ?? created?.data?.slug ?? finalSlug;
         if (newId) {
-          // Navigate back to the admin editor using the ID; slug resolution can be added later
-          navigate(`/admin/content/${typeSlug}/${newId}`, { replace: true });
+          // Prefer slug if available; fall back to ID. Navigate to admin path so slug works via API.
+          const slugOrId = newSlug || newId;
+          navigate(`/admin/content/${typeSlug}/${slugOrId}`, { replace: true });
           setSaveMessage("Entry created.");
         } else {
           setSaveMessage("Entry created (reload list to see it).");
@@ -418,6 +434,11 @@ export default function Editor() {
           setSlug(loadedSlug);
           setStatus(loadedStatus);
           setData(entryData);
+          // If slug changed, update the URL for consistency
+          const currentSlugParam = entryId;
+          if (loadedSlug && loadedSlug !== currentSlugParam) {
+            navigate(`/admin/content/${typeSlug}/${loadedSlug}`, { replace: true });
+          }
         }
 
         setSaveMessage('Entry saved.');
@@ -686,21 +707,25 @@ export default function Editor() {
                   }}
                 >
                   {section.rows.map(({ def, width }) => {
-                    const value = data?.[def.key];
+                    // Safeguard: only render fields with a defined key
+                    const key = def && def.key;
+                    if (!key) return null;
+                    const value = data ? data[key] : undefined;
                     return (
                       <div
-                        key={def.key}
+                        key={key}
                         style={{ gridColumn: `span ${width || 1}` }}
                       >
                         <FieldInput
                           field={def}
                           value={value}
-                          onChange={(val) =>
+                          onChange={(val) => {
+                            if (!key) return;
                             setData((prev) => ({
                               ...(prev || {}),
-                              [def.key]: val,
-                            }))
-                          }
+                              [key]: val,
+                            }));
+                          }}
                         />
                       </div>
                     );
