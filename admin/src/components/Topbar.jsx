@@ -1,82 +1,90 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
-import { useAuth } from '../context/AuthContext';
-
-function isButtonVisibleForRole(item, role) {
-  const raw = item.allowedRoles;
-  if (!raw) return true;
-  const roles = String(raw)
-    .split(',')
-    .map((r) => r.trim().toUpperCase())
-    .filter(Boolean);
-  if (!roles.length) return true;
-  if (!role) return false;
-  return roles.includes(String(role).toUpperCase());
-}
 
 export default function Topbar() {
   const { settings } = useSettings();
-  const { user } = useAuth();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [openIndex, setOpenIndex] = useState(null);
 
-  const appName = settings?.appName || 'ServiceUp';
+  const items = Array.isArray(settings?.navTopbarButtons)
+    ? settings.navTopbarButtons
+    : [];
 
-  const defaultButtons = [{ label: 'Quick Builder', to: '/quick-builder' }];
-
-  const buttons =
-    settings && Array.isArray(settings.navTopbarButtons)
-      ? settings.navTopbarButtons
-      : defaultButtons;
-
-  const role = user?.role || null;
-  const visibleButtons = buttons.filter((btn) =>
-    isButtonVisibleForRole(btn, role)
-  );
-
-  const toggleSidebar = () => {
-    setSidebarOpen((prev) => {
-      const next = !prev;
-      if (typeof document !== 'undefined') {
-        document.body.classList.toggle('su-sidebar-open', next);
-      }
-      return next;
-    });
+  const handleToggle = (index) => {
+    setOpenIndex((prev) => (prev === index ? null : index));
   };
 
   return (
     <header className="su-topbar">
-      <div className="su-topbar-inner">
-        <div className="su-topbar-left">
-          {/* Hamburger for mobile / small screens */}
-          <button
-            type="button"
-            className="su-btn su-topbar-hamburger"
-            aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
-            aria-controls="su-sidebar"
-            aria-expanded={sidebarOpen ? 'true' : 'false'}
-            onClick={toggleSidebar}
-          >
-            ☰
-          </button>
-
-          <span className="su-logo">{appName}</span>
+      {/* Left side: app name / logo area */}
+      <div className="su-topbar-left">
+        <div className="su-topbar-title">
+          {settings?.appName || 'ServiceUp Admin'}
         </div>
-
-        <nav className="su-topbar-right">
-          {visibleButtons.map((btn) =>
-            btn.to ? (
-              <Link
-                key={btn.label + btn.to}
-                to={btn.to}
-                className="su-btn ghost"
-              >
-                {btn.label}
-              </Link>
-            ) : null
-          )}
-        </nav>
       </div>
+
+      {/* Right side: topbar nav */}
+      <nav className="su-topbar-nav" aria-label="Top navigation">
+        {items.map((item, i) => {
+          const hasChildren =
+            Array.isArray(item.children) && item.children.length > 0;
+
+          // Simple link
+          if (!hasChildren) {
+            if (!item.to) return null;
+            return (
+              <NavLink
+                key={i}
+                to={item.to}
+                className={({ isActive }) =>
+                  'su-btn su-topbar-link' + (isActive ? ' primary' : '')
+                }
+              >
+                {item.label || 'Link'}
+              </NavLink>
+            );
+          }
+
+          // Parent with dropdown
+          const isOpen = openIndex === i;
+
+          return (
+            <div
+              key={i}
+              className={
+                'su-topbar-dropdown-wrapper' + (isOpen ? ' open' : '')
+              }
+            >
+              <button
+                type="button"
+                className="su-btn su-topbar-link su-topbar-parent"
+                onClick={() => handleToggle(i)}
+              >
+                <span>{item.label || 'Menu'}</span>
+                <span className="su-nav-caret" aria-hidden="true">
+                  ▾
+                </span>
+              </button>
+              {isOpen && (
+                <div className="su-topbar-dropdown" role="menu">
+                  {item.children.map((child, ci) =>
+                    child.to ? (
+                      <NavLink
+                        key={ci}
+                        to={child.to}
+                        className="su-topbar-dropdown-link"
+                        role="menuitem"
+                      >
+                        {child.label || 'Link'}
+                      </NavLink>
+                    ) : null
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </nav>
     </header>
   );
 }
