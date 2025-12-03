@@ -810,4 +810,4 @@ export default function EntryViews() {
       )}
     </div>
   );
-            }
+}

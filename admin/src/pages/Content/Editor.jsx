@@ -378,20 +378,15 @@ export default function Editor() {
 
         const created = res.entry || res.data || res;
 
-        const newSlug =
-          created?.slug || created?.entry?.slug || created?.data?.slug || finalSlug;
         const newId =
           created?.id ?? created?.entry?.id ?? created?.data?.id ?? null;
 
-        // Prefer navigating by slug if available, otherwise fall back to ID
-        if (newSlug) {
-          navigate(`/admin/content/${typeSlug}/${newSlug}`, { replace: true });
-          setSaveMessage('Entry created.');
-        } else if (newId) {
+        if (newId) {
+          // Navigate back to the admin editor using the ID; slug resolution can be added later
           navigate(`/admin/content/${typeSlug}/${newId}`, { replace: true });
-          setSaveMessage('Entry created.');
+          setSaveMessage("Entry created.");
         } else {
-          setSaveMessage('Entry created (reload list to see it).');
+          setSaveMessage("Entry created (reload list to see it).");
         }
       } else {
         // UPDATE
@@ -423,10 +418,6 @@ export default function Editor() {
           setSlug(loadedSlug);
           setStatus(loadedStatus);
           setData(entryData);
-          // If the slug changed (e.g. title changed), update the URL to point to the slug
-          if (!isNew && entryId && entryId !== loadedSlug && loadedSlug) {
-            navigate(`/admin/content/${typeSlug}/${loadedSlug}`, { replace: true });
-          }
         }
 
         setSaveMessage('Entry saved.');
@@ -821,4 +812,4 @@ export default function Editor() {
       </div>
     </div>
   );
-    }
+}
