@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import {
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { api } from "../../lib/api";
 import FieldInput from "../../components/FieldInput";
+// If you have an Auth context, you can import it to determine the current user's role.
+// import { useAuth } from '../../context/AuthContext';
 
 // Simple slug helper
 function slugify(value) {
@@ -77,6 +83,12 @@ function buildLayoutFromView(contentType, viewConfig) {
 export default function Editor() {
   const { typeSlug, entryId } = useParams();
   const navigate = useNavigate();
+  // Read view slug from the URL (?view=slug) and allow updating it
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Determine the current role.  If you have an AuthContext providing user.role you can
+  // uncomment the next lines.  For now we default to ADMIN.
+  // const { user } = useAuth();
+  const roleUpper = (/* user?.role || */ "ADMIN").toUpperCase();
 
   const isNew = !entryId || entryId === "new";
 
@@ -97,11 +109,16 @@ export default function Editor() {
   // Content type + editor view
   const [contentType, setContentType] = useState(null);
   const [editorViewConfig, setEditorViewConfig] = useState(null);
+  // List of all editor views for this type and role
+  const [editorViews, setEditorViews] = useState([]);
+  // Track the active view slug and label for deep linking and UI
+  const [activeViewSlug, setActiveViewSlug] = useState("");
+  const [activeViewLabel, setActiveViewLabel] = useState("");
 
   const overallLoading = loadingEntry || loadingType;
 
   // ---------------------------------------------------------------------------
-  // Load content type (with fields) + editor view
+  // Load content type (with fields) + editor views for the current role
   // ---------------------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
@@ -137,31 +154,81 @@ export default function Editor() {
           const fullRes = await api.get(`/api/content-types/${basicCt.id}`);
           fullCt = fullRes?.data || fullRes || basicCt;
         } catch (e) {
-          console.warn(
-            "Failed to load full content type, falling back to basic",
-            e
-          );
+          console.warn("Failed to load full content type, falling back to basic", e);
           fullCt = basicCt;
         }
 
         if (cancelled) return;
-
         setContentType(fullCt);
 
-        // 3) Load editor view config (no explicit role yet; default layout)
-        try {
-          const viewRes = await api.get(
-            `/api/content-types/${basicCt.id}/editor-view`
-          );
-          const cfg = viewRes?.config || {};
-          if (!cancelled) {
-            setEditorViewConfig(cfg);
+        // 3) Load ALL editor views for this content type filtered by role
+        let views = [];
+        if (fullCt && fullCt.id) {
+          try {
+            const vRes = await api.get(
+              `/api/content-types/${fullCt.id}/editor-views?role=${encodeURIComponent(roleUpper)}`
+            );
+            const rawViews = vRes?.data ?? vRes;
+            if (Array.isArray(rawViews)) {
+              views = rawViews;
+            } else if (rawViews && Array.isArray(rawViews.views)) {
+              views = rawViews.views;
+            }
+          } catch (err) {
+            console.warn('[Editor] Failed to load editor views for type; falling back to auto layout', err?.response?.data || err);
           }
-        } catch (err) {
-          console.error("Failed to load editor view", err);
+        }
+        if (!cancelled) {
+          setEditorViews(views || []);
+        }
+
+        // Determine which view to use: URL parameter or default roles
+        let chosenView = null;
+        if (views && views.length) {
+          const viewFromUrl = searchParams.get('view') || '';
+          // Find a default view for the current role (default_roles or legacy is_default)
+          const defaultView =
+            views.find((v) => {
+              const cfg = v.config || {};
+              const dRoles = Array.isArray(cfg.default_roles)
+                ? cfg.default_roles.map((r) => String(r || '').toUpperCase())
+                : [];
+              if (dRoles.length) return dRoles.includes(roleUpper);
+              return !!v.is_default;
+            }) || views[0];
+          if (viewFromUrl) {
+            const fromUrl = views.find((v) => v.slug === viewFromUrl);
+            chosenView = fromUrl || defaultView;
+          } else {
+            chosenView = defaultView;
+          }
+        }
+
+        if (chosenView) {
           if (!cancelled) {
-            // Fallback to auto layout
+            setActiveViewSlug(chosenView.slug);
+            setActiveViewLabel(chosenView.label || chosenView.slug);
+            setEditorViewConfig(chosenView.config || {});
+          }
+          // Ensure the URL has the correct ?view parameter
+          const currentViewParam = searchParams.get('view');
+          if (currentViewParam !== chosenView.slug) {
+            const next = new URLSearchParams(searchParams);
+            next.set('view', chosenView.slug);
+            setSearchParams(next);
+          }
+        } else {
+          // No views configured: fall back to auto layout
+          if (!cancelled) {
+            setActiveViewSlug('');
+            setActiveViewLabel('');
             setEditorViewConfig({});
+          }
+          // Clean up any stale ?view param
+          if (searchParams.get('view')) {
+            const next = new URLSearchParams(searchParams);
+            next.delete('view');
+            setSearchParams(next);
           }
         }
       } catch (err) {
@@ -295,7 +362,8 @@ export default function Editor() {
           created?.id ?? created?.entry?.id ?? created?.data?.id ?? null;
 
         if (newId) {
-          navigate(`/content/${typeSlug}/${newId}`, { replace: true });
+          // Always navigate to the admin path when editing/creating entries
+          navigate(`/admin/content/${typeSlug}/${newId}`, { replace: true });
           setSaveMessage("Entry created.");
         } else {
           setSaveMessage("Entry created (reload list to see it).");
@@ -344,7 +412,7 @@ export default function Editor() {
 
   async function handleDelete() {
     if (isNew) {
-      navigate(`/content/${typeSlug}`);
+      navigate(`/admin/content/${typeSlug}`);
       return;
     }
 
@@ -359,7 +427,7 @@ export default function Editor() {
       if (res && res.ok === false) {
         throw new Error(res.error || res.detail || "Failed to delete entry");
       }
-      navigate(`/content/${typeSlug}`);
+      navigate(`/admin/content/${typeSlug}`);
     } catch (err) {
       console.error("Failed to delete entry", err);
       setError(err.message || "Failed to delete entry");
@@ -428,6 +496,48 @@ export default function Editor() {
             ? `New ${typeSlug} entry`
             : `Edit ${typeSlug}`}
         </h2>
+
+        {/* Editor view selector */}
+        {editorViews.length > 0 && (
+          <div className="su-card su-mb-md">
+            <div className="su-card-body su-flex su-flex-wrap su-gap-sm su-items-center">
+              <span className="su-text-sm su-text-muted">Views:</span>
+              {editorViews.map((v) => {
+                const cfg = v.config || {};
+                const dRoles = Array.isArray(cfg.default_roles)
+                  ? cfg.default_roles.map((r) => String(r || '').toUpperCase())
+                  : [];
+                const isDefaultForRole = dRoles.length
+                  ? dRoles.includes(roleUpper)
+                  : !!v.is_default;
+                return (
+                  <button
+                    key={v.slug}
+                    type="button"
+                    className={
+                      'su-chip' + (v.slug === activeViewSlug ? ' su-chip--active' : '')
+                    }
+                    onClick={() => {
+                      // If clicking the active chip, do nothing
+                      if (v.slug === activeViewSlug) return;
+                      setActiveViewSlug(v.slug);
+                      setActiveViewLabel(v.label || v.slug);
+                      setEditorViewConfig(v.config || {});
+                      const next = new URLSearchParams(searchParams);
+                      next.set('view', v.slug);
+                      setSearchParams(next);
+                    }}
+                  >
+                    {v.label || v.slug}
+                    {isDefaultForRole && (
+                      <span className="su-chip-badge">default</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {error && (
           <div
