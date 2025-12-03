@@ -42,7 +42,7 @@ function App() {
     <AuthProvider>
       <SettingsProvider>
         <Routes>
-          {/* Root redirects to admin dashboard (auth-protected) */}
+          {/* Root redirects to admin dashboard (auth‑protected) */}
           <Route path="/" element={<Navigate to="/admin" replace />} />
 
           {/* Public login route */}
@@ -175,7 +175,6 @@ function App() {
             }
           />
 
-          {/* Role and permissions settings */}
           <Route
             path="/admin/settings/roles"
             element={
@@ -215,7 +214,34 @@ function App() {
             }
           />
 
-          {/* Entry editor view configuration page */}
+          {/* Entry editor views: allow dynamic segments for type slug and view slug.
+             When both :typeSlug and :viewSlug are present we render the edit stage;
+             with only :typeSlug we render the list of entry editor views; with none
+             we list all content types.  This mirrors the list‑view routing. */}
+          <Route
+            path="/admin/settings/entry-views/:typeSlug/:viewSlug"
+            element={
+              <RequireAuth>
+                <RequirePermission slug="roles.manage">
+                  <AdminLayout>
+                    <EntryViews />
+                  </AdminLayout>
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/settings/entry-views/:typeSlug"
+            element={
+              <RequireAuth>
+                <RequirePermission slug="roles.manage">
+                  <AdminLayout>
+                    <EntryViews />
+                  </AdminLayout>
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
           <Route
             path="/admin/settings/entry-views"
             element={
@@ -229,12 +255,7 @@ function App() {
             }
           />
 
-          {/* List views settings: allow dynamic segments for type slug and view slug.
-             The type segment uses the content type slug to mirror the content
-             editing URLs (e.g. /admin/settings/list-views/songs).  When both
-             :typeSlug and :viewSlug are present we render the edit stage; with only
-             :typeSlug we render the list of views; with none we list all
-             content types. */}
+          {/* List views settings: allow dynamic segments for type slug and view slug. */}
           <Route
             path="/admin/settings/list-views/:typeSlug/:viewSlug"
             element={
