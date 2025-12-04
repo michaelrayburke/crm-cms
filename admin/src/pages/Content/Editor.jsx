@@ -6,6 +6,7 @@ import {
 } from "react-router-dom";
 import { api } from "../../lib/api";
 import FieldInput from "../../components/FieldInput";
+// If you have an Auth context, you can import it to determine the current user's role.
 // import { useAuth } from '../../context/AuthContext';
 
 // Simple slug helper
@@ -30,6 +31,7 @@ function buildLayoutFromView(contentType, viewConfig) {
   const fields = rawFields
     .map((f) => {
       if (!f) return null;
+      // Normalize field definitions: ensure .key exists (some APIs return field_key)
       const key = f.key || f.field_key;
       return key ? { ...f, key } : null;
     })
@@ -49,15 +51,18 @@ function buildLayoutFromView(contentType, viewConfig) {
   if (cfgSections && cfgSections.length) {
     for (const sec of cfgSections) {
       const rows = [];
+      // Each section can specify a layout (e.g. "two-column"). Fall back to columns if set.
       let columns = 1;
       if (typeof sec.layout === "string") {
         if (sec.layout.includes("two")) columns = 2;
         if (sec.layout.includes("three")) columns = 3;
       }
+      // If explicit columns property present, respect it
       if (sec.columns && Number.isInteger(sec.columns)) {
         columns = sec.columns;
       }
       for (const fCfgRaw of sec.fields || []) {
+        // Allow fields to be strings (field keys) or objects with key/width
         let key;
         let width = 1;
         let visible = true;
@@ -68,11 +73,15 @@ function buildLayoutFromView(contentType, viewConfig) {
           width = fCfgRaw.width || 1;
           if (fCfgRaw.visible === false) visible = false;
         }
+        // Only include custom fields that exist in the content type
         if (!key) continue;
         const def = fieldsByKey[key];
         if (!def) continue;
         if (visible === false) continue;
-        rows.push({ def, width });
+        rows.push({
+          def,
+          width,
+        });
       }
       if (rows.length) {
         sections.push({
@@ -85,6 +94,7 @@ function buildLayoutFromView(contentType, viewConfig) {
     }
   }
 
+  // Fallback: single section with all custom fields. Do not include built-ins
   if (!sections.length && fields.length) {
     sections.push({
       id: "main",
@@ -104,8 +114,10 @@ export default function Editor() {
   const { typeSlug, entryId } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+
   // const { user } = useAuth();
   const roleUpper = (/* user?.role || */ "ADMIN").toUpperCase();
+
   const isNew = !entryId || entryId === "new";
 
   const [loadingEntry, setLoadingEntry] = useState(!isNew);
@@ -131,19 +143,8 @@ export default function Editor() {
 
   const overallLoading = loadingEntry || loadingType;
 
-  // Title label (future-proof: you can later store a custom label on the content type)
-  const titleLabel = useMemo(() => {
-    if (!contentType) return "Title";
-    return (
-      contentType.title_label ||
-      contentType.titleLabel ||
-      contentType.display_title_label ||
-      "Title"
-    );
-  }, [contentType]);
-
   // ---------------------------------------------------------------------------
-  // Load content type + editor views
+  // Load content type (with fields) + editor views for the current role
   // ---------------------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +154,7 @@ export default function Editor() {
       setError("");
 
       try {
+        // 1) Load all content types and find the one by slug
         const res = await api.get("/api/content-types");
         const list = Array.isArray(res) ? res : res?.data || [];
 
@@ -172,20 +174,23 @@ export default function Editor() {
 
         if (cancelled) return;
 
-        // Full CT with fields
+        // 2) Load the full definition (including fields) by ID
         let fullCt;
         try {
           const fullRes = await api.get(`/api/content-types/${basicCt.id}`);
           fullCt = fullRes?.data || fullRes || basicCt;
         } catch (e) {
-          console.warn("Failed to load full content type, falling back", e);
+          console.warn(
+            "Failed to load full content type, falling back to basic",
+            e
+          );
           fullCt = basicCt;
         }
 
         if (cancelled) return;
         setContentType(fullCt);
 
-        // Load editor views by role
+        // 3) Load ALL editor views for this content type filtered by role
         let views = [];
         if (fullCt && fullCt.id) {
           try {
@@ -195,19 +200,23 @@ export default function Editor() {
               )}`
             );
             const rawViews = vRes?.data ?? vRes;
-            if (Array.isArray(rawViews)) views = rawViews;
-            else if (rawViews && Array.isArray(rawViews.views))
+            if (Array.isArray(rawViews)) {
+              views = rawViews;
+            } else if (rawViews && Array.isArray(rawViews.views)) {
               views = rawViews.views;
+            }
           } catch (err) {
             console.warn(
-              "[Editor] Failed to load editor views; using auto layout",
+              "[Editor] Failed to load editor views for type; falling back to auto layout",
               err?.response?.data || err
             );
           }
         }
-        if (!cancelled) setEditorViews(views || []);
+        if (!cancelled) {
+          setEditorViews(views || []);
+        }
 
-        // Choose view: ?view or default
+        // Determine which view to use: URL parameter or default roles
         let chosenView = null;
         if (views && views.length) {
           const viewFromUrl = searchParams.get("view") || "";
@@ -215,9 +224,7 @@ export default function Editor() {
             views.find((v) => {
               const cfg = v.config || {};
               const dRoles = Array.isArray(cfg.default_roles)
-                ? cfg.default_roles.map((r) =>
-                    String(r || "").toUpperCase()
-                  )
+                ? cfg.default_roles.map((r) => String(r || "").toUpperCase())
                 : [];
               if (dRoles.length) return dRoles.includes(roleUpper);
               return !!v.is_default;
@@ -270,6 +277,7 @@ export default function Editor() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeSlug]);
 
   const sections = useMemo(
@@ -278,10 +286,11 @@ export default function Editor() {
   );
 
   // ---------------------------------------------------------------------------
-  // Load existing entry
+  // Load existing entry (edit mode only)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (isNew) {
+      // new entry: clear entry state but keep content type data
       setTitle("");
       setSlug("");
       setStatus("draft");
@@ -301,59 +310,43 @@ export default function Editor() {
         if (res && res.ok === false) {
           throw new Error(res.error || res.detail || "Failed to load entry");
         }
-
         const entry = res.entry || res.data || res;
         if (cancelled) return;
 
-        // --- SAFE NORMALIZATION OF entry.data ---
-        // Support shapes:
-        //   data: {...fields...}
-        //   data: { data: {...fields...} }
-        //   data: { undefined: {...fields...} }  (legacy bug)
-        let entryDataRaw =
-          (entry && entry.data && typeof entry.data === "object"
-            ? entry.data
-            : {}) || {};
+        // ---- NEW: robust handling of legacy "undefined" nesting and shapes ----
+        const rawData = entry.data || {};
+        let entryData = rawData && typeof rawData === "object" ? { ...rawData } : {};
 
+        // If we have the legacy "undefined" bucket, flatten it into the top level
         if (
-          entryDataRaw &&
-          typeof entryDataRaw === "object" &&
-          entryDataRaw.data &&
-          typeof entryDataRaw.data === "object"
+          entryData &&
+          typeof entryData === "object" &&
+          entryData.undefined &&
+          typeof entryData.undefined === "object"
         ) {
-          entryDataRaw = entryDataRaw.data;
+          entryData = {
+            ...entryData,
+            ...entryData.undefined,
+          };
+          delete entryData.undefined;
         }
 
-        let entryData = { ...entryDataRaw };
-
-        if (entryData && typeof entryData === "object") {
-          const keys = Object.keys(entryData);
-          if (
-            keys.length === 1 &&
-            keys[0] === "undefined" &&
-            entryData.undefined &&
-            typeof entryData.undefined === "object"
-          ) {
-            entryData = { ...entryData.undefined };
-          } else if (
-            entryData.undefined &&
-            typeof entryData.undefined === "object"
-          ) {
-            const inner = entryData.undefined;
-            delete entryData.undefined;
-            entryData = {
-              ...inner,
-              ...entryData,
-            };
-          }
-        }
-
+        // Derive core fields, but prefer the top-level columns if present
         const loadedTitle =
-          entry.title ?? entryData.title ?? entryData._title ?? "";
+          entry.title ??
+          entryData.title ??
+          entryData._title ??
+          "";
         const loadedSlug =
-          entry.slug ?? entryData.slug ?? entryData._slug ?? "";
+          entry.slug ??
+          entryData.slug ??
+          entryData._slug ??
+          "";
         const loadedStatus =
-          entry.status ?? entryData.status ?? entryData._status ?? "draft";
+          entry.status ??
+          entryData.status ??
+          entryData._status ??
+          "draft";
 
         setTitle(loadedTitle);
         setSlug(loadedSlug);
@@ -379,6 +372,7 @@ export default function Editor() {
   // ---------------------------------------------------------------------------
   // Save / Delete
   // ---------------------------------------------------------------------------
+
   async function handleSave(e) {
     e.preventDefault();
     setError("");
@@ -394,6 +388,7 @@ export default function Editor() {
     try {
       setSaving(true);
 
+      // Sanitize existing data: drop bogus / legacy keys
       const sanitized = {};
       if (data && typeof data === "object") {
         Object.entries(data).forEach(([k, v]) => {
@@ -401,6 +396,7 @@ export default function Editor() {
           sanitized[k] = v;
         });
       }
+
       const mergedData = {
         ...sanitized,
         title: title.trim(),
@@ -419,12 +415,14 @@ export default function Editor() {
       };
 
       if (isNew) {
+        // CREATE
         const res = await api.post(`/api/content/${typeSlug}`, payload);
         if (res && res.ok === false) {
           throw new Error(res.error || res.detail || "Failed to create entry");
         }
 
         const created = res.entry || res.data || res;
+
         const newId =
           created?.id ?? created?.entry?.id ?? created?.data?.id ?? null;
         const newSlug =
@@ -435,14 +433,13 @@ export default function Editor() {
 
         if (newId) {
           const slugOrId = newSlug || newId;
-          navigate(`/admin/content/${typeSlug}/${slugOrId}`, {
-            replace: true,
-          });
+          navigate(`/admin/content/${typeSlug}/${slugOrId}`, { replace: true });
           setSaveMessage("Entry created.");
         } else {
           setSaveMessage("Entry created (reload list to see it).");
         }
       } else {
+        // UPDATE
         const res = await api.put(
           `/api/content/${typeSlug}/${entryId}`,
           payload
@@ -454,10 +451,17 @@ export default function Editor() {
         const updated = res.entry || res.data || res;
         if (updated) {
           const entryData = updated.data || mergedData;
+
           const loadedTitle =
-            updated.title ?? entryData.title ?? entryData._title ?? title;
+            updated.title ??
+            entryData.title ??
+            entryData._title ??
+            title;
           const loadedSlug =
-            updated.slug ?? entryData.slug ?? entryData._slug ?? finalSlug;
+            updated.slug ??
+            entryData.slug ??
+            entryData._slug ??
+            finalSlug;
           const loadedStatus =
             updated.status ??
             entryData.status ??
@@ -469,7 +473,9 @@ export default function Editor() {
           setStatus(loadedStatus);
           setData(entryData);
 
-          if (loadedSlug && loadedSlug !== entryId) {
+          // If slug changed, update the URL for consistency
+          const currentSlugParam = entryId;
+          if (loadedSlug && loadedSlug !== currentSlugParam) {
             navigate(`/admin/content/${typeSlug}/${loadedSlug}`, {
               replace: true,
             });
@@ -515,6 +521,7 @@ export default function Editor() {
   // ---------------------------------------------------------------------------
   // Preview helpers
   // ---------------------------------------------------------------------------
+
   const previewData = useMemo(
     () => ({
       ...data,
@@ -547,10 +554,7 @@ export default function Editor() {
       return JSON.stringify(v);
     }
     if (typeof v === "object") {
-      if (
-        v.label &&
-        (typeof v.value === "string" || typeof v.value === "number")
-      ) {
+      if (v.label && (typeof v.value === "string" || typeof v.value === "number")) {
         return `${v.label} (${v.value})`;
       }
       if (v.label && !v.value) return String(v.label);
@@ -562,6 +566,7 @@ export default function Editor() {
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
+
   return (
     <div className="su-grid cols-2">
       {/* LEFT: Editor card */}
@@ -582,9 +587,7 @@ export default function Editor() {
               {editorViews.map((v) => {
                 const cfg = v.config || {};
                 const dRoles = Array.isArray(cfg.default_roles)
-                  ? cfg.default_roles.map((r) =>
-                      String(r || "").toUpperCase()
-                    )
+                  ? cfg.default_roles.map((r) => String(r || "").toUpperCase())
                   : [];
                 const isDefaultForRole = dRoles.length
                   ? dRoles.includes(roleUpper)
@@ -658,16 +661,12 @@ export default function Editor() {
           {/* Core fields */}
           <div style={{ display: "grid", gap: 12, marginBottom: 20 }}>
             <label style={{ fontSize: 13 }}>
-              {titleLabel}
+              Title
               <input
                 className="su-input"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder={
-                  titleLabel === "Title"
-                    ? "My great entry"
-                    : titleLabel || "My great entry"
-                }
+                placeholder="My great entry"
               />
             </label>
 
@@ -753,26 +752,7 @@ export default function Editor() {
                   {section.rows.map(({ def, width }) => {
                     const key = def && def.key;
                     if (!key) return null;
-
-                    // 🔑 Robust lookup: support several legacy shapes
-                    let value;
-                    if (data && typeof data === "object") {
-                      if (key in data) {
-                        value = data[key];
-                      } else if (`_${key}` in data) {
-                        value = data[`_${key}`];
-                      } else if (
-                        data.undefined &&
-                        typeof data.undefined === "object"
-                      ) {
-                        if (key in data.undefined) {
-                          value = data.undefined[key];
-                        } else if (`_${key}` in data.undefined) {
-                          value = data.undefined[`_${key}`];
-                        }
-                      }
-                    }
-
+                    const value = data ? data[key] : undefined;
                     return (
                       <div
                         key={key}
@@ -831,6 +811,7 @@ export default function Editor() {
       <div className="su-card">
         <h2 style={{ marginTop: 0, marginBottom: 12 }}>Preview</h2>
 
+        {/* "Physical" preview */}
         <div
           style={{
             borderRadius: 10,
@@ -876,6 +857,7 @@ export default function Editor() {
           </div>
         </div>
 
+        {/* JSON preview */}
         <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 14 }}>
           Raw JSON (<code>entries.data</code>)
         </h3>
