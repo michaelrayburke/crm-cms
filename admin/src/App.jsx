@@ -24,6 +24,12 @@ import QuickBuilderPage from "./pages/ContentTypes/QuickBuilder";
 import EntryViews from "./pages/Settings/EntryViews.jsx";
 import ListViewsSettings from "./pages/Settings/ListViews.jsx";
 
+import GizmosList from './pages/Gizmos/List';
+import GizmoForm from './pages/Gizmos/Form';
+import GadgetsList from './pages/Gadgets/List';
+import GadgetForm from './pages/Gadgets/Form';
+
+
 function RequireAuth({ children }) {
   // Very simple auth gate for now: just check for token in localStorage.
   const token =
@@ -306,6 +312,68 @@ function App() {
             }
           />
 
+        <Route
+          path="/admin/gizmos"
+          element={
+    <RequireAuth>
+      <AdminLayout>
+        <GizmosList />
+      </AdminLayout>
+    </RequireAuth>
+  }
+/>
+<Route
+  path="/admin/gizmos/new"
+  element={
+    <RequireAuth>
+      <AdminLayout>
+        <GizmoForm />
+      </AdminLayout>
+    </RequireAuth>
+  }
+/>
+<Route
+  path="/admin/gizmos/:id"
+  element={
+    <RequireAuth>
+      <AdminLayout>
+        <GizmoForm />
+      </AdminLayout>
+    </RequireAuth>
+  }
+/>
+<Route
+  path="/admin/gadgets"
+  element={
+    <RequireAuth>
+      <AdminLayout>
+        <GadgetsList />
+      </AdminLayout>
+    </RequireAuth>
+  }
+/>
+<Route
+  path="/admin/gadgets/new"
+  element={
+    <RequireAuth>
+      <AdminLayout>
+        <GadgetForm />
+      </AdminLayout>
+    </RequireAuth>
+  }
+/>
+<Route
+  path="/admin/gadgets/:id"
+  element={
+    <RequireAuth>
+      <AdminLayout>
+        <GadgetForm />
+      </AdminLayout>
+    </RequireAuth>
+  }
+/>
+
+          
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
