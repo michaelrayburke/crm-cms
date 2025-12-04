@@ -175,10 +175,6 @@ export default function Editor() {
         if (cancelled) return;
 
         // 2) Load the full definition (including fields) by ID.
-        // Pass the `all=true` query param to ensure we always get field definitions
-        // even if the current user lacks manage_content_types permission.  This
-        // prevents the editor from falling back to a basic content type with no
-        // custom fields, which would make fields invisible in the UI.
         let fullCt;
         try {
           const fullRes = await api.get(`/api/content-types/${basicCt.id}?all=true`);
@@ -315,11 +311,43 @@ export default function Editor() {
         const entry = res.entry || res.data || res;
         if (cancelled) return;
 
-        // ---- NEW: robust handling of legacy "undefined" nesting and shapes ----
-        const rawData = entry.data || {};
-        let entryData = rawData && typeof rawData === "object" ? { ...rawData } : {};
+        // Start from entry.data if present
+        const rawData =
+          entry && typeof entry.data === "object" && entry.data !== null
+            ? entry.data
+            : {};
 
-        // Flatten nested "undefined" buckets recursively
+        let entryData =
+          rawData && typeof rawData === "object" ? { ...rawData } : {};
+
+        // Merge in any extra keys from the top-level entry that
+        // are not system columns. This handles cases where the API
+        // (or older data) stored custom fields directly on the row.
+        const SYSTEM_KEYS = new Set([
+          "id",
+          "content_type_id",
+          "data",
+          "created_at",
+          "updated_at",
+          "title",
+          "slug",
+          "status",
+          "_title",
+          "_slug",
+          "_status",
+          "version",
+          "version_of",
+          "published_at",
+        ]);
+
+        Object.entries(entry || {}).forEach(([k, v]) => {
+          if (SYSTEM_KEYS.has(k)) return;
+          if (entryData[k] === undefined) {
+            entryData[k] = v;
+          }
+        });
+
+        // Flatten nested "undefined" buckets recursively (legacy shape)
         while (
           entryData &&
           typeof entryData === "object" &&
@@ -336,7 +364,7 @@ export default function Editor() {
         // 🔍 DEBUG: see exactly what we loaded and what keys exist
         console.log("[Editor] Loaded entry from API", { typeSlug, entryId, entry });
         console.log("[Editor] entry.data from API", rawData);
-        console.log("[Editor] entryData after flatten", entryData);
+        console.log("[Editor] entryData after merge/flatten", entryData);
         console.log(
           "[Editor] keys in entryData",
           entryData && typeof entryData === "object"
@@ -345,9 +373,12 @@ export default function Editor() {
         );
 
         // Derive core fields, but prefer the top-level columns if present
-        const loadedTitle = entry.title ?? entryData.title ?? entryData._title ?? "";
-        const loadedSlug = entry.slug ?? entryData.slug ?? entryData._slug ?? "";
-        const loadedStatus = entry.status ?? entryData.status ?? entryData._status ?? "draft";
+        const loadedTitle =
+          entry.title ?? entryData.title ?? entryData._title ?? "";
+        const loadedSlug =
+          entry.slug ?? entryData.slug ?? entryData._slug ?? "";
+        const loadedStatus =
+          entry.status ?? entryData.status ?? entryData._status ?? "draft";
 
         setTitle(loadedTitle);
         setSlug(loadedSlug);
@@ -424,8 +455,13 @@ export default function Editor() {
 
         const created = res.entry || res.data || res;
 
-        const newId = created?.id ?? created?.entry?.id ?? created?.data?.id ?? null;
-        const newSlug = created?.slug ?? created?.entry?.slug ?? created?.data?.slug ?? finalSlug;
+        const newId =
+          created?.id ?? created?.entry?.id ?? created?.data?.id ?? null;
+        const newSlug =
+          created?.slug ??
+          created?.entry?.slug ??
+          created?.data?.slug ??
+          finalSlug;
 
         if (newId) {
           const slugOrId = newSlug || newId;
@@ -448,9 +484,21 @@ export default function Editor() {
         if (updated) {
           const entryData = updated.data || mergedData;
 
-          const loadedTitle = updated.title ?? entryData.title ?? entryData._title ?? title;
-          const loadedSlug = updated.slug ?? entryData.slug ?? entryData._slug ?? finalSlug;
-          const loadedStatus = updated.status ?? entryData.status ?? entryData._status ?? status;
+          const loadedTitle =
+            updated.title ??
+            entryData.title ??
+            entryData._title ??
+            title;
+          const loadedSlug =
+            updated.slug ??
+            entryData.slug ??
+            entryData._slug ??
+            finalSlug;
+          const loadedStatus =
+            updated.status ??
+            entryData.status ??
+            entryData._status ??
+            status;
 
           setTitle(loadedTitle);
           setSlug(loadedSlug);
@@ -506,14 +554,20 @@ export default function Editor() {
   // Preview helpers
   // ---------------------------------------------------------------------------
 
-  const previewData = useMemo(() => ({
-    ...data,
-    title,
-    slug,
-    status,
-  }), [data, title, slug, status]);
+  const previewData = useMemo(
+    () => ({
+      ...data,
+      title,
+      slug,
+      status,
+    }),
+    [data, title, slug, status],
+  );
 
-  const customFieldEntries = useMemo(() => Object.entries(data || {}), [data]);
+  const customFieldEntries = useMemo(
+    () => Object.entries(data || {}),
+    [data],
+  );
 
   function prettyValue(v) {
     if (v === null || v === undefined) return "";
@@ -532,7 +586,10 @@ export default function Editor() {
       return JSON.stringify(v);
     }
     if (typeof v === "object") {
-      if (v.label && (typeof v.value === "string" || typeof v.value === "number")) {
+      if (
+        v.label &&
+        (typeof v.value === "string" || typeof v.value === "number")
+      ) {
         return `${v.label} (${v.value})`;
       }
       if (v.label && !v.value) return String(v.label);
@@ -567,13 +624,16 @@ export default function Editor() {
                 const dRoles = Array.isArray(cfg.default_roles)
                   ? cfg.default_roles.map((r) => String(r || "").toUpperCase())
                   : [];
-                const isDefaultForRole = dRoles.length ? dRoles.includes(roleUpper) : !!v.is_default;
+                const isDefaultForRole = dRoles.length
+                  ? dRoles.includes(roleUpper)
+                  : !!v.is_default;
                 return (
                   <button
                     key={v.slug}
                     type="button"
                     className={
-                      "su-chip" + (v.slug === activeViewSlug ? " su-chip--active" : "")
+                      "su-chip" +
+                      (v.slug === activeViewSlug ? " su-chip--active" : "")
                     }
                     onClick={() => {
                       if (v.slug === activeViewSlug) return;
@@ -586,7 +646,9 @@ export default function Editor() {
                     }}
                   >
                     {v.label || v.slug}
-                    {isDefaultForRole && <span className="su-chip-badge">default</span>}
+                    {isDefaultForRole && (
+                      <span className="su-chip-badge">default</span>
+                    )}
                   </button>
                 );
               })}
@@ -717,7 +779,9 @@ export default function Editor() {
                   style={{
                     display: "grid",
                     gap: 12,
-                    gridTemplateColumns: `repeat(${section.columns || 1}, minmax(0, 1fr))`,
+                    gridTemplateColumns: `repeat(${
+                      section.columns || 1
+                    }, minmax(0, 1fr))`,
                   }}
                 >
                   {section.rows.map(({ def, width }) => {
@@ -725,7 +789,10 @@ export default function Editor() {
                     if (!key) return null;
                     const value = data ? data[key] : undefined;
                     return (
-                      <div key={key} style={{ gridColumn: `span ${width || 1}` }}>
+                      <div
+                        key={key}
+                        style={{ gridColumn: `span ${width || 1}` }}
+                      >
                         <FieldInput
                           field={def}
                           value={value}
