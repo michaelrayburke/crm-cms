@@ -15,6 +15,13 @@ const TIMEZONES = [
 
 // List of admin pages used to prefill the page dropdown in the navigation
 // builder UI.  If you add new admin routes, consider adding them here.
+// List of pages that can be selected in the page dropdowns when building
+// navigation items.  This includes all top-level admin pages and any
+// nested settings pages that have explicit routes.  When new settings
+// sub-routes are added (e.g. `/admin/settings/xyz`), consider adding
+// them here so they appear in the dropdown.  Dynamic segments (like
+// `:typeSlug` or `:viewSlug`) should be handled via the custom path
+// field instead of being enumerated here.
 const PAGE_OPTIONS = [
   { value: '/admin', label: 'Dashboard' },
   { value: '/admin/content', label: 'Content index' },
@@ -23,7 +30,13 @@ const PAGE_OPTIONS = [
   { value: '/admin/menus', label: 'Menus' },
   { value: '/admin/headers', label: 'Headers' },
   { value: '/admin/footers', label: 'Footers' },
+  // Settings and its subpages
   { value: '/admin/settings', label: 'Settings' },
+  { value: '/admin/settings/roles', label: 'Roles (Settings)' },
+  { value: '/admin/settings/dashboards', label: 'Dashboards (Settings)' },
+  { value: '/admin/settings/permissions', label: 'Permissions (Settings)' },
+  { value: '/admin/settings/entry-views', label: 'Entry Views (Settings)' },
+  { value: '/admin/settings/list-views', label: 'List Views (Settings)' },
 ];
 
 // Target options for links.  These control whether a link opens in the same

@@ -37,18 +37,30 @@ export default function Sidebar({ onClose, role = 'ADMIN' }) {
   // Define a sensible default nav when settings.navSidebar isn't provided.
   // This groups all admin pages under a single "Settings" parent so the
   // sidebar feels clean and hierarchical.  Quick Builder has been removed.
+  // Define the default sidebar navigation.  Pages that are not under the
+  // `/admin/settings` path live at the root of the sidebar.  All routes
+  // defined under `/admin/settings` (and not already present at the root)
+  // are grouped beneath the Settings parent by default.  This keeps the
+  // sidebar tidy while still exposing all admin functionality.  If new
+  // `/admin/settings/*` routes are added in App.jsx, consider adding the
+  // base path here so they appear automatically.
   const defaultNav = [
     { label: 'Dashboard', to: '/admin' },
+    { label: 'Menus', to: '/admin/menus' },
+    { label: 'Headers', to: '/admin/headers' },
+    { label: 'Footers', to: '/admin/footers' },
+    { label: 'Users', to: '/admin/users' },
+    { label: 'Taxonomies', to: '/admin/taxonomies' },
+    { label: 'Content', to: '/admin/content' },
     {
       label: 'Settings',
       children: [
-        { label: 'Menus', to: '/admin/menus' },
-        { label: 'Headers', to: '/admin/headers' },
-        { label: 'Footers', to: '/admin/footers' },
-        { label: 'Users', to: '/admin/users' },
-        { label: 'Taxonomies', to: '/admin/taxonomies' },
-        { label: 'Content', to: '/admin/content' },
         { label: 'Settings', to: '/admin/settings' },
+        { label: 'Roles', to: '/admin/settings/roles' },
+        { label: 'Dashboards', to: '/admin/settings/dashboards' },
+        { label: 'Permissions', to: '/admin/settings/permissions' },
+        { label: 'Entry Views', to: '/admin/settings/entry-views' },
+        { label: 'List Views', to: '/admin/settings/list-views' },
       ],
     },
   ];
