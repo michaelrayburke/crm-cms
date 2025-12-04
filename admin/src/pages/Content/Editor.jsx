@@ -201,12 +201,12 @@ export default function Editor() {
             const vRes = await api.get(
               `/api/content-types/${fullCt.id}/editor-views?role=${encodeURIComponent(roleUpper)}`,
             );
-            const rawViews = vRes?.data ?? vRes;
-            if (Array.isArray(rawViews)) {
-              views = rawViews;
-            } else if (rawViews && Array.isArray(rawViews.views)) {
-              views = rawViews.views;
-            }
+              const rawViews = vRes?.data ?? vRes;
+              if (Array.isArray(rawViews)) {
+                views = rawViews;
+              } else if (rawViews && Array.isArray(rawViews.views)) {
+                views = rawViews.views;
+              }
           } catch (err) {
             console.warn(
               "[Editor] Failed to load editor views for type; falling back to auto layout",
@@ -260,7 +260,7 @@ export default function Editor() {
           }
           if (searchParams.get("view")) {
             const next = new URLSearchParams(searchParams);
-            next.delete("view");
+              next.delete("view");
             setSearchParams(next);
           }
         }
