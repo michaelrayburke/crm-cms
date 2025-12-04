@@ -176,10 +176,16 @@ export default function Editor() {
 
         if (cancelled) return;
 
-        // 2) Load the full definition (including fields) by ID
+        // 2) Load the full definition (including fields) by ID.
+        // Pass the `all=true` query param to ensure we always get field definitions
+        // even if the current user lacks manage_content_types permission.  This
+        // prevents the editor from falling back to a basic content type with no
+        // custom fields, which would make fields invisible in the UI.
         let fullCt;
         try {
-          const fullRes = await api.get(`/api/content-types/${basicCt.id}`);
+          const fullRes = await api.get(
+            `/api/content-types/${basicCt.id}?all=true`
+          );
           fullCt = fullRes?.data || fullRes || basicCt;
         } catch (e) {
           console.warn(
