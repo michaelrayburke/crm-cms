@@ -201,12 +201,12 @@ export default function Editor() {
             const vRes = await api.get(
               `/api/content-types/${fullCt.id}/editor-views?role=${encodeURIComponent(roleUpper)}`,
             );
-              const rawViews = vRes?.data ?? vRes;
-              if (Array.isArray(rawViews)) {
-                views = rawViews;
-              } else if (rawViews && Array.isArray(rawViews.views)) {
-                views = rawViews.views;
-              }
+            const rawViews = vRes?.data ?? vRes;
+            if (Array.isArray(rawViews)) {
+              views = rawViews;
+            } else if (rawViews && Array.isArray(rawViews.views)) {
+              views = rawViews.views;
+            }
           } catch (err) {
             console.warn(
               "[Editor] Failed to load editor views for type; falling back to auto layout",
@@ -260,7 +260,7 @@ export default function Editor() {
           }
           if (searchParams.get("view")) {
             const next = new URLSearchParams(searchParams);
-              next.delete("view");
+            next.delete("view");
             setSearchParams(next);
           }
         }
@@ -333,6 +333,17 @@ export default function Editor() {
           delete entryData.undefined;
         }
 
+        // 🔍 DEBUG: see exactly what we loaded and what keys exist
+        console.log("[Editor] Loaded entry from API", { typeSlug, entryId, entry });
+        console.log("[Editor] entry.data from API", rawData);
+        console.log("[Editor] entryData after flatten", entryData);
+        console.log(
+          "[Editor] keys in entryData",
+          entryData && typeof entryData === "object"
+            ? Object.keys(entryData)
+            : "(not an object)"
+        );
+
         // Derive core fields, but prefer the top-level columns if present
         const loadedTitle = entry.title ?? entryData.title ?? entryData._title ?? "";
         const loadedSlug = entry.slug ?? entryData.slug ?? entryData._slug ?? "";
@@ -352,9 +363,7 @@ export default function Editor() {
       }
     }
 
-    load(
-      console.log('Loaded entryData:', entryData);
-    );
+    load();
 
     return () => {
       cancelled = true;
@@ -498,11 +507,11 @@ export default function Editor() {
   // ---------------------------------------------------------------------------
 
   const previewData = useMemo(() => ({
-      ...data,
-      title,
-      slug,
-      status,
-    }), [data, title, slug, status]);
+    ...data,
+    title,
+    slug,
+    status,
+  }), [data, title, slug, status]);
 
   const customFieldEntries = useMemo(() => Object.entries(data || {}), [data]);
 
@@ -784,8 +793,8 @@ export default function Editor() {
               {title || "(untitled entry)"}
             </div>
             <div style={{ fontSize: 12, opacity: 0.7 }}>
-              /{slug || slugify(title || "my-entry")} ·{' '}
-              <span style={{ textTransform: 'uppercase' }}>{status}</span>
+              /{slug || slugify(title || "my-entry")} ·{" "}
+              <span style={{ textTransform: "uppercase" }}>{status}</span>
             </div>
           </div>
 
