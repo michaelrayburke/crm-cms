@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../../lib/api';
+// Import the named api client.  The api module exports a named object,
+// not a default export, so use a named import to satisfy Vite/rollup.
+import { api } from '../../lib/api';
 
 /**
  * Form for creating or editing a Gadget.  Gadgets represent full products
@@ -155,7 +157,8 @@ export default function GadgetForm() {
           config: configObj,
         });
       }
-      navigate('/settings/gadgets');
+      // Redirect to the list of gadgets in the admin menu rather than settings.
+      navigate('/admin/gadgets');
     } catch (err) {
       console.error(err);
       alert('Failed to save gadget');

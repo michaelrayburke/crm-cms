@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../../lib/api';
+// Import the named api client from the shared library.  Do not use a default import
+// because api.js does not export a default.  Named import ensures the build
+// succeeds and matches how other components import the API.
+import { api } from '../../lib/api';
 
 /**
  * Form for creating or editing a Gizmo.  If an ID is present in the URL
@@ -56,7 +59,11 @@ export default function GizmoForm() {
       ? api.put(`/gizmos/${id}`, payload)
       : api.post('/gizmos', payload);
     req
-      .then(() => navigate('/settings/gizmos'))
+      .then(() => {
+        // After saving, go back to the Gizmos list in the admin.  Use the /admin
+        // prefix rather than /settings since gizmos now live under /admin.
+        navigate('/admin/gizmos');
+      })
       .catch((err) => {
         console.error(err);
         alert('Failed to save gizmo');
