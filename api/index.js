@@ -35,6 +35,15 @@ import listViewsRouter from './routes/listViews.js';
  *      from `content_fields` rather than `fields`.  This ensures
  *      that all fields defined via the Content Type builder are
  *      taken into account when normalizing data before insert/update.
+ *
+ *   3. New: The `normalizeEntryData` helper now automatically
+ *      normalizes camelCase keys to snake_case.  Historically some
+ *      clients wrote data using camelCase field keys (e.g. `customField`) while
+ *      the database and API expect snake_case (`custom_field`).  To prevent
+ *      mismatched keys from causing blank values when entries are loaded,
+ *      this function copies values from the camelCase version of a key to
+ *      its snake_case counterpart and deletes the camelCase key.  This
+ *      happens before any type-specific normalization runs.
  */
 
 dotenv.config();
@@ -161,6 +170,21 @@ function isUuid(value) {
 function normalizeEntryData(fieldDefs, dataIn) {
   try {
     const out = { ...(dataIn || {}) };
+
+    // New: Normalize camelCase keys to snake_case for known fields.  Historically
+    // some clients wrote data using camelCase keys (e.g. `customField`) while
+    // the API expects snake_case (`custom_field`).  Copy values from camelCase
+    // keys to snake_case and delete the camelCase key before type-specific
+    // normalization.
+    for (const f of fieldDefs || []) {
+      const snake = f.key;
+      const camel = snake.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+      if (out[camel] !== undefined && out[snake] === undefined) {
+        out[snake] = out[camel];
+        delete out[camel];
+      }
+    }
+
     for (const f of fieldDefs || []) {
       const k = f.key;
       const t = f.type;
