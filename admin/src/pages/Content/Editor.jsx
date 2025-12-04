@@ -6,8 +6,6 @@ import {
 } from "react-router-dom";
 import { api } from "../../lib/api";
 import FieldInput from "../../components/FieldInput";
-// If you have an Auth context, you can import it to determine the current user's role.
-// import { useAuth } from '../../context/AuthContext';
 
 // Simple slug helper
 function slugify(value) {
@@ -22,6 +20,9 @@ function slugify(value) {
 /**
  * Build a layout from the editor view config + content type fields.
  * If no config exists, falls back to a single section with all fields.
+ *
+ * Updated: gracefully handle legacy editor view configs that store field references
+ * under `field` or `field_key` instead of `key`.
  */
 function buildLayoutFromView(contentType, viewConfig) {
   if (!contentType) return [];
@@ -69,7 +70,9 @@ function buildLayoutFromView(contentType, viewConfig) {
         if (typeof fCfgRaw === "string") {
           key = fCfgRaw;
         } else if (fCfgRaw && typeof fCfgRaw === "object") {
-          key = fCfgRaw.key;
+          // Legacy editor view configs saved the field under the "field" property.
+          // Prefer the explicit key but fall back to field or field_key if present.
+          key = fCfgRaw.key || fCfgRaw.field || fCfgRaw.field_key;
           width = fCfgRaw.width || 1;
           if (fCfgRaw.visible === false) visible = false;
         }
@@ -115,8 +118,7 @@ export default function Editor() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // const { user } = useAuth();
-  const roleUpper = (/* user?.role || */ "ADMIN").toUpperCase();
+  const roleUpper = ("ADMIN").toUpperCase();
 
   const isNew = !entryId || entryId === "new";
 
@@ -317,8 +319,8 @@ export default function Editor() {
         const rawData = entry.data || {};
         let entryData = rawData && typeof rawData === "object" ? { ...rawData } : {};
 
-        // If we have the legacy "undefined" bucket, flatten it into the top level
-        if (
+        // Flatten nested "undefined" buckets recursively
+        while (
           entryData &&
           typeof entryData === "object" &&
           entryData.undefined &&
@@ -333,20 +335,11 @@ export default function Editor() {
 
         // Derive core fields, but prefer the top-level columns if present
         const loadedTitle =
-          entry.title ??
-          entryData.title ??
-          entryData._title ??
-          "";
+          entry.title ?? entryData.title ?? entryData._title ?? "";
         const loadedSlug =
-          entry.slug ??
-          entryData.slug ??
-          entryData._slug ??
-          "";
+          entry.slug ?? entryData.slug ?? entryData._slug ?? "";
         const loadedStatus =
-          entry.status ??
-          entryData.status ??
-          entryData._status ??
-          "draft";
+          entry.status ?? entryData.status ?? entryData._status ?? "draft";
 
         setTitle(loadedTitle);
         setSlug(loadedSlug);
@@ -453,20 +446,11 @@ export default function Editor() {
           const entryData = updated.data || mergedData;
 
           const loadedTitle =
-            updated.title ??
-            entryData.title ??
-            entryData._title ??
-            title;
+            updated.title ?? entryData.title ?? entryData._title ?? title;
           const loadedSlug =
-            updated.slug ??
-            entryData.slug ??
-            entryData._slug ??
-            finalSlug;
+            updated.slug ?? entryData.slug ?? entryData._slug ?? finalSlug;
           const loadedStatus =
-            updated.status ??
-            entryData.status ??
-            entryData._status ??
-            status;
+            updated.status ?? entryData.status ?? entryData._status ?? status;
 
           setTitle(loadedTitle);
           setSlug(loadedSlug);
@@ -744,9 +728,7 @@ export default function Editor() {
                   style={{
                     display: "grid",
                     gap: 12,
-                    gridTemplateColumns: `repeat(${
-                      section.columns || 1
-                    }, minmax(0, 1fr))`,
+                    gridTemplateColumns: `repeat(${section.columns || 1}, minmax(0, 1fr))`,
                   }}
                 >
                   {section.rows.map(({ def, width }) => {
@@ -825,8 +807,8 @@ export default function Editor() {
               {title || "(untitled entry)"}
             </div>
             <div style={{ fontSize: 12, opacity: 0.7 }}>
-              /{slug || slugify(title || "my-entry")} ·{" "}
-              <span style={{ textTransform: "uppercase" }}>{status}</span>
+              /{slug || slugify(title || "my-entry")} ·{' '}
+              <span style={{ textTransform: 'uppercase' }}>{status}</span>
             </div>
           </div>
 
