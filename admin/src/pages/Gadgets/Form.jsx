@@ -40,6 +40,12 @@ export default function GadgetForm() {
   // Selected gizmos for this gadget (id => config JSON string)
   const [selectedGizmos, setSelectedGizmos] = useState({});
 
+  // Define default placeholders for design and structure configs. Using separate
+  // variables avoids invalid escape sequences in JSX attributes. These will
+  // populate the placeholder text areas with example JSON when editing.
+  const designConfigPlaceholder = '{\n  "primary_color": "#ff6600"\n}';
+  const structureConfigPlaceholder = '{\n  "menus": [],\n  "pages": [],\n  "screens": []\n}';
+
   // Load available gizmos and, if editing, the gadget details and attached gizmos
   useEffect(() => {
     api.get('/gizmos')
@@ -245,7 +251,7 @@ export default function GadgetForm() {
             value={form.design_config}
             onChange={handleChange}
             rows={4}
-            placeholder="{\n  \"primary_color\": \"#ff6600\"\n}"
+            placeholder={designConfigPlaceholder}
           />
         </div>
         <div className="su-form-group">
@@ -255,7 +261,7 @@ export default function GadgetForm() {
             value={form.structure_config}
             onChange={handleChange}
             rows={4}
-            placeholder="{\n  \"menus\": [],\n  \"pages\": [],\n  \"screens\": []\n}"
+            placeholder={structureConfigPlaceholder}
           />
         </div>
         <hr />
