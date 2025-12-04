@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../../lib/api';
+import { api } from '../../lib/api';
 
 /**
  * List view for all gadgets.  Displays gadgets with their type and active state.
@@ -15,7 +15,7 @@ export default function GadgetsList() {
     <div className="su-page">
       <header className="su-page-header">
         <h1>Gadgets</h1>
-        <Link className="su-btn su-btn-primary" to="/settings/gadgets/new">
+        <Link className="su-btn su-btn-primary" to="/admin/gadgets/new">
           Add Gadget
         </Link>
       </header>
@@ -35,7 +35,7 @@ export default function GadgetsList() {
               <td>{g.gadget_type}</td>
               <td>{g.is_active ? 'Yes' : 'No'}</td>
               <td>
-                <Link to={`/settings/gadgets/${g.id}`}>Edit</Link>
+                 <Link to={`/admin/gadgets/${g.id}`}>Edit</Link>
               </td>
             </tr>
           ))}

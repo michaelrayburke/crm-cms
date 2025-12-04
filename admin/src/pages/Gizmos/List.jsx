@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../../lib/api';
+import { api } from '../../lib/api';
 
 /**
  * List view for all gizmos.
@@ -19,7 +19,7 @@ export default function GizmosList() {
     <div className="su-page">
       <header className="su-page-header">
         <h1>Gizmos</h1>
-        <Link className="su-btn su-btn-primary" to="/settings/gizmos/new">
+        <Link className="su-btn su-btn-primary" to="/admin/gizmos/new">
           Add Gizmo
         </Link>
       </header>
@@ -40,7 +40,7 @@ export default function GizmosList() {
               <td>{g.gizmo_type}</td>
               <td>{g.is_enabled ? 'Yes' : 'No'}</td>
               <td>
-                <Link to={`/settings/gizmos/${g.id}`}>Edit</Link>
+                 <Link to={`/admin/gizmos/${g.id}`}>Edit</Link>
               </td>
             </tr>
           ))}
