@@ -62,6 +62,11 @@ export default function GizmoForm() {
         alert('Failed to save gizmo');
       });
   };
+  // Define a default placeholder for the config textarea.  Using a separate
+  // variable avoids invalid escape sequences in JSX attributes and makes
+  // editing easier.  The placeholder shows a basic JSON shape with an apiKey
+  // property.
+  const configPlaceholder = '{\n  "apiKey": "..."\n}';
   return (
     <div className="su-page">
       <header className="su-page-header">
@@ -109,7 +114,7 @@ export default function GizmoForm() {
             value={form.config}
             onChange={handleChange}
             rows={6}
-            placeholder="{\n  \"apiKey\": \"...\"\n}"
+            placeholder={configPlaceholder}
           />
         </div>
         <div className="su-form-group">
