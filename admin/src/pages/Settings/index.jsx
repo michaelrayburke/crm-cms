@@ -30,6 +30,8 @@ const PAGE_OPTIONS = [
   { value: '/admin/menus', label: 'Menus' },
   { value: '/admin/headers', label: 'Headers' },
   { value: '/admin/footers', label: 'Footers' },
+  // Quick Builder sits at the root of the admin; include it for easy selection.
+  { value: '/admin/quick-builder', label: 'Quick Builder' },
   // Settings and its subpages
   { value: '/admin/settings', label: 'Settings' },
   { value: '/admin/settings/roles', label: 'Roles (Settings)' },

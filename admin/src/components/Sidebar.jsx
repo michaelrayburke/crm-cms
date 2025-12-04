@@ -35,15 +35,11 @@ export default function Sidebar({ onClose, role = 'ADMIN' }) {
   const location = useLocation();
 
   // Define a sensible default nav when settings.navSidebar isn't provided.
-  // This groups all admin pages under a single "Settings" parent so the
-  // sidebar feels clean and hierarchical.  Quick Builder has been removed.
-  // Define the default sidebar navigation.  Pages that are not under the
-  // `/admin/settings` path live at the root of the sidebar.  All routes
-  // defined under `/admin/settings` (and not already present at the root)
-  // are grouped beneath the Settings parent by default.  This keeps the
-  // sidebar tidy while still exposing all admin functionality.  If new
-  // `/admin/settings/*` routes are added in App.jsx, consider adding the
-  // base path here so they appear automatically.
+  // Pages that are not under the `/admin/settings` path live at the root of
+  // the sidebar. All settings sub-routes are grouped beneath the Settings
+  // parent by default. Quick Builder is included as a root-level item.
+  // If you add new settings sub-pages in App.jsx, consider adding them
+  // under the Settings parent below so they appear automatically.
   const defaultNav = [
     { label: 'Dashboard', to: '/admin' },
     { label: 'Menus', to: '/admin/menus' },
@@ -52,6 +48,7 @@ export default function Sidebar({ onClose, role = 'ADMIN' }) {
     { label: 'Users', to: '/admin/users' },
     { label: 'Taxonomies', to: '/admin/taxonomies' },
     { label: 'Content', to: '/admin/content' },
+    { label: 'Quick Builder', to: '/admin/quick-builder' },
     {
       label: 'Settings',
       children: [
