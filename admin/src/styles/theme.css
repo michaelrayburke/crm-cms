@@ -1,3 +1,15 @@
+/*
+ * Theme styles for ServiceUp Admin.  This file combines the base
+ * variables and layout from the default theme with improvements to
+ * support the new navigation system.  Notable changes include:
+ *
+ *  - Mobile sidebar slides in full‑width (no dark overlay) and shows a
+ *    close button at the top.
+ *  - Topbar hamburger button appears only on small screens.
+ *  - Default sidebar uses a hierarchical nav with Settings grouping.
+ *  - Maintains collapsed mode support on desktop via the .collapsed class.
+ */
+
 :root {
   --su-bg: #ffffff;
   --su-surface: #ffffff;
@@ -7,10 +19,10 @@
   --su-accent: #0e7afe;
   --su-border: #e5e7eb;
   --su-radius: 12px;
-  --su-shadow: 0 2px 10px rgba(0,0,0,.06);
+  --su-shadow: 0 2px 10px rgba(0, 0, 0, .06);
 }
 
-[data-theme="dark"]{
+[data-theme="dark"] {
   --su-bg: #0b0b0b;
   --su-surface: #121212;
   --su-text: #f7f7f7;
@@ -18,21 +30,33 @@
   --su-primary: #eaeaea;
   --su-accent: #75a7ff;
   --su-border: #242424;
-  --su-shadow: 0 2px 10px rgba(0,0,0,.45);
+  --su-shadow: 0 2px 10px rgba(0, 0, 0, .45);
 }
 
-* { box-sizing: border-box; }
-html, body, #root {
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
   height: 100%;
   background: var(--su-bg);
   color: var(--su-text);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+    sans-serif;
 }
 
-a { color: inherit; text-decoration: none; }
-button { cursor: pointer; }
+a {
+  color: inherit;
+  text-decoration: none;
+}
 
-/* Layout */
+button {
+  cursor: pointer;
+}
+
+/* Layout grid: sidebar + topbar + content + footer */
 .su-layout {
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -76,11 +100,12 @@ button { cursor: pointer; }
   border-top: 1px solid var(--su-border);
   padding: 12px 16px;
   color: var(--su-muted);
-  display:flex;
+  display: flex;
   justify-content: space-between;
-  align-items:center;
+  align-items: center;
 }
 
+/* Cards and basic controls */
 .su-card {
   background: var(--su-surface);
   border: 1px solid var(--su-border);
@@ -95,7 +120,6 @@ button { cursor: pointer; }
   margin-bottom: 8px;
 }
 
-/* Buttons, inputs */
 .su-btn {
   padding: 8px 12px;
   border-radius: 10px;
@@ -129,12 +153,20 @@ button { cursor: pointer; }
   margin-bottom: 4px;
 }
 
-/* Grid helpers */
-.su-grid { display: grid; gap: 16px; }
-.su-grid.cols-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
-.su-grid.cols-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.su-grid {
+  display: grid;
+  gap: 16px;
+}
 
-/* Nav styling */
+.su-grid.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.su-grid.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Navigation elements */
 .su-nav-header {
   font-weight: 700;
   margin-bottom: 12px;
@@ -173,7 +205,7 @@ button { cursor: pointer; }
   margin-left: 8px;
 }
 
-/* Topbar layout */
+/* Topbar */
 .su-topbar-left {
   display: flex;
   align-items: center;
@@ -223,21 +255,23 @@ button { cursor: pointer; }
   background: #f3f4f6;
 }
 
-/* Sidebar / topbar toggles */
+/* Sidebar close button (hidden on desktop) */
 .su-sidebar-close {
-  display: none; /* shown on mobile */
+  display: none;
   margin-bottom: 12px;
   width: 100%;
   text-align: left;
   font-weight: 600;
 }
 
+/* Hamburger button (hidden on desktop) */
 .su-topbar-hamburger {
-  display: none; /* shown on mobile */
+  display: none;
 }
 
-/* Mobile / tablet layout */
+/* Mobile / tablet styling */
 @media (max-width: 1024px) {
+  /* Change layout to single column: topbar → content → footer */
   .su-layout {
     grid-template-columns: 1fr;
     grid-template-rows: 56px 1fr auto;
@@ -247,27 +281,28 @@ button { cursor: pointer; }
       "footer";
   }
 
+  /* Sidebar becomes a full‑width slide‑in overlay.  Hidden by default. */
   .su-sidebar {
     position: fixed;
     top: 0;
     left: 0;
     height: 100vh;
-    width: 100%; /* full width mobile menu */
+    width: 100%;
     background: var(--su-surface);
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
     transform: translateX(-100%);
     transition: transform 0.2s ease-out;
     z-index: 1000;
   }
-
+  /* When su-sidebar-open class is present on body, slide sidebar in */
   body.su-sidebar-open .su-sidebar {
     transform: translateX(0);
   }
-
+  /* Show close button on mobile */
   .su-sidebar-close {
     display: block;
   }
-
+  /* Show hamburger on mobile */
   .su-topbar-hamburger {
     display: inline-flex;
     align-items: center;
@@ -277,7 +312,7 @@ button { cursor: pointer; }
   }
 }
 
-/* Optional: collapsed desktop mode */
+/* Collapsed mode for desktop (72px sidebar) */
 @media (min-width: 1025px) {
   .su-layout.collapsed {
     grid-template-columns: 72px 1fr;

@@ -2,12 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
 
+// Utility to check if the current role can see an item.  If the item has
+// no roles specified (or roles is an empty array), it's visible to all.
 const canSee = (itemRoles, role) => {
   if (!Array.isArray(itemRoles) || itemRoles.length === 0) return true;
   if (!role) return false;
   return itemRoles.includes(role);
 };
 
+// Stateless link component for sidebar links.  Applies a primary class when
+// the NavLink matches the current location.
 const SidebarLink = ({ to, label, target }) => (
   <NavLink
     to={to}
@@ -21,43 +25,59 @@ const SidebarLink = ({ to, label, target }) => (
   </NavLink>
 );
 
+/**
+ * Sidebar renders a navigation sidebar.  It accepts an `onClose` callback
+ * which will be called when the user clicks the mobile close button and a
+ * `role` prop used to filter items by role.
+ */
 export default function Sidebar({ onClose, role = 'ADMIN' }) {
   const { settings } = useSettings();
   const location = useLocation();
 
+  // Define a sensible default nav when settings.navSidebar isn't provided.
+  // This groups all admin pages under a single "Settings" parent so the
+  // sidebar feels clean and hierarchical.  Quick Builder has been removed.
+  const defaultNav = [
+    { label: 'Dashboard', to: '/admin' },
+    {
+      label: 'Settings',
+      children: [
+        { label: 'Menus', to: '/admin/menus' },
+        { label: 'Headers', to: '/admin/headers' },
+        { label: 'Footers', to: '/admin/footers' },
+        { label: 'Users', to: '/admin/users' },
+        { label: 'Taxonomies', to: '/admin/taxonomies' },
+        { label: 'Content', to: '/admin/content' },
+        { label: 'Settings', to: '/admin/settings' },
+      ],
+    },
+  ];
+
+  // Determine which nav items to render: prefer settings.navSidebar, then
+  // settings.nav, otherwise fall back to defaultNav.
   const items =
     (Array.isArray(settings?.navSidebar) && settings.navSidebar.length > 0
       ? settings.navSidebar
-      : settings?.nav) || [
-      { label: 'Dashboard', to: '/admin' },
-      { label: 'Settings', to: '/admin/settings' },
-      { label: 'Menus', to: '/admin/menus' },
-      { label: 'Headers', to: '/admin/headers' },
-      { label: 'Footers', to: '/admin/footers' },
-      { label: 'Users', to: '/admin/users' },
-      { label: 'Taxonomies', to: '/admin/taxonomies' },
-      { label: 'Content', to: '/admin/content' },
-      { label: 'Quick Builder', to: '/admin/quick-builder' },
-    ];
+      : settings?.nav) || defaultNav;
 
-  // Track which parents are expanded
+  // Keep track of which parent menus are expanded.
   const [openParents, setOpenParents] = useState({});
 
-  // Open any parent whose child matches current route
+  // Automatically open any parent whose children contain the current route.
   useEffect(() => {
     const path = location.pathname;
-    const next = {};
+    const nextOpen = {};
     items.forEach((item, index) => {
       if (
         Array.isArray(item.children) &&
         item.children.some(
-          (child) => child.to && path.startsWith(child.to),
+          (child) => child.to && path.startsWith(child.to)
         )
       ) {
-        next[index] = true;
+        nextOpen[index] = true;
       }
     });
-    setOpenParents((prev) => ({ ...prev, ...next }));
+    setOpenParents((prev) => ({ ...prev, ...nextOpen }));
   }, [location.pathname, items]);
 
   const toggleParent = (index) => {
@@ -69,7 +89,6 @@ export default function Sidebar({ onClose, role = 'ADMIN' }) {
 
   return (
     <aside className="su-sidebar" aria-label="Main navigation">
-      {/* Mobile close button */}
       {onClose && (
         <button
           type="button"
@@ -80,16 +99,11 @@ export default function Sidebar({ onClose, role = 'ADMIN' }) {
           ✕ Close
         </button>
       )}
-
       <div className="su-nav-header">Menu</div>
-
       {items.map((item, i) => {
+        // Skip the item if the current role isn't allowed to see it.
         if (!canSee(item.roles, role)) return null;
-
-        const hasChildren =
-          Array.isArray(item.children) && item.children.length > 0;
-
-        // Simple link
+        const hasChildren = Array.isArray(item.children) && item.children.length > 0;
         if (!hasChildren) {
           if (!item.to) return null;
           return (
@@ -101,16 +115,12 @@ export default function Sidebar({ onClose, role = 'ADMIN' }) {
             />
           );
         }
-
-        // Parent with children
         const isOpen = !!openParents[i];
-
         const visibleChildren = item.children.filter((child) =>
-          canSee(child.roles, role),
+          canSee(child.roles, role)
         );
-
-        // If no visible children, we can still show the parent as a direct link
         if (visibleChildren.length === 0) {
+          // If no children are visible, show parent as direct link if it has a `to`.
           if (!item.to) return null;
           return (
             <SidebarLink
@@ -121,11 +131,12 @@ export default function Sidebar({ onClose, role = 'ADMIN' }) {
             />
           );
         }
-
         return (
           <div
             key={i}
-            className={'su-nav-parent' + (isOpen ? ' open' : '')}
+            className={
+              'su-nav-parent' + (isOpen ? ' open' : '')
+            }
           >
             <button
               type="button"
@@ -139,7 +150,6 @@ export default function Sidebar({ onClose, role = 'ADMIN' }) {
                 ▸
               </span>
             </button>
-
             {isOpen && (
               <div className="su-nav-children">
                 {visibleChildren.map((child, ci) =>
@@ -150,7 +160,7 @@ export default function Sidebar({ onClose, role = 'ADMIN' }) {
                       label={child.label || 'Link'}
                       target={child.target || item.target}
                     />
-                  ) : null,
+                  ) : null
                 )}
               </div>
             )}

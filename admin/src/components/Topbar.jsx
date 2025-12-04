@@ -2,12 +2,19 @@ import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
 
+// Utility to determine if a navigation item should be shown for the current role.
 const canSee = (itemRoles, role) => {
   if (!Array.isArray(itemRoles) || itemRoles.length === 0) return true;
   if (!role) return false;
   return itemRoles.includes(role);
 };
 
+/**
+ * Topbar renders the top navigation bar.  It accepts callbacks to toggle
+ * the sidebar on mobile (`onToggleSidebar`) and a boolean `isSidebarOpen`
+ * to set the appropriate aria-label.  It also accepts a `role` prop to
+ * filter items based on allowed roles.
+ */
 export default function Topbar({ onToggleSidebar, isSidebarOpen, role = 'ADMIN' }) {
   const { settings } = useSettings();
   const [openIndex, setOpenIndex] = useState(null);
@@ -22,7 +29,6 @@ export default function Topbar({ onToggleSidebar, isSidebarOpen, role = 'ADMIN' 
 
   return (
     <header className="su-topbar">
-      {/* Left side: hamburger + app name */}
       <div className="su-topbar-left">
         {onToggleSidebar && (
           <button
@@ -30,27 +36,23 @@ export default function Topbar({ onToggleSidebar, isSidebarOpen, role = 'ADMIN' 
             className="su-btn su-topbar-hamburger"
             onClick={onToggleSidebar}
             aria-label={
-              isSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'
+              isSidebarOpen
+                ? 'Close navigation menu'
+                : 'Open navigation menu'
             }
           >
             ☰
           </button>
         )}
-
         <div className="su-topbar-title">
           {settings?.appName || 'ServiceUp Admin'}
         </div>
       </div>
-
-      {/* Right side: topbar nav */}
       <nav className="su-topbar-nav" aria-label="Top navigation">
         {items
           .filter((item) => canSee(item.roles, role))
           .map((item, i) => {
-            const hasChildren =
-              Array.isArray(item.children) && item.children.length > 0;
-
-            // Simple link
+            const hasChildren = Array.isArray(item.children) && item.children.length > 0;
             if (!hasChildren) {
               if (!item.to) return null;
               return (
@@ -66,13 +68,10 @@ export default function Topbar({ onToggleSidebar, isSidebarOpen, role = 'ADMIN' 
                 </NavLink>
               );
             }
-
-            // Parent with dropdown
             const isOpen = openIndex === i;
             const visibleChildren = item.children.filter((child) =>
-              canSee(child.roles, role),
+              canSee(child.roles, role)
             );
-
             if (visibleChildren.length === 0) {
               if (!item.to) return null;
               return (
@@ -88,7 +87,6 @@ export default function Topbar({ onToggleSidebar, isSidebarOpen, role = 'ADMIN' 
                 </NavLink>
               );
             }
-
             return (
               <div
                 key={i}
@@ -119,7 +117,7 @@ export default function Topbar({ onToggleSidebar, isSidebarOpen, role = 'ADMIN' 
                         >
                           {child.label || 'Link'}
                         </NavLink>
-                      ) : null,
+                      ) : null
                     )}
                   </div>
                 )}
