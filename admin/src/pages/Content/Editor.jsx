@@ -22,7 +22,8 @@ function slugify(value) {
  * If no config exists, falls back to a single section with all fields.
  *
  * Updated: gracefully handle legacy editor view configs that store field references
- * under `field` or `field_key` instead of `key`.
+ * under `field` or `field_key` instead of `key`.  Prefer the snake_case
+ * `field_key` provided by the API when determining a field’s key.
  */
 function buildLayoutFromView(contentType, viewConfig) {
   if (!contentType) return [];
@@ -32,8 +33,8 @@ function buildLayoutFromView(contentType, viewConfig) {
   const fields = rawFields
     .map((f) => {
       if (!f) return null;
-      // Normalize field definitions: ensure .key exists (some APIs return field_key)
-      const key = f.key || f.field_key;
+      // Normalize field definitions: prefer the snake_case field_key when present.
+      const key = f.field_key || f.key;
       return key ? { ...f, key } : null;
     })
     .filter(Boolean);
@@ -103,10 +104,7 @@ function buildLayoutFromView(contentType, viewConfig) {
       id: "main",
       title: "Fields",
       columns: 1,
-      rows: fields.map((def) => ({
-        def,
-        width: 1,
-      })),
+      rows: fields.map((def) => ({ def, width: 1 })),
     });
   }
 
@@ -118,7 +116,7 @@ export default function Editor() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const roleUpper = ("ADMIN").toUpperCase();
+  const roleUpper = "ADMIN".toUpperCase();
 
   const isNew = !entryId || entryId === "new";
 
@@ -164,7 +162,7 @@ export default function Editor() {
           list.find(
             (t) =>
               t.slug === typeSlug ||
-              t.slug?.toLowerCase() === typeSlug?.toLowerCase()
+              t.slug?.toLowerCase() === typeSlug?.toLowerCase(),
           ) || null;
 
         if (!basicCt) {
@@ -183,14 +181,12 @@ export default function Editor() {
         // custom fields, which would make fields invisible in the UI.
         let fullCt;
         try {
-          const fullRes = await api.get(
-            `/api/content-types/${basicCt.id}?all=true`
-          );
+          const fullRes = await api.get(`/api/content-types/${basicCt.id}?all=true`);
           fullCt = fullRes?.data || fullRes || basicCt;
         } catch (e) {
           console.warn(
             "Failed to load full content type, falling back to basic",
-            e
+            e,
           );
           fullCt = basicCt;
         }
@@ -203,9 +199,7 @@ export default function Editor() {
         if (fullCt && fullCt.id) {
           try {
             const vRes = await api.get(
-              `/api/content-types/${fullCt.id}/editor-views?role=${encodeURIComponent(
-                roleUpper
-              )}`
+              `/api/content-types/${fullCt.id}/editor-views?role=${encodeURIComponent(roleUpper)}`,
             );
             const rawViews = vRes?.data ?? vRes;
             if (Array.isArray(rawViews)) {
@@ -216,7 +210,7 @@ export default function Editor() {
           } catch (err) {
             console.warn(
               "[Editor] Failed to load editor views for type; falling back to auto layout",
-              err?.response?.data || err
+              err?.response?.data || err,
             );
           }
         }
@@ -290,7 +284,7 @@ export default function Editor() {
 
   const sections = useMemo(
     () => buildLayoutFromView(contentType, editorViewConfig),
-    [contentType, editorViewConfig]
+    [contentType, editorViewConfig],
   );
 
   // ---------------------------------------------------------------------------
@@ -340,12 +334,9 @@ export default function Editor() {
         }
 
         // Derive core fields, but prefer the top-level columns if present
-        const loadedTitle =
-          entry.title ?? entryData.title ?? entryData._title ?? "";
-        const loadedSlug =
-          entry.slug ?? entryData.slug ?? entryData._slug ?? "";
-        const loadedStatus =
-          entry.status ?? entryData.status ?? entryData._status ?? "draft";
+        const loadedTitle = entry.title ?? entryData.title ?? entryData._title ?? "";
+        const loadedSlug = entry.slug ?? entryData.slug ?? entryData._slug ?? "";
+        const loadedStatus = entry.status ?? entryData.status ?? entryData._status ?? "draft";
 
         setTitle(loadedTitle);
         setSlug(loadedSlug);
@@ -422,13 +413,8 @@ export default function Editor() {
 
         const created = res.entry || res.data || res;
 
-        const newId =
-          created?.id ?? created?.entry?.id ?? created?.data?.id ?? null;
-        const newSlug =
-          created?.slug ??
-          created?.entry?.slug ??
-          created?.data?.slug ??
-          finalSlug;
+        const newId = created?.id ?? created?.entry?.id ?? created?.data?.id ?? null;
+        const newSlug = created?.slug ?? created?.entry?.slug ?? created?.data?.slug ?? finalSlug;
 
         if (newId) {
           const slugOrId = newSlug || newId;
@@ -441,7 +427,7 @@ export default function Editor() {
         // UPDATE
         const res = await api.put(
           `/api/content/${typeSlug}/${entryId}`,
-          payload
+          payload,
         );
         if (res && res.ok === false) {
           throw new Error(res.error || res.detail || "Failed to save entry");
@@ -451,12 +437,9 @@ export default function Editor() {
         if (updated) {
           const entryData = updated.data || mergedData;
 
-          const loadedTitle =
-            updated.title ?? entryData.title ?? entryData._title ?? title;
-          const loadedSlug =
-            updated.slug ?? entryData.slug ?? entryData._slug ?? finalSlug;
-          const loadedStatus =
-            updated.status ?? entryData.status ?? entryData._status ?? status;
+          const loadedTitle = updated.title ?? entryData.title ?? entryData._title ?? title;
+          const loadedSlug = updated.slug ?? entryData.slug ?? entryData._slug ?? finalSlug;
+          const loadedStatus = updated.status ?? entryData.status ?? entryData._status ?? status;
 
           setTitle(loadedTitle);
           setSlug(loadedSlug);
@@ -512,20 +495,14 @@ export default function Editor() {
   // Preview helpers
   // ---------------------------------------------------------------------------
 
-  const previewData = useMemo(
-    () => ({
+  const previewData = useMemo(() => ({
       ...data,
       title,
       slug,
       status,
-    }),
-    [data, title, slug, status]
-  );
+    }), [data, title, slug, status]);
 
-  const customFieldEntries = useMemo(
-    () => Object.entries(data || {}),
-    [data]
-  );
+  const customFieldEntries = useMemo(() => Object.entries(data || {}), [data]);
 
   function prettyValue(v) {
     if (v === null || v === undefined) return "";
@@ -579,16 +556,13 @@ export default function Editor() {
                 const dRoles = Array.isArray(cfg.default_roles)
                   ? cfg.default_roles.map((r) => String(r || "").toUpperCase())
                   : [];
-                const isDefaultForRole = dRoles.length
-                  ? dRoles.includes(roleUpper)
-                  : !!v.is_default;
+                const isDefaultForRole = dRoles.length ? dRoles.includes(roleUpper) : !!v.is_default;
                 return (
                   <button
                     key={v.slug}
                     type="button"
                     className={
-                      "su-chip" +
-                      (v.slug === activeViewSlug ? " su-chip--active" : "")
+                      "su-chip" + (v.slug === activeViewSlug ? " su-chip--active" : "")
                     }
                     onClick={() => {
                       if (v.slug === activeViewSlug) return;
@@ -601,9 +575,7 @@ export default function Editor() {
                     }}
                   >
                     {v.label || v.slug}
-                    {isDefaultForRole && (
-                      <span className="su-chip-badge">default</span>
-                    )}
+                    {isDefaultForRole && <span className="su-chip-badge">default</span>}
                   </button>
                 );
               })}
@@ -742,10 +714,7 @@ export default function Editor() {
                     if (!key) return null;
                     const value = data ? data[key] : undefined;
                     return (
-                      <div
-                        key={key}
-                        style={{ gridColumn: `span ${width || 1}` }}
-                      >
+                      <div key={key} style={{ gridColumn: `span ${width || 1}` }}>
                         <FieldInput
                           field={def}
                           value={value}
