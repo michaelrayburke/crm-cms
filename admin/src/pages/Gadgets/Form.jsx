@@ -50,7 +50,7 @@ export default function GadgetForm() {
 
   // Load available gizmos and, if editing, the gadget details and attached gizmos
   useEffect(() => {
-    api.get('/gizmos')
+    api.get('/api/gizmosapi/gizmos')
       .then((res) => {
         setAvailableGizmos(res.data || []);
       })
@@ -58,7 +58,7 @@ export default function GadgetForm() {
         console.error('Failed to load gizmos', err);
       });
     if (isEditing) {
-      api.get(`/gadgets/${id}`)
+      api.get(`/api/gadgets/${id}`)
         .then((res) => {
           const data = res.data;
           setForm({
@@ -124,15 +124,15 @@ export default function GadgetForm() {
       // If slug is blank, remove it to let API generate from name
       if (!payload.slug) delete payload.slug;
       const res = isEditing
-        ? await api.put(`/gadgets/${id}`, payload)
-        : await api.post('/gadgets', payload);
+        ? await api.put(`/api/gadgets/${id}`, payload)
+        : await api.post('/api/gadgets', payload);
       const gadgetId = isEditing ? id : res.data.id;
       // Update gizmo attachments
       const currentGizmos = isEditing ? selectedGizmos : {};
       // Fetch existing attachments only when editing to compute diff
       let existingMap = {};
       if (isEditing) {
-        const existing = await api.get(`/gadgets/${gadgetId}`);
+        const existing = await api.get(`/api/gadgets/${gadgetId}`);
         (existing.data.gizmos || []).forEach((g) => {
           existingMap[g.gizmo_id] = JSON.stringify(g.config || {}, null, 2);
         });
@@ -140,7 +140,7 @@ export default function GadgetForm() {
       // Determine detach list
       for (const exId of Object.keys(existingMap)) {
         if (!selectedGizmos[exId]) {
-          await api.delete(`/gadgets/${gadgetId}/gizmos/${exId}`);
+          await api.delete(`/api/gadgets/${gadgetId}/gizmos/${exId}`);
         }
       }
       // Attach or update configs
@@ -152,7 +152,7 @@ export default function GadgetForm() {
           alert(`Config for gizmo ${gizmoId} is invalid JSON`);
           return;
         }
-        await api.post(`/gadgets/${gadgetId}/gizmos`, {
+        await api.post(`/api/gadgets/${gadgetId}/gizmos`, {
           gizmo_id: gizmoId,
           config: configObj,
         });

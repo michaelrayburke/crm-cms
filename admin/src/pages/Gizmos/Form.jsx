@@ -25,7 +25,7 @@ export default function GizmoForm() {
   });
   useEffect(() => {
     if (isEditing) {
-      api.get(`/gizmos/${id}`)
+      api.get(`/api/gizmos/${id}`)
         .then((res) => {
           const data = res.data;
           setForm({
@@ -56,8 +56,8 @@ export default function GizmoForm() {
       return;
     }
     const req = isEditing
-      ? api.put(`/gizmos/${id}`, payload)
-      : api.post('/gizmos', payload);
+      ? api.put(`/api/gizmos/${id}`, payload)
+      : api.post('/api/gizmos', payload);
     req
       .then(() => {
         // After saving, go back to the Gizmos list in the admin.  Use the /admin
