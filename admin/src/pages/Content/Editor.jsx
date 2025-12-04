@@ -352,7 +352,9 @@ export default function Editor() {
       }
     }
 
-    load();
+    load(
+      console.log('Loaded entryData:', entryData);
+    );
 
     return () => {
       cancelled = true;
