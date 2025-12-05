@@ -66,8 +66,8 @@ export default function GizmoForm() {
 
     // FIX: remove /api prefix from paths; api client already has baseURL
     const req = isEditing
-      ? api.put(`api/gizmos/${id}`, payload)
-      : api.post('api/gizmos', payload);
+      ? api.put(`/api/gizmos/${id}`, payload)
+      : api.post('/api/gizmos', payload);
 
     req
       .then(() => {
