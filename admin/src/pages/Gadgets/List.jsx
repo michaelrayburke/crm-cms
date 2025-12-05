@@ -8,17 +8,23 @@ import { api } from '../../lib/api';
  */
 export default function GadgetsList() {
   const [gadgets, setGadgets] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Fetch the gadgets from the API.  Because the api client is
-    // configured with a base URL that already includes `/api`, we should
-    // not prefix our request with `/api` here.  Without the extra
-    // prefix, the final URL resolves to `/api/gadgets` on the server.
+    // Fetch the gadgets from the API. The admin api client will prepend the
+    // API base (e.g. "https://serviceup-api.onrender.com"), so using
+    // "/api/gadgets" here results in requests to:
+    //   https://serviceup-api.onrender.com/api/gadgets
     api
       .get('/api/gadgets')
-      .then((res) => setGadgets(res.data || []))
+      .then((data) => {
+        console.log('[Gadgets/List] data =', data);
+        // The /api/gadgets endpoint returns a plain array of gadget rows.
+        setGadgets(Array.isArray(data) ? data : []);
+      })
       .catch((err) => {
         console.error('[Gadgets/List] Failed to load gadgets:', err);
+        setError(err);
       });
   }, []);
 
@@ -28,32 +34,52 @@ export default function GadgetsList() {
       <nav className="su-breadcrumbs" style={{ marginBottom: '1rem' }}>
         <Link to="/admin">Dashboard</Link> / <span>Gadgets</span>
       </nav>
+
       <header className="su-page-header">
         <h1>Gadgets</h1>
         <Link className="su-btn su-btn-primary" to="/admin/gadgets/new">
           Add Gadget
         </Link>
       </header>
+
+      {error && (
+        <div className="su-alert su-alert-danger">
+          Failed to load gadgets: {error.message || 'Unknown error'}
+        </div>
+      )}
+
       <table className="su-table">
         <thead>
           <tr>
             <th>Name</th>
+            <th>Slug</th>
             <th>Type</th>
-            <th>Active</th>
-            <th></th>
+            <th>Active?</th>
+            <th />
           </tr>
         </thead>
         <tbody>
-          {gadgets.map((g) => (
-            <tr key={g.id}>
-              <td>{g.name}</td>
-              <td>{g.gadget_type}</td>
-              <td>{g.is_active ? 'Yes' : 'No'}</td>
-              <td>
-                <Link to={`/admin/gadgets/${g.id}`}>Edit</Link>
+          {gadgets.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="text-center text-sm text-gray-500">
+                No gadgets yet.
               </td>
             </tr>
-          ))}
+          ) : (
+            gadgets.map((g) => (
+              <tr key={g.id}>
+                <td>{g.name}</td>
+                <td>{g.slug}</td>
+                <td>{g.gadget_type}</td>
+                <td>{g.is_active ? 'Yes' : 'No'}</td>
+                <td>
+                  <Link className="su-link" to={`/admin/gadgets/${g.id}`}>
+                    Edit
+                  </Link>
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
     </div>

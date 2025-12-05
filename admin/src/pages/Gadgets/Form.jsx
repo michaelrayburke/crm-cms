@@ -7,7 +7,7 @@ import { api } from '../../lib/api';
 // Utility to convert a string into a URL friendly slug.  This will strip
 // leading/trailing spaces, convert to lowercase, replace any groups of
 // non-alphanumeric characters with a single dash, and remove stray
-// dashes at the ends.  Used to auto‑generate the slug from the name.
+// dashes at the ends.  Used to auto-generate the slug from the name.
 function slugify(str) {
   return (str || '')
     .toString()
@@ -18,24 +18,22 @@ function slugify(str) {
 }
 
 /**
- * Form for creating or editing a Gadget.  Gadgets represent full products
- * (websites, apps, or system apps) built on top of ServiceUp.  The form
- * exposes fields for project-level settings (API, Supabase, branding, etc.)
- * and allows selecting which Gizmos are enabled for the gadget.  When
- * editing an existing gadget, the current values and attached gizmos are
- * loaded from the API.  Config JSON fields are edited as strings.
+ * Gadget form page.  Handles both creation and editing of gadgets.
+ * When an :id param is present, the form loads the existing gadget and
+ * its attached gizmos.  Otherwise it creates a new gadget.
  */
 export default function GadgetForm() {
   const { id } = useParams();
+  const isEditing = !!id;
   const navigate = useNavigate();
-  const isEditing = Boolean(id);
 
-  // Base form state.  Keep JSON fields as strings for editing.
   const [form, setForm] = useState({
     name: '',
     slug: '',
     gadget_type: 'website',
     description: '',
+    icon: '',
+    repo_url: '',
     api_base_url: '',
     supabase_url: '',
     supabase_anon_key: '',
@@ -46,15 +44,13 @@ export default function GadgetForm() {
     accent_color: '',
     logo_url: '',
     favicon_url: '',
-    design_config: '{}',
-    structure_config: '{}',
+    design_config: '{\n  "primary_color": "#ff6600"\n}',
+    structure_config: '{\n  "sections": []\n}',
     is_active: true,
     is_system: false,
   });
 
-  // Toast state.  When a save succeeds or fails, this will be set to
-  // an object like { type: 'success' | 'error', message: string }.
-  // If null, no toast is shown.  Toasts auto-dismiss after a delay.
+  // Toast is an object like { type: 'success' | 'error', message: string }.
   const [toast, setToast] = useState(null);
 
   // Available gizmos to select from
@@ -62,31 +58,29 @@ export default function GadgetForm() {
   // Selected gizmos for this gadget (id => config JSON string)
   const [selectedGizmos, setSelectedGizmos] = useState({});
 
-  // Define default placeholders for design and structure configs.
+  // Default placeholders
   const designConfigPlaceholder = '{\n  "primary_color": "#ff6600"\n}';
-  const structureConfigPlaceholder =
-    '{\n  "menus": [],\n  "pages": [],\n  "screens": []\n}';
+  const structureConfigPlaceholder = '{\n  "sections": []\n}';
 
-  // Load available gizmos and, if editing, the gadget details and attached gizmos
+  // Load available gizmos and, if editing, the gadget details + attached gizmos
   useEffect(() => {
-    // Fetch the list of all gizmos.  Do not prefix with `/api` as the api
-    // client already includes the base path.  This resolves to
-    // `/api/gizmos` at runtime.
+    // 1) Fetch the list of all gizmos
     api
       .get('/api/gizmos')
-      .then((res) => {
-        setAvailableGizmos(res.data || []);
+      .then((data) => {
+        console.log('[Gadgets/Form] available gizmos =', data);
+        setAvailableGizmos(Array.isArray(data) ? data : []);
       })
       .catch((err) => {
         console.error('[Gadgets/Form] Failed to load gizmos', err);
       });
 
+    // 2) If editing, load the gadget by ID
     if (isEditing) {
-      // Load the gadget data by its ID.  Again, do not prefix with `/api`.
       api
         .get(`/api/gadgets/${id}`)
-        .then((res) => {
-          const data = res.data || {};
+        .then((data) => {
+          console.log('[Gadgets/Form] edit gadget =', data);
           setForm((prev) => ({
             ...prev,
             ...data,
@@ -109,30 +103,36 @@ export default function GadgetForm() {
           console.error('[Gadgets/Form] Failed to load gadget', err);
         });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditing, id]);
+  }, [id, isEditing]);
 
-  // Generic field change handler
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm((f) => {
-      const updated = { ...f, [name]: type === 'checkbox' ? checked : value };
-      // Auto‑generate the slug from the name if the slug has not been manually set.
-      if (name === 'name' && !f.slug) {
-        updated.slug = slugify(value);
-      }
-      return updated;
-    });
+
+    if (type === 'checkbox') {
+      setForm((prev) => ({
+        ...prev,
+        [name]: checked,
+      }));
+      return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+      // Auto-generate slug from name if slug is currently blank
+      ...(name === 'name' && !prev.slug
+        ? { slug: slugify(value) }
+        : null),
+    }));
   };
 
-  // Toggle gizmo selection; if unchecked remove from map
-  const handleGizmoToggle = (gizmoId) => (e) => {
-    const checked = e.target.checked;
+  const handleGizmoToggle = (gizmoId, checked) => {
     setSelectedGizmos((prev) => {
       const next = { ...prev };
       if (checked) {
-        // default empty config
-        next[gizmoId] = next[gizmoId] || '{}';
+        if (!next[gizmoId]) {
+          next[gizmoId] = '{}';
+        }
       } else {
         delete next[gizmoId];
       }
@@ -140,10 +140,11 @@ export default function GadgetForm() {
     });
   };
 
-  // Handle gizmo config change
-  const handleGizmoConfigChange = (gizmoId) => (e) => {
-    const value = e.target.value;
-    setSelectedGizmos((prev) => ({ ...prev, [gizmoId]: value }));
+  const handleGizmoConfigChange = (gizmoId, value) => {
+    setSelectedGizmos((prev) => ({
+      ...prev,
+      [gizmoId]: value,
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -161,85 +162,104 @@ export default function GadgetForm() {
       return;
     }
 
+    let gadgetId;
+
+    // 1) Save the gadget itself
     try {
-      // If slug is blank, remove it to let API generate from name
       if (!payload.slug) delete payload.slug;
 
-      // When saving, do not prefix with `/api` because the api client
-      // automatically prepends the base path.  This will resolve to
-      // `/api/gadgets` or `/api/gadgets/:id` on the server.
-      const res = isEditing
+      const saved = isEditing
         ? await api.put(`/api/gadgets/${id}`, payload)
         : await api.post('/api/gadgets', payload);
 
-      const gadgetId = isEditing ? id : res.data.id;
+      console.log('[Gadgets/Form] saved gadget =', saved);
+      gadgetId = isEditing ? id : saved.id;
+    } catch (err) {
+      console.error('[Gadgets/Form] Failed to save gadget core record', err);
+      setToast({ type: 'error', message: 'Failed to save gadget' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
 
-      // Fetch existing attachments only when editing to compute diff
+    // 2) Try to sync gizmo attachments (non-fatal if this fails)
+    try {
       let existingMap = {};
+
       if (isEditing) {
         const existing = await api.get(`/api/gadgets/${gadgetId}`);
-        (existing.data.gizmos || []).forEach((g) => {
+        console.log('[Gadgets/Form] existing with gizmos =', existing);
+
+        (existing.gizmos || []).forEach((g) => {
           existingMap[g.gizmo_id] = JSON.stringify(g.config || {}, null, 2);
         });
       }
 
-      // Detach gizmos that were removed
+      // Detach removed gizmos
       for (const exId of Object.keys(existingMap)) {
         if (!selectedGizmos[exId]) {
           await api.delete(`/api/gadgets/${gadgetId}/gizmos/${exId}`);
         }
       }
 
-      // Attach or update configs
+      // Attach/update selected gizmos
       for (const gizmoId of Object.keys(selectedGizmos)) {
         let configObj;
         try {
           configObj = JSON.parse(selectedGizmos[gizmoId] || '{}');
-        } catch (err) {
+        } catch {
           alert(`Config for gizmo ${gizmoId} is invalid JSON`);
           return;
         }
+
         await api.post(`/api/gadgets/${gadgetId}/gizmos`, {
           gizmo_id: gizmoId,
           config: configObj,
         });
       }
-
-      // Redirect to the list of gadgets in the admin menu.
-      // Show a success toast and then navigate back to the list after a short delay.
-      setToast({ type: 'success', message: 'Gadget saved successfully' });
-      setTimeout(() => {
-        setToast(null);
-        navigate('/admin/gadgets');
-      }, 1500);
     } catch (err) {
-      console.error('[Gadgets/Form] Failed to save gadget', err);
-      // Show an error toast on failure.
-      setToast({ type: 'error', message: 'Failed to save gadget' });
-      setTimeout(() => setToast(null), 3000);
+      console.error('[Gadgets/Form] Gadget saved but gizmo linking failed', err);
+      setToast({
+        type: 'error',
+        message: 'Gadget saved, but updating attached gizmos failed.',
+      });
+      setTimeout(() => setToast(null), 4000);
     }
+
+    // 3) Success path
+    setToast({ type: 'success', message: 'Gadget saved successfully' });
+    setTimeout(() => {
+      setToast(null);
+      navigate('/admin/gadgets');
+    }, 1500);
   };
 
   return (
     <div className="su-page">
-      {/* Toast notification.  Shows success or error messages. */}
+      {/* Breadcrumb navigation */}
+      <nav className="su-breadcrumbs" style={{ marginBottom: '1rem' }}>
+        <Link to="/admin">Dashboard</Link> /{' '}
+        <Link to="/admin/gadgets">Gadgets</Link> /{' '}
+        <span>{isEditing ? 'Edit Gadget' : 'New Gadget'}</span>
+      </nav>
+
+      <header className="su-page-header">
+        <h1>{isEditing ? 'Edit Gadget' : 'New Gadget'}</h1>
+      </header>
+
       {toast && (
         <div
-          className={`su-toast su-toast-${toast.type}`}
-          style={{ marginBottom: '1rem' }}
+          className={`su-alert ${
+            toast.type === 'error'
+              ? 'su-alert-danger'
+              : 'su-alert-success'
+          }`}
         >
           {toast.message}
         </div>
       )}
-      {/* Breadcrumb navigation */}
-      <nav className="su-breadcrumbs" style={{ marginBottom: '1rem' }}>
-        <Link to="/admin">Dashboard</Link> / <Link to="/admin/gadgets">Gadgets</Link> /
-        <span>{isEditing ? 'Edit' : 'Add'} Gadget</span>
-      </nav>
-      <header className="su-page-header">
-        <h1>{isEditing ? 'Edit Gadget' : 'Add Gadget'}</h1>
-      </header>
+
       <form className="su-form" onSubmit={handleSubmit}>
+        {/* Basic info */}
         <div className="su-form-group">
           <label>Name</label>
           <input
@@ -264,12 +284,11 @@ export default function GadgetForm() {
           <label>Type</label>
           <select
             name="gadget_type"
-            value={form.gadget_type}
+            value={form.gadget_type || ''}
             onChange={handleChange}
           >
             <option value="website">Website</option>
             <option value="app">App</option>
-            <option value="system">System</option>
           </select>
         </div>
 
@@ -282,8 +301,16 @@ export default function GadgetForm() {
           />
         </div>
 
-        <hr />
-        <h2>Technical settings</h2>
+        {/* URLs + branding */}
+        <div className="su-form-group">
+          <label>Repository URL</label>
+          <input
+            name="repo_url"
+            value={form.repo_url || ''}
+            onChange={handleChange}
+            placeholder="https://github.com/..."
+          />
+        </div>
 
         <div className="su-form-group">
           <label>API Base URL</label>
@@ -291,6 +318,7 @@ export default function GadgetForm() {
             name="api_base_url"
             value={form.api_base_url || ''}
             onChange={handleChange}
+            placeholder="https://serviceup-api.onrender.com/api"
           />
         </div>
 
@@ -313,16 +341,17 @@ export default function GadgetForm() {
         </div>
 
         <div className="su-form-group">
-          <label>Deploy URL (Web)</label>
+          <label>Web Deploy URL</label>
           <input
             name="deploy_url_web"
             value={form.deploy_url_web || ''}
             onChange={handleChange}
+            placeholder="Netlify/Vercel URL"
           />
         </div>
 
         <div className="su-form-group">
-          <label>Deploy URL (App / Expo)</label>
+          <label>App Deploy URL</label>
           <input
             name="deploy_url_app"
             value={form.deploy_url_app || ''}
@@ -330,15 +359,13 @@ export default function GadgetForm() {
           />
         </div>
 
-        <hr />
-        <h2>Branding</h2>
-
         <div className="su-form-group">
           <label>Primary Color</label>
           <input
             name="primary_color"
             value={form.primary_color || ''}
             onChange={handleChange}
+            placeholder="#ff6600"
           />
         </div>
 
@@ -378,17 +405,15 @@ export default function GadgetForm() {
           />
         </div>
 
-        <hr />
-        <h2>Design & Structure Config</h2>
-
+        {/* JSON configs */}
         <div className="su-form-group">
           <label>Design Config (JSON)</label>
           <textarea
             name="design_config"
             value={form.design_config}
             onChange={handleChange}
-            rows={4}
             placeholder={designConfigPlaceholder}
+            rows={6}
           />
         </div>
 
@@ -398,70 +423,77 @@ export default function GadgetForm() {
             name="structure_config"
             value={form.structure_config}
             onChange={handleChange}
-            rows={4}
             placeholder={structureConfigPlaceholder}
+            rows={6}
           />
         </div>
 
-        <hr />
-        <h2>Gizmos</h2>
-
-        <div className="su-form-group">
-          {availableGizmos.map((g) => {
-            const checked = Object.prototype.hasOwnProperty.call(
-              selectedGizmos,
-              g.id,
-            );
-            return (
-              <div key={g.id} style={{ marginBottom: '1rem' }}>
-                <label style={{ fontWeight: 'bold' }}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={handleGizmoToggle(g.id)}
-                  />
-                  {g.name} ({g.gizmo_type})
-                </label>
-                {checked && (
-                  <textarea
-                    style={{
-                      display: 'block',
-                      marginTop: '0.25rem',
-                      width: '100%',
-                    }}
-                    value={selectedGizmos[g.id]}
-                    onChange={handleGizmoConfigChange(g.id)}
-                    rows={3}
-                    placeholder="{}"
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="su-form-group">
+        {/* Flags */}
+        <div className="su-form-group su-form-inline">
           <label>
             <input
               type="checkbox"
               name="is_active"
-              checked={form.is_active}
+              checked={!!form.is_active}
               onChange={handleChange}
-            />
+            />{' '}
             Active
           </label>
         </div>
 
-        <div className="su-form-group">
+        <div className="su-form-group su-form-inline">
           <label>
             <input
               type="checkbox"
               name="is_system"
-              checked={form.is_system}
+              checked={!!form.is_system}
               onChange={handleChange}
-            />
+            />{' '}
             System Gadget
           </label>
+        </div>
+
+        {/* Gizmo attachments */}
+        <hr />
+        <h2>Gizmos</h2>
+
+        <div className="su-form-group">
+          {availableGizmos.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              No gizmos available yet – create some first.
+            </p>
+          ) : (
+            availableGizmos.map((g) => {
+              const checked = Object.prototype.hasOwnProperty.call(
+                selectedGizmos,
+                g.id,
+              );
+              return (
+                <div key={g.id} className="su-gizmo-row">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) =>
+                        handleGizmoToggle(g.id, e.target.checked)
+                      }
+                    />{' '}
+                    {g.name} ({g.gizmo_type})
+                  </label>
+                  {checked && (
+                    <textarea
+                      value={selectedGizmos[g.id] || '{}'}
+                      onChange={(e) =>
+                        handleGizmoConfigChange(g.id, e.target.value)
+                      }
+                      placeholder="{\n  \"example\": true\n}"
+                      rows={4}
+                    />
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
 
         <div className="su-form-group">

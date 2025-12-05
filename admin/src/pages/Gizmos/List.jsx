@@ -12,13 +12,19 @@ export default function GizmosList() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Fetch gizmos using a root-relative path.  The API client already
-    // prepends the `/api` base, so we omit it here.  This results in
-    // requests to `/api/gizmos` at runtime.
+    // Fetch gizmos. The admin api client will prepend API_BASE
+    // (e.g. "https://serviceup-api.onrender.com"), so this becomes
+    //   https://serviceup-api.onrender.com/api/gizmos
     api
       .get('/api/gizmos')
-      .then((res) => setGizmos(res.data || []))
-      .catch((err) => setError(err));
+      .then((data) => {
+        console.log('[Gizmos/List] data =', data);
+        setGizmos(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        console.error('[Gizmos/List] Failed to load gizmos:', err);
+        setError(err);
+      });
   }, []);
 
   return (
@@ -27,35 +33,50 @@ export default function GizmosList() {
       <nav className="su-breadcrumbs" style={{ marginBottom: '1rem' }}>
         <Link to="/admin">Dashboard</Link> / <span>Gizmos</span>
       </nav>
+
       <header className="su-page-header">
         <h1>Gizmos</h1>
         <Link className="su-btn su-btn-primary" to="/admin/gizmos/new">
           Add Gizmo
         </Link>
       </header>
+
       {error && (
-        <div className="su-alert su-alert-danger">{error.message}</div>
+        <div className="su-alert su-alert-danger">
+          Failed to load gizmos: {error.message || 'Unknown error'}
+        </div>
       )}
+
       <table className="su-table">
         <thead>
           <tr>
             <th>Name</th>
             <th>Type</th>
-            <th>Enabled</th>
-            <th></th>
+            <th>Enabled?</th>
+            <th />
           </tr>
         </thead>
         <tbody>
-          {gizmos.map((g) => (
-            <tr key={g.id}>
-              <td>{g.name}</td>
-              <td>{g.gizmo_type}</td>
-              <td>{g.is_enabled ? 'Yes' : 'No'}</td>
-              <td>
-                <Link to={`/admin/gizmos/${g.id}`}>Edit</Link>
+          {gizmos.length === 0 ? (
+            <tr>
+              <td colSpan={4} className="text-center text-sm text-gray-500">
+                No gizmos yet.
               </td>
             </tr>
-          ))}
+          ) : (
+            gizmos.map((g) => (
+              <tr key={g.id}>
+                <td>{g.name}</td>
+                <td>{g.gizmo_type}</td>
+                <td>{g.is_enabled ? 'Yes' : 'No'}</td>
+                <td>
+                  <Link className="su-link" to={`/admin/gizmos/${g.id}`}>
+                    Edit
+                  </Link>
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
     </div>
