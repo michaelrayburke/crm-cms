@@ -1,50 +1,40 @@
-import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { api } from '../../lib/api';
+import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { api } from "../../lib/api";
 
-/**
- * List view for all gadgets.  Displays gadgets with their type and active state.
- * Provides a link to create a new gadget or edit existing ones.
- */
 export default function GadgetsList() {
-  const [gadgets, setGadgets] = useState([]);
+  const [items, setItems] = useState([]);
 
   useEffect(() => {
-    // Use a root-relative path; api client already includes the /api base.
-    api
-      .get('/gadgets')
-      .then((res) => setGadgets(res.data || []))
-      .catch((err) => {
-        console.error('[Gadgets/List] Failed to load gadgets:', err);
-      });
+    api.get("/api/gadgets")
+      .then((res) => setItems(res.data || []))
+      .catch((err) => console.error("Failed to load gadgets", err));
   }, []);
 
   return (
-    <div className="su-page">
-      <header className="su-page-header">
+    <div className="page">
+      <div className="page-header">
         <h1>Gadgets</h1>
-        <Link className="su-btn su-btn-primary" to="/admin/gadgets/new">
-          Add Gadget
-        </Link>
-      </header>
-      <table className="su-table">
+        <Link to="/gadgets/new" className="btn-primary">+ Add Gadget</Link>
+      </div>
+
+      <table className="table">
         <thead>
           <tr>
             <th>Name</th>
-            <th>Type</th>
-            <th>Active</th>
-            <th></th>
+            <th>Slug</th>
+            <th>Updated</th>
           </tr>
         </thead>
+
         <tbody>
-          {gadgets.map((g) => (
+          {items.map((g) => (
             <tr key={g.id}>
-              <td>{g.name}</td>
-              <td>{g.gadget_type}</td>
-              <td>{g.is_active ? 'Yes' : 'No'}</td>
               <td>
-                <Link to={`/admin/gadgets/${g.id}`}>Edit</Link>
+                <Link to={`/gadgets/${g.id}`}>{g.name}</Link>
               </td>
+              <td>{g.slug}</td>
+              <td>{new Date(g.updated_at).toLocaleString()}</td>
             </tr>
           ))}
         </tbody>
