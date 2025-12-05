@@ -486,7 +486,7 @@ export default function GadgetForm() {
                       onChange={(e) =>
                         handleGizmoConfigChange(g.id, e.target.value)
                       }
-                      placeholder="{\n  \"example\": true\n}"
+                      placeholder="{"example": true}"
                       rows={4}
                     />
                   )}
