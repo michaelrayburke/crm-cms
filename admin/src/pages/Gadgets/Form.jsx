@@ -482,13 +482,15 @@ export default function GadgetForm() {
                   </label>
                   {checked && (
                     <textarea
-                      value={selectedGizmos[g.id] || '{}'}
-                      onChange={(e) =>
-                        handleGizmoConfigChange(g.id, e.target.value)
-                      }
-                      placeholder="{"example": true}"
-                      rows={4}
-                    />
+  value={selectedGizmos[g.id] || '{}'}
+  onChange={(e) =>
+    handleGizmoConfigChange(g.id, e.target.value)
+  }
+  placeholder={`{
+  "example": true
+}`}
+  rows={4}
+/>
                   )}
                 </div>
               );
