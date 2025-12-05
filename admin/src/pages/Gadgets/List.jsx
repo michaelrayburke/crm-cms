@@ -1,25 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 
 /**
- * List view for all gadgets.  Displays gadgets with their type and active state.
- * Provides a link to create a new gadget or edit existing ones.
+ * List view for all gadgets. Displays gadgets with their type and active state.
+ * - Entire row is clickable and opens the edit page.
+ * - Also includes a separate "Edit" link in the last column.
  */
 export default function GadgetsList() {
   const [gadgets, setGadgets] = useState([]);
   const [error, setError] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    // Fetch the gadgets from the API. The admin api client will prepend the
-    // API base (e.g. "https://serviceup-api.onrender.com"), so using
-    // "/api/gadgets" here results in requests to:
-    //   https://serviceup-api.onrender.com/api/gadgets
     api
       .get('/api/gadgets')
       .then((data) => {
         console.log('[Gadgets/List] data =', data);
-        // The /api/gadgets endpoint returns a plain array of gadget rows.
         setGadgets(Array.isArray(data) ? data : []);
       })
       .catch((err) => {
@@ -27,6 +24,10 @@ export default function GadgetsList() {
         setError(err);
       });
   }, []);
+
+  const handleRowClick = (id) => {
+    navigate(`/admin/gadgets/${id}`);
+  };
 
   return (
     <div className="su-page">
@@ -67,13 +68,22 @@ export default function GadgetsList() {
             </tr>
           ) : (
             gadgets.map((g) => (
-              <tr key={g.id}>
+              <tr
+                key={g.id}
+                onClick={() => handleRowClick(g.id)}
+                style={{ cursor: 'pointer' }}
+              >
                 <td>{g.name}</td>
                 <td>{g.slug}</td>
                 <td>{g.gadget_type}</td>
                 <td>{g.is_active ? 'Yes' : 'No'}</td>
                 <td>
-                  <Link className="su-link" to={`/admin/gadgets/${g.id}`}>
+                  <Link
+                    className="su-link"
+                    to={`/admin/gadgets/${g.id}`}
+                    // Prevent row click from firing when the link itself is clicked
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     Edit
                   </Link>
                 </td>

@@ -1,20 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 
 /**
  * List view for all gizmos.
- * Fetches a list of all gizmos from the API and displays them in a table with
- * links to create a new gizmo or edit existing ones.
+ * - Entire row is clickable and opens the edit page.
+ * - Also includes a separate "Edit" link.
  */
 export default function GizmosList() {
   const [gizmos, setGizmos] = useState([]);
   const [error, setError] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    // Fetch gizmos. The admin api client will prepend API_BASE
-    // (e.g. "https://serviceup-api.onrender.com"), so this becomes
-    //   https://serviceup-api.onrender.com/api/gizmos
     api
       .get('/api/gizmos')
       .then((data) => {
@@ -26,6 +24,10 @@ export default function GizmosList() {
         setError(err);
       });
   }, []);
+
+  const handleRowClick = (id) => {
+    navigate(`/admin/gizmos/${id}`);
+  };
 
   return (
     <div className="su-page">
@@ -65,12 +67,20 @@ export default function GizmosList() {
             </tr>
           ) : (
             gizmos.map((g) => (
-              <tr key={g.id}>
+              <tr
+                key={g.id}
+                onClick={() => handleRowClick(g.id)}
+                style={{ cursor: 'pointer' }}
+              >
                 <td>{g.name}</td>
                 <td>{g.gizmo_type}</td>
                 <td>{g.is_enabled ? 'Yes' : 'No'}</td>
                 <td>
-                  <Link className="su-link" to={`/admin/gizmos/${g.id}`}>
+                  <Link
+                    className="su-link"
+                    to={`/admin/gizmos/${g.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     Edit
                   </Link>
                 </td>
