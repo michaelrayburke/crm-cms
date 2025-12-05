@@ -5,6 +5,19 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 // succeeds and matches how other components import the API.
 import { api } from '../../lib/api';
 
+// Utility to convert a string into a URL friendly slug.  This will strip
+// leading/trailing spaces, convert to lowercase, replace any groups of
+// non-alphanumeric characters with a single dash, and remove stray
+// dashes at the ends.  Used to auto‑generate the slug from the name.
+function slugify(str) {
+  return (str || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 /**
  * Form for creating or editing a Gizmo.  If an ID is present in the URL
  * parameters, the form loads the existing gizmo; otherwise it starts with
@@ -14,6 +27,7 @@ export default function GizmoForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEditing = Boolean(id);
+
   const [form, setForm] = useState({
     name: '',
     slug: '',
@@ -23,51 +37,48 @@ export default function GizmoForm() {
     config: '{}',
     is_enabled: true,
   });
+
+  // Toast state.  When the gizmo is saved or errors occur, this state will
+  // hold an object like { type: 'success' | 'error', message: string }.
+  // If null, no toast is shown.  Toasts auto-dismiss after a delay.
+  const [toast, setToast] = useState(null);
+
   useEffect(() => {
     if (isEditing) {
-      api.get(`/gizmos/${id}`)
+      // When editing, fetch the existing gizmo by ID.  Do not prefix
+      // with `/api` because the api client already includes the base path.
+      api
+        .get(`/gizmos/${id}`)
         .then((res) => {
-          const data = res.data;
-          setForm({
+          const data = res.data || {};
+          setForm((prev) => ({
+            ...prev,
             ...data,
             config: JSON.stringify(data.config || {}, null, 2),
-          });
+          }));
         })
         .catch((err) => {
-          console.error(err);
-          // In a real app, show error to user
+          console.error('[Gizmos/Form] Failed to load gizmo', err);
         });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditing, id]);
 
-  // Utility to generate URL-friendly slugs from arbitrary strings.  If the
-  // user types a name and the slug field is empty (i.e. not explicitly set),
-  // this function will convert the name to a slug.  We use a simple
-  // replacement of non‑alphanumeric characters with dashes and lowercasing.
-  const slugify = (str) =>
-    (str || '')
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-
-  // Toast state for user feedback.  When set, a success or error alert is
-  // displayed at the top of the page.  Each toast has a type (success
-  // or danger) and a message.  Toasts are cleared on navigation.
-  const [toast, setToast] = useState(null);
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm((f) => {
-      const next = { ...f, [name]: type === 'checkbox' ? checked : value };
-      // Auto‑generate slug from name if slug is blank and the user edits the name
-      if (name === 'name' && !isEditing && !f.slug) {
-        next.slug = slugify(value);
+      const updated = { ...f, [name]: type === 'checkbox' ? checked : value };
+      // Auto‑generate the slug from the name if the slug has not been manually set.
+      if (name === 'name' && !f.slug) {
+        updated.slug = slugify(value);
       }
-      return next;
+      return updated;
     });
   };
+
   const handleSubmit = (e) => {
     e.preventDefault();
+
     let payload;
     try {
       payload = {
@@ -78,39 +89,50 @@ export default function GizmoForm() {
       alert('Config must be valid JSON');
       return;
     }
+
+    // Save the gizmo.  Do not prefix with `/api` because the api client
+    // already prepends the base path.
     const req = isEditing
       ? api.put(`/gizmos/${id}`, payload)
       : api.post('/gizmos', payload);
+
     req
       .then(() => {
-        // Display a success toast and redirect back to the list
+        // Show a success toast and then navigate back to the list after a short delay.
         setToast({ type: 'success', message: 'Gizmo saved successfully' });
-        navigate('/admin/gizmos');
+        setTimeout(() => {
+          setToast(null);
+          navigate('/admin/gizmos');
+        }, 1500);
       })
       .catch((err) => {
-        console.error(err);
-        setToast({ type: 'danger', message: err?.response?.data?.error || 'Failed to save gizmo' });
+        console.error('[Gizmos/Form] Failed to save gizmo', err);
+        // Show an error toast on failure.
+        setToast({ type: 'error', message: 'Failed to save gizmo' });
+        setTimeout(() => setToast(null), 3000);
       });
   };
-  // Define a default placeholder for the config textarea.  Using a separate
-  // variable avoids invalid escape sequences in JSX attributes and makes
-  // editing easier.  The placeholder shows a basic JSON shape with an apiKey
-  // property.
+
+  // Define a default placeholder for the config textarea.
   const configPlaceholder = '{\n  "apiKey": "..."\n}';
+
   return (
     <div className="su-page">
-      {/* Display toast notifications */}
+      {/* Toast notification */}
       {toast && (
-        <div className={`su-alert su-alert-${toast.type}`} style={{ marginBottom: '1rem' }}>
+        <div
+          className={`su-toast su-toast-${toast.type}`}
+          style={{ marginBottom: '1rem' }}
+        >
           {toast.message}
         </div>
       )}
+      {/* Breadcrumb navigation */}
+      <nav className="su-breadcrumbs" style={{ marginBottom: '1rem' }}>
+        <Link to="/admin">Dashboard</Link> / <Link to="/admin/gizmos">Gizmos</Link> /
+        <span>{isEditing ? 'Edit' : 'Add'} Gizmo</span>
+      </nav>
       <header className="su-page-header">
-        {/* Breadcrumb navigation */}
-        <nav className="su-breadcrumb" style={{ marginBottom: '1rem' }}>
-          <Link to="/admin">Dashboard</Link> / <Link to="/admin/gizmos">Gizmos</Link> /{' '}
-          <span>{isEditing ? 'Edit Gizmo' : 'Add Gizmo'}</span>
-        </nav>
         <h1>{isEditing ? 'Edit Gizmo' : 'Add Gizmo'}</h1>
       </header>
       <form className="su-form" onSubmit={handleSubmit}>
@@ -123,6 +145,7 @@ export default function GizmoForm() {
             required
           />
         </div>
+
         <div className="su-form-group">
           <label>Slug</label>
           <input
@@ -132,22 +155,34 @@ export default function GizmoForm() {
             placeholder="Auto-generated if left blank"
           />
         </div>
+
         <div className="su-form-group">
           <label>Type</label>
-          <select name="gizmo_type" value={form.gizmo_type} onChange={handleChange}>
+          <select
+            name="gizmo_type"
+            value={form.gizmo_type}
+            onChange={handleChange}
+          >
             <option value="integration">Integration</option>
             <option value="feature">Feature</option>
             <option value="utility">Utility</option>
           </select>
         </div>
+
         <div className="su-form-group">
           <label>Description</label>
-          <textarea name="description" value={form.description} onChange={handleChange} />
+          <textarea
+            name="description"
+            value={form.description}
+            onChange={handleChange}
+          />
         </div>
+
         <div className="su-form-group">
           <label>Icon (optional)</label>
           <input name="icon" value={form.icon} onChange={handleChange} />
         </div>
+
         <div className="su-form-group">
           <label>Config (JSON)</label>
           <textarea
@@ -158,6 +193,7 @@ export default function GizmoForm() {
             placeholder={configPlaceholder}
           />
         </div>
+
         <div className="su-form-group">
           <label>
             <input
@@ -169,6 +205,7 @@ export default function GizmoForm() {
             Enabled
           </label>
         </div>
+
         <div className="su-form-group">
           <button type="submit" className="su-btn su-btn-primary">
             {isEditing ? 'Update' : 'Create'} Gizmo

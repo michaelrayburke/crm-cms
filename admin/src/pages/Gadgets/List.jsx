@@ -8,16 +8,27 @@ import { api } from '../../lib/api';
  */
 export default function GadgetsList() {
   const [gadgets, setGadgets] = useState([]);
+
   useEffect(() => {
-    api.get('/gadgets').then((res) => setGadgets(res.data));
+    // Fetch the gadgets from the API.  Because the api client is
+    // configured with a base URL that already includes `/api`, we should
+    // not prefix our request with `/api` here.  Without the extra
+    // prefix, the final URL resolves to `/api/gadgets` on the server.
+    api
+      .get('/gadgets')
+      .then((res) => setGadgets(res.data || []))
+      .catch((err) => {
+        console.error('[Gadgets/List] Failed to load gadgets:', err);
+      });
   }, []);
+
   return (
     <div className="su-page">
+      {/* Breadcrumb navigation */}
+      <nav className="su-breadcrumbs" style={{ marginBottom: '1rem' }}>
+        <Link to="/admin">Dashboard</Link> / <span>Gadgets</span>
+      </nav>
       <header className="su-page-header">
-        {/* Breadcrumb navigation */}
-        <nav className="su-breadcrumb" style={{ marginBottom: '1rem' }}>
-          <Link to="/admin">Dashboard</Link> / <span>Gadgets</span>
-        </nav>
         <h1>Gadgets</h1>
         <Link className="su-btn su-btn-primary" to="/admin/gadgets/new">
           Add Gadget
@@ -39,7 +50,7 @@ export default function GadgetsList() {
               <td>{g.gadget_type}</td>
               <td>{g.is_active ? 'Yes' : 'No'}</td>
               <td>
-                 <Link to={`/admin/gadgets/${g.id}`}>Edit</Link>
+                <Link to={`/admin/gadgets/${g.id}`}>Edit</Link>
               </td>
             </tr>
           ))}

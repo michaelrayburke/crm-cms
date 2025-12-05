@@ -10,24 +10,32 @@ import { api } from '../../lib/api';
 export default function GizmosList() {
   const [gizmos, setGizmos] = useState([]);
   const [error, setError] = useState(null);
+
   useEffect(() => {
-    api.get('/api/gizmos')
-      .then((res) => setGizmos(res.data))
+    // Fetch gizmos using a root-relative path.  The API client already
+    // prepends the `/api` base, so we omit it here.  This results in
+    // requests to `/api/gizmos` at runtime.
+    api
+      .get('/gizmos')
+      .then((res) => setGizmos(res.data || []))
       .catch((err) => setError(err));
   }, []);
+
   return (
     <div className="su-page">
+      {/* Breadcrumb navigation */}
+      <nav className="su-breadcrumbs" style={{ marginBottom: '1rem' }}>
+        <Link to="/admin">Dashboard</Link> / <span>Gizmos</span>
+      </nav>
       <header className="su-page-header">
-        {/* Breadcrumb navigation to help orient users in the admin hierarchy */}
-        <nav className="su-breadcrumb" style={{ marginBottom: '1rem' }}>
-          <Link to="/admin">Dashboard</Link> / <span>Gizmos</span>
-        </nav>
         <h1>Gizmos</h1>
         <Link className="su-btn su-btn-primary" to="/admin/gizmos/new">
           Add Gizmo
         </Link>
       </header>
-      {error && <div className="su-alert su-alert-danger">{error.message}</div>}
+      {error && (
+        <div className="su-alert su-alert-danger">{error.message}</div>
+      )}
       <table className="su-table">
         <thead>
           <tr>
@@ -44,7 +52,7 @@ export default function GizmosList() {
               <td>{g.gizmo_type}</td>
               <td>{g.is_enabled ? 'Yes' : 'No'}</td>
               <td>
-                 <Link to={`/admin/gizmos/${g.id}`}>Edit</Link>
+                <Link to={`/admin/gizmos/${g.id}`}>Edit</Link>
               </td>
             </tr>
           ))}
