@@ -1,40 +1,53 @@
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { api } from "../../lib/api";
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { api } from '../../lib/api';
 
+/**
+ * List view for all gizmos.
+ * Fetches a list of all gizmos from the API and displays them in a table with
+ * links to create a new gizmo or edit existing ones.
+ */
 export default function GizmosList() {
-  const [items, setItems] = useState([]);
+  const [gizmos, setGizmos] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    api.get("/api/gizmos")
-      .then((res) => setItems(res.data || []))
-      .catch((err) => console.error("Failed to load gizmos", err));
+    // FIX: root-relative path so baseURL (/api) is only applied once
+    api
+      .get('api/gizmos')
+      .then((res) => setGizmos(res.data || []))
+      .catch((err) => setError(err));
   }, []);
 
   return (
-    <div className="page">
-      <div className="page-header">
+    <div className="su-page">
+      <header className="su-page-header">
         <h1>Gizmos</h1>
-        <Link to="/gizmos/new" className="btn-primary">+ Add Gizmo</Link>
-      </div>
-
-      <table className="table">
+        <Link className="su-btn su-btn-primary" to="/admin/gizmos/new">
+          Add Gizmo
+        </Link>
+      </header>
+      {error && (
+        <div className="su-alert su-alert-danger">{error.message}</div>
+      )}
+      <table className="su-table">
         <thead>
           <tr>
             <th>Name</th>
-            <th>Key</th>
-            <th>Updated</th>
+            <th>Type</th>
+            <th>Enabled</th>
+            <th></th>
           </tr>
         </thead>
-
         <tbody>
-          {items.map((g) => (
+          {gizmos.map((g) => (
             <tr key={g.id}>
+              <td>{g.name}</td>
+              <td>{g.gizmo_type}</td>
+              <td>{g.is_enabled ? 'Yes' : 'No'}</td>
               <td>
-                <Link to={`/gizmos/${g.id}`}>{g.name}</Link>
+                <Link to={`/admin/gizmos/${g.id}`}>Edit</Link>
               </td>
-              <td>{g.gizmo_key}</td>
-              <td>{new Date(g.updated_at).toLocaleString()}</td>
             </tr>
           ))}
         </tbody>
