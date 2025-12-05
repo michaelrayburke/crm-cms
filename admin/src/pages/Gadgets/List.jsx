@@ -12,7 +12,7 @@ export default function GadgetsList() {
   useEffect(() => {
     // Use a root-relative path; api client already includes the /api base.
     api
-      .get('api/gadgets')
+      .get('/api/gadgets')
       .then((res) => setGadgets(res.data || []))
       .catch((err) => {
         console.error('[Gadgets/List] Failed to load gadgets:', err);

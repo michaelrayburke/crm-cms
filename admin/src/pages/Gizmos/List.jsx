@@ -14,7 +14,7 @@ export default function GizmosList() {
   useEffect(() => {
     // FIX: root-relative path so baseURL (/api) is only applied once
     api
-      .get('api/gizmos')
+      .get('/api/gizmos')
       .then((res) => setGizmos(res.data || []))
       .catch((err) => setError(err));
   }, []);
