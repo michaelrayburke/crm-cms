@@ -14,6 +14,7 @@ export default function GizmoForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEditing = Boolean(id);
+
   const [form, setForm] = useState({
     name: '',
     slug: '',
@@ -23,28 +24,35 @@ export default function GizmoForm() {
     config: '{}',
     is_enabled: true,
   });
+
   useEffect(() => {
     if (isEditing) {
-      api.get(`/api/gizmos/${id}`)
+      // FIX: base-relative path; api client adds /api
+      api
+        .get(`/gizmos/${id}`)
         .then((res) => {
-          const data = res.data;
+          const data = res.data || {};
           setForm({
+            ...form,
             ...data,
             config: JSON.stringify(data.config || {}, null, 2),
           });
         })
         .catch((err) => {
-          console.error(err);
-          // In a real app, show error to user
+          console.error('[Gizmos/Form] Failed to load gizmo', err);
         });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditing, id]);
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value }));
   };
+
   const handleSubmit = (e) => {
     e.preventDefault();
+
     let payload;
     try {
       payload = {
@@ -55,25 +63,26 @@ export default function GizmoForm() {
       alert('Config must be valid JSON');
       return;
     }
+
+    // FIX: remove /api prefix from paths; api client already has baseURL
     const req = isEditing
-      ? api.put(`/api/gizmos/${id}`, payload)
-      : api.post('/api/gizmos', payload);
+      ? api.put(`/gizmos/${id}`, payload)
+      : api.post('/gizmos', payload);
+
     req
       .then(() => {
-        // After saving, go back to the Gizmos list in the admin.  Use the /admin
-        // prefix rather than /settings since gizmos now live under /admin.
+        // After saving, go back to the Gizmos list in the admin.
         navigate('/admin/gizmos');
       })
       .catch((err) => {
-        console.error(err);
+        console.error('[Gizmos/Form] Failed to save gizmo', err);
         alert('Failed to save gizmo');
       });
   };
-  // Define a default placeholder for the config textarea.  Using a separate
-  // variable avoids invalid escape sequences in JSX attributes and makes
-  // editing easier.  The placeholder shows a basic JSON shape with an apiKey
-  // property.
+
+  // Define a default placeholder for the config textarea.
   const configPlaceholder = '{\n  "apiKey": "..."\n}';
+
   return (
     <div className="su-page">
       <header className="su-page-header">
@@ -89,6 +98,7 @@ export default function GizmoForm() {
             required
           />
         </div>
+
         <div className="su-form-group">
           <label>Slug</label>
           <input
@@ -98,22 +108,34 @@ export default function GizmoForm() {
             placeholder="Auto-generated if left blank"
           />
         </div>
+
         <div className="su-form-group">
           <label>Type</label>
-          <select name="gizmo_type" value={form.gizmo_type} onChange={handleChange}>
+          <select
+            name="gizmo_type"
+            value={form.gizmo_type}
+            onChange={handleChange}
+          >
             <option value="integration">Integration</option>
             <option value="feature">Feature</option>
             <option value="utility">Utility</option>
           </select>
         </div>
+
         <div className="su-form-group">
           <label>Description</label>
-          <textarea name="description" value={form.description} onChange={handleChange} />
+          <textarea
+            name="description"
+            value={form.description}
+            onChange={handleChange}
+          />
         </div>
+
         <div className="su-form-group">
           <label>Icon (optional)</label>
           <input name="icon" value={form.icon} onChange={handleChange} />
         </div>
+
         <div className="su-form-group">
           <label>Config (JSON)</label>
           <textarea
@@ -124,6 +146,7 @@ export default function GizmoForm() {
             placeholder={configPlaceholder}
           />
         </div>
+
         <div className="su-form-group">
           <label>
             <input
@@ -135,6 +158,7 @@ export default function GizmoForm() {
             Enabled
           </label>
         </div>
+
         <div className="su-form-group">
           <button type="submit" className="su-btn su-btn-primary">
             {isEditing ? 'Update' : 'Create'} Gizmo

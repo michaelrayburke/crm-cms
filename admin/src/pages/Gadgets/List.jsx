@@ -8,9 +8,17 @@ import { api } from '../../lib/api';
  */
 export default function GadgetsList() {
   const [gadgets, setGadgets] = useState([]);
+
   useEffect(() => {
-    api.get('/api/gadgets').then((res) => setGadgets(res.data));
+    // Use a root-relative path; api client already includes the /api base.
+    api
+      .get('/gadgets')
+      .then((res) => setGadgets(res.data || []))
+      .catch((err) => {
+        console.error('[Gadgets/List] Failed to load gadgets:', err);
+      });
   }, []);
+
   return (
     <div className="su-page">
       <header className="su-page-header">
@@ -35,7 +43,7 @@ export default function GadgetsList() {
               <td>{g.gadget_type}</td>
               <td>{g.is_active ? 'Yes' : 'No'}</td>
               <td>
-                 <Link to={`/admin/gadgets/${g.id}`}>Edit</Link>
+                <Link to={`/admin/gadgets/${g.id}`}>Edit</Link>
               </td>
             </tr>
           ))}

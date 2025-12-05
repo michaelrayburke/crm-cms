@@ -10,11 +10,15 @@ import { api } from '../../lib/api';
 export default function GizmosList() {
   const [gizmos, setGizmos] = useState([]);
   const [error, setError] = useState(null);
+
   useEffect(() => {
-    api.get('/api/gizmos')
-      .then((res) => setGizmos(res.data))
+    // FIX: root-relative path so baseURL (/api) is only applied once
+    api
+      .get('/gizmos')
+      .then((res) => setGizmos(res.data || []))
       .catch((err) => setError(err));
   }, []);
+
   return (
     <div className="su-page">
       <header className="su-page-header">
@@ -23,7 +27,9 @@ export default function GizmosList() {
           Add Gizmo
         </Link>
       </header>
-      {error && <div className="su-alert su-alert-danger">{error.message}</div>}
+      {error && (
+        <div className="su-alert su-alert-danger">{error.message}</div>
+      )}
       <table className="su-table">
         <thead>
           <tr>
@@ -40,7 +46,7 @@ export default function GizmosList() {
               <td>{g.gizmo_type}</td>
               <td>{g.is_enabled ? 'Yes' : 'No'}</td>
               <td>
-                 <Link to={`/admin/gizmos/${g.id}`}>Edit</Link>
+                <Link to={`/admin/gizmos/${g.id}`}>Edit</Link>
               </td>
             </tr>
           ))}
