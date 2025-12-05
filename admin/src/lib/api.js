@@ -8,6 +8,10 @@ const api = axios.create({
   baseURL: "/api"
 });
 
+// Export the axios instance both as a named export (`api`) and as the default export.
+// This allows other modules to import { api } from '../lib/api' as well as import api from '../lib/api'.
+export { api };
+
 /**
  * Fetch the list of available Gizmo Packs from the backend. Each pack
  * includes metadata such as its slug, display name, description and file
