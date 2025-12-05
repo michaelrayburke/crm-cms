@@ -15,7 +15,7 @@ export default function GadgetsList() {
     // not prefix our request with `/api` here.  Without the extra
     // prefix, the final URL resolves to `/api/gadgets` on the server.
     api
-      .get('/gadgets')
+      .get('/api/gadgets')
       .then((res) => setGadgets(res.data || []))
       .catch((err) => {
         console.error('[Gadgets/List] Failed to load gadgets:', err);
