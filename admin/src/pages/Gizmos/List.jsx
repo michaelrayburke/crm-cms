@@ -16,7 +16,7 @@ export default function GizmosList() {
     // prepends the `/api` base, so we omit it here.  This results in
     // requests to `/api/gizmos` at runtime.
     api
-      .get('/gizmos')
+      .get('api/gizmos')
       .then((res) => setGizmos(res.data || []))
       .catch((err) => setError(err));
   }, []);

@@ -48,7 +48,7 @@ export default function GizmoForm() {
       // When editing, fetch the existing gizmo by ID.  Do not prefix
       // with `/api` because the api client already includes the base path.
       api
-        .get(`/gizmos/${id}`)
+        .get(`api/gizmos/${id}`)
         .then((res) => {
           const data = res.data || {};
           setForm((prev) => ({

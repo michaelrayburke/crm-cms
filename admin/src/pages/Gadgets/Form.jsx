@@ -73,7 +73,7 @@ export default function GadgetForm() {
     // client already includes the base path.  This resolves to
     // `/api/gizmos` at runtime.
     api
-      .get('/gizmos')
+      .get('/api/gizmos')
       .then((res) => {
         setAvailableGizmos(res.data || []);
       })
@@ -84,7 +84,7 @@ export default function GadgetForm() {
     if (isEditing) {
       // Load the gadget data by its ID.  Again, do not prefix with `/api`.
       api
-        .get(`/gadgets/${id}`)
+        .get(`/api/gadgets/${id}`)
         .then((res) => {
           const data = res.data || {};
           setForm((prev) => ({
@@ -169,15 +169,15 @@ export default function GadgetForm() {
       // automatically prepends the base path.  This will resolve to
       // `/api/gadgets` or `/api/gadgets/:id` on the server.
       const res = isEditing
-        ? await api.put(`/gadgets/${id}`, payload)
-        : await api.post('/gadgets', payload);
+        ? await api.put(`api/gadgets/${id}`, payload)
+        : await api.post('api/gadgets', payload);
 
       const gadgetId = isEditing ? id : res.data.id;
 
       // Fetch existing attachments only when editing to compute diff
       let existingMap = {};
       if (isEditing) {
-        const existing = await api.get(`/gadgets/${gadgetId}`);
+        const existing = await api.get(`api/gadgets/${gadgetId}`);
         (existing.data.gizmos || []).forEach((g) => {
           existingMap[g.gizmo_id] = JSON.stringify(g.config || {}, null, 2);
         });
@@ -186,7 +186,7 @@ export default function GadgetForm() {
       // Detach gizmos that were removed
       for (const exId of Object.keys(existingMap)) {
         if (!selectedGizmos[exId]) {
-          await api.delete(`/gadgets/${gadgetId}/gizmos/${exId}`);
+          await api.delete(`api/gadgets/${gadgetId}/gizmos/${exId}`);
         }
       }
 
@@ -199,7 +199,7 @@ export default function GadgetForm() {
           alert(`Config for gizmo ${gizmoId} is invalid JSON`);
           return;
         }
-        await api.post(`/gadgets/${gadgetId}/gizmos`, {
+        await api.post(`api/gadgets/${gadgetId}/gizmos`, {
           gizmo_id: gizmoId,
           config: configObj,
         });
