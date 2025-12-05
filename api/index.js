@@ -20,6 +20,10 @@ import contentTypesRouter from './routes/contentTypes.js';
 import entryViewsRouter from './routes/entryViews.js';
 import listViewsRouter from './routes/listViews.js';
 
+// NEW: Gizmos & Gadgets routers
+import gizmosRouter from './routes/gizmos.js';
+import gadgetsRouter from './routes/gadgets.js';
+
 /**
  * This file defines the main Express app for the ServiceUp API.  It is
  * largely identical to the original `api/index.js` in your repository
@@ -524,6 +528,10 @@ app.use('/api/dashboard', authMiddleware, dashboardRouter);
 // NEW: editor + list views routers, no corsMiddleware/jsonParser needed here
 app.use('/api', entryViewsRouter);
 app.use('/api', listViewsRouter);
+
+// NEW: Gizmos & Gadgets routers
+app.use('/api', authMiddleware, gizmosRouter);
+app.use('/api', authMiddleware, gadgetsRouter);
 
 // Simple redirects for old paths
 app.get('/content-types', (_req, res) => res.redirect(301, '/api/content-types'));
