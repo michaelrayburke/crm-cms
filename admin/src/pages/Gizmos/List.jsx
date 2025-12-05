@@ -11,7 +11,7 @@ export default function GizmosList() {
   const [gizmos, setGizmos] = useState([]);
   const [error, setError] = useState(null);
   useEffect(() => {
-    api.get('/gizmos')
+    api.get('/api/gizmos')
       .then((res) => setGizmos(res.data))
       .catch((err) => setError(err));
   }, []);

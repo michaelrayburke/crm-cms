@@ -9,7 +9,7 @@ import { api } from '../../lib/api';
 export default function GadgetsList() {
   const [gadgets, setGadgets] = useState([]);
   useEffect(() => {
-    api.get('/gadgets').then((res) => setGadgets(res.data));
+    api.get('/api/gadgets').then((res) => setGadgets(res.data));
   }, []);
   return (
     <div className="su-page">
