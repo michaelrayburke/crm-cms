@@ -8,20 +8,16 @@ import { api } from '../../lib/api';
  */
 export default function GadgetsList() {
   const [gadgets, setGadgets] = useState([]);
-
   useEffect(() => {
-    // Use a root-relative path; api client already includes the /api base.
-    api
-      .get('/api/gadgets')
-      .then((res) => setGadgets(res.data || []))
-      .catch((err) => {
-        console.error('[Gadgets/List] Failed to load gadgets:', err);
-      });
+    api.get('/gadgets').then((res) => setGadgets(res.data));
   }, []);
-
   return (
     <div className="su-page">
       <header className="su-page-header">
+        {/* Breadcrumb navigation */}
+        <nav className="su-breadcrumb" style={{ marginBottom: '1rem' }}>
+          <Link to="/admin">Dashboard</Link> / <span>Gadgets</span>
+        </nav>
         <h1>Gadgets</h1>
         <Link className="su-btn su-btn-primary" to="/admin/gadgets/new">
           Add Gadget
@@ -43,7 +39,7 @@ export default function GadgetsList() {
               <td>{g.gadget_type}</td>
               <td>{g.is_active ? 'Yes' : 'No'}</td>
               <td>
-                <Link to={`/admin/gadgets/${g.id}`}>Edit</Link>
+                 <Link to={`/admin/gadgets/${g.id}`}>Edit</Link>
               </td>
             </tr>
           ))}
