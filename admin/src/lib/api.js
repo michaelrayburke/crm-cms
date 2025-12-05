@@ -45,4 +45,23 @@ export async function applyGizmoPackApi({ packSlug, gadgetSlug, gadgetName }) {
   return res.data;
 }
 
+/**
+ * Persist updated application settings to the backend.
+ *
+ * The SettingsPage imports `saveSettings` from this module and calls it when
+ * administrators click the “Save settings” button.  The backend is expected
+ * to expose a POST /settings endpoint (relative to the baseURL of this
+ * API client) which accepts a settings payload and returns either the
+ * updated settings or nothing.  By centralizing the call here, other parts
+ * of the admin panel can reuse the same helper without duplicating
+ * request logic.
+ *
+ * @param {object} payload A settings object representing the current form state.
+ * @returns {Promise<any>} The response data from the server.
+ */
+export async function saveSettings(payload) {
+  const res = await api.post("/settings", payload);
+  return res.data;
+}
+
 export default api;
