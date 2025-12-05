@@ -93,8 +93,8 @@ export default function GizmoForm() {
     // Save the gizmo.  Do not prefix with `/api` because the api client
     // already prepends the base path.
     const req = isEditing
-      ? api.put(`/gizmos/${id}`, payload)
-      : api.post('/gizmos', payload);
+      ? api.put(`/api/gizmos/${id}`, payload)
+      : api.post('/api/gizmos', payload);
 
     req
       .then(() => {
