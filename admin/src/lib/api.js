@@ -41,4 +41,8 @@ export async function applyGizmoPackApi({ packSlug, gadgetSlug, gadgetName }) {
   return res.data;
 }
 
+// Add this named export so `import { api } from '../lib/api'` works
+export { api };
+
 export default api;
+
