@@ -1,50 +1,43 @@
 import axios from "axios";
 
-// Use environment-based base URL so we can talk directly to the Render API
-// e.g. VITE_API_BASE = "https://serviceup-api.onrender.com"
-// Local dev can be "http://localhost:4000" or similar.
-const API_BASE = import.meta.env.VITE_API_BASE || "";
-
-// Single Axios instance for the whole admin app
+// Create a single Axios instance for our admin panel. If you already have a
+// configured API client in your project, feel free to merge these helpers
+// into that file. The baseURL assumes your API is served at /api relative
+// to the admin UI. Adjust as needed if your deployment differs.
 const api = axios.create({
-  baseURL: API_BASE
+  baseURL: "/api"
 });
 
-// Export it both named and default so existing imports keep working
-export { api };
-
 /**
- * Fetch the list of available Gizmo Packs from the backend.
+ * Fetch the list of available Gizmo Packs from the backend. Each pack
+ * includes metadata such as its slug, display name, description and file
+ * source. Returns an array of pack objects.
  *
- * Backend route is mounted at /api/gizmo-packs
+ * @returns {Promise<Array<{pack_slug: string, name: string, description: string, filename: string}>>}
  */
 export async function getGizmoPacks() {
-  const res = await api.get("/api/gizmo-packs");
+  const res = await api.get("/gizmo-packs");
   return res.data;
 }
 
 /**
- * Apply a Gizmo Pack to create a new gadget, gizmos, content types, and entries.
+ * Apply a Gizmo Pack to create a new gadget. The backend will create
+ * the gadget, gizmos, content types and entries defined in the pack. The
+ * gadgetSlug will be used to prefix newly created gizmo slugs, while
+ * gadgetName will be the human-friendly name of the gadget.
  *
- * Backend route is POST /api/gizmo-packs/apply
+ * @param {object} opts
+ * @param {string} opts.packSlug The slug of the pack to apply
+ * @param {string} opts.gadgetSlug A unique slug for the new gadget
+ * @param {string} opts.gadgetName The display name for the gadget
+ * @returns {Promise<{gadget_id: string, gadget_slug: string, gadget_name: string}>}
  */
 export async function applyGizmoPackApi({ packSlug, gadgetSlug, gadgetName }) {
-  const res = await api.post("/api/gizmo-packs/apply", {
+  const res = await api.post("/gizmo-packs/apply", {
     packSlug,
     gadgetSlug,
     gadgetName
   });
-  return res.data;
-}
-
-/**
- * Persist updated application settings to the backend.
- * Called by the Settings page when admins save global settings.
- *
- * Backend route is POST /api/settings
- */
-export async function saveSettings(payload) {
-  const res = await api.post("/api/settings", payload);
   return res.data;
 }
 
