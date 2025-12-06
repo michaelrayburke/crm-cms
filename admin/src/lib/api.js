@@ -41,8 +41,19 @@ export async function applyGizmoPackApi({ packSlug, gadgetSlug, gadgetName }) {
   return res.data;
 }
 
-// Add this named export so `import { api } from '../lib/api'` works
+/**
+ * Persist updated application settings to the backend.
+ * Called by the Settings page when admins save global settings.
+ *
+ * This will POST to /api/settings (because baseURL = "/api" above).
+ */
+export async function saveSettings(payload) {
+  const res = await api.post("/settings", payload);
+  return res.data;
+}
+
+// Named export so `import { api } from '../lib/api'` works
 export { api };
 
+// Default export so `import api from '../lib/api'` also works
 export default api;
-
