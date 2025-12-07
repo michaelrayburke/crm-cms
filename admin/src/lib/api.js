@@ -1,62 +1,126 @@
-import axios from 'axios';
+export const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
-// Create a single Axios instance for our admin panel. If you already have a
-// configured API client in your project, feel free to merge these helpers
-// into that file. The baseURL assumes your API is served at /api relative
-// to the admin UI. Adjust as needed if your deployment differs.
-const api = axios.create({
-  baseURL: '/api'
-});
-
-/**
- * Fetch the list of available Gizmo Packs from the backend. Each pack
- * includes metadata such as its slug, display name, description and file
- * source. Returns an array of pack objects.
- *
- * @returns {Promise<Array<{pack_slug: string, name: string, description: string, filename: string}>>}
- */
-export async function getGizmoPacks() {
-  const res = await api.get('/gizmo-packs');
-  return res.data;
+async function handle(res) {
+  if (!res.ok) {
+    const msg = await res.text().catch(() => res.statusText);
+    throw new Error(msg || `HTTP ${res.status}`);
+  }
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('application/json') ? res.json() : res.text();
 }
 
-/**
- * Apply a Gizmo Pack to create a new gadget. The backend will create
- * the gadget, gizmos, content types and entries defined in the pack. The
- * gadgetSlug will be used to prefix newly created gizmo slugs, while
- * gadgetName will be the human-friendly name of the gadget.
- *
- * @param {object} opts
- * @param {string} opts.packSlug The slug of the pack to apply
- * @param {string} opts.gadgetSlug A unique slug for the new gadget
- * @param {string} opts.gadgetName The display name for the gadget
- * @returns {Promise<{gadget_id: string, gadget_slug: string, gadget_name: string}>}
- */
-export async function applyGizmoPackApi({ packSlug, gadgetSlug, gadgetName }) {
-  const res = await api.post('/gizmo-packs/apply', {
-    packSlug,
-    gadgetSlug,
-    gadgetName
-  });
-  return res.data;
+// Attach Authorization: Bearer <token> when available
+function authHeaders(extra = {}) {
+  const headers = { ...extra };
+  try {
+    const token = localStorage.getItem('serviceup.jwt');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  } catch {
+    // ignore
+  }
+  return headers;
 }
 
-/**
- * Persist updated application settings to the backend. This helper mirrors
- * the original saveSettings behavior: posting the payload to /settings and
- * returning the saved data. Keeping this helper ensures existing imports
- * in Settings/index.jsx continue to work without modification.
- *
- * @param {object} payload The full settings object to persist
- * @returns {Promise<object>} The saved settings response
- */
-export async function saveSettings(payload) {
-  const res = await api.post('/settings', payload);
-  return res.data;
+export const api = {
+  get: (url) => {
+    const finalUrl = normalizeSettingsUrl(url);
+    return fetch(`${API_BASE}${finalUrl}`, {
+      method: 'GET',
+      headers: authHeaders(),
+      credentials: 'include',
+    }).then(handle);
+  },
+  post: (url, body) => {
+    const finalUrl = normalizeSettingsUrl(url);
+    return fetch(`${API_BASE}${finalUrl}`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body || {}),
+      credentials: 'include',
+    }).then(handle);
+  },
+  patch: (url, body) => {
+    const finalUrl = normalizeSettingsUrl(url);
+    return fetch(`${API_BASE}${finalUrl}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body || {}),
+      credentials: 'include',
+    }).then(handle);
+  },
+  put: (url, body) => {
+    const finalUrl = normalizeSettingsUrl(url);
+    return fetch(`${API_BASE}${finalUrl}`, {
+      method: 'PUT',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body || {}),
+      credentials: 'include',
+    }).then(handle);
+  },
+  del: (url) => {
+    const finalUrl = normalizeSettingsUrl(url);
+    return fetch(`${API_BASE}${finalUrl}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+      credentials: 'include',
+    }).then(handle);
+  },
+};
+
+// Normalize the settings URL to ensure the correct `/api/settings` path is used.
+// If the client code calls '/settings', we should prefix '/api' when API_BASE
+// does not already end with '/api'. This is necessary because the Express server
+// mounts the settings router at `/api/settings`, and without the prefix the
+// request will 404 on production deployments (where API_BASE is the bare domain).
+function normalizeSettingsUrl(url) {
+  try {
+    // Only rewrite when the request is exactly '/settings' or '/settings/'.
+    const isSettings =
+      url === '/settings' || url === 'settings' || url === '/settings/';
+    if (!isSettings) {
+      return url;
+    }
+    const base = API_BASE || '';
+    // Remove any trailing slashes from the base URL for comparison
+    const baseTrimmed = base.replace(/\/+$/, '');
+    const endsWithApi = baseTrimmed.endsWith('/api');
+    // If API_BASE already ends with '/api', we don't prefix again; otherwise, add '/api'
+    return endsWithApi ? '/settings' : '/api/settings';
+  } catch {
+    // Fallback to safe default
+    return '/api/settings';
+  }
 }
 
-// Export api for named-import convenience
-export { api };
+// Settings helpers
+// Determine the correct path for the settings endpoint.
+// If API_BASE ends with `/api` (e.g. `/api` or `https://serviceup-api.onrender.com/api`), then
+// we should not prefix another `/api` when requesting settings.  Otherwise, prefix `/api`
+// before `/settings` to hit the Express router mounted at `/api/settings`.
+function resolveSettingsPath() {
+  try {
+    const base = API_BASE || '';
+    // Remove trailing slash for comparison
+    const baseTrimmed = base.replace(/\/+$/, '');
+    // Check if the base URL ends with `/api`
+    const endsWithApi = baseTrimmed.endsWith('/api');
+    return endsWithApi ? '/settings' : '/api/settings';
+  } catch {
+    // Fallback to the safe default
+    return '/api/settings';
+  }
+}
 
-export default api;
+export async function fetchSettings() {
+  // Loads the global settings via GET at the correct path
+  const path = resolveSettingsPath();
+  return api.get(path);
+}
 
+export async function saveSettings(settings) {
+  // Persists the provided settings via PUT at the correct path
+  const path = resolveSettingsPath();
+  return api.put(path, settings);
+}
