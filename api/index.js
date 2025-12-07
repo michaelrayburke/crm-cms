@@ -564,3 +564,4 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log('[BOOT] ServiceUp API listening on', PORT);
 });
+
