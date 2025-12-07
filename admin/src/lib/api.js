@@ -154,3 +154,51 @@ export async function applyGizmoPackApi({ packSlug, gadgetSlug, gadgetName }) {
     gadgetName,
   });
 }
+
+
+
+// ---------------- Gizmo Packs helpers ----------------
+//
+// The gizmo-packs router is mounted at /api/gizmo-packs on the API server.
+// We mirror the same "smart path" behavior as settings so this works whether
+// API_BASE is '/api', 'https://.../api', or just 'https://...'.
+
+function resolveGizmoPacksPathBase() {
+  try {
+    const base = API_BASE || '';
+    const trimmed = base.replace(/\/+$/, '');
+    const endsWithApi = trimmed.endsWith('/api');
+    // If API_BASE already ends with /api, we only need '/gizmo-packs'.
+    // If it does not, we prefix '/api/gizmo-packs'.
+    return endsWithApi ? '/gizmo-packs' : '/api/gizmo-packs';
+  } catch {
+    // Safe fallback
+    return '/api/gizmo-packs';
+  }
+}
+
+/**
+ * Fetch the list of available Gizmo Packs from the backend.
+ * Returns an array of pack objects:
+ * [{ pack_slug, name, description, filename }, ...]
+ */
+export async function getGizmoPacks() {
+  const basePath = resolveGizmoPacksPathBase();
+  // GET /api/gizmo-packs
+  return api.get(basePath);
+}
+
+/**
+ * Apply a Gizmo Pack to create a new gadget (and associated gizmos,
+ * content types, entries, etc.).
+ *
+ * @param {object} opts
+ * @param {string} opts.packSlug  - the slug of the pack to apply
+ * @param {string} opts.gadgetSlug - the unique slug for the new gadget
+ * @param {string} opts.gadgetName - the human-friendly gadget name
+ */
+export async function applyGizmoPackApi({ packSlug, gadgetSlug, gadgetName }) {
+  const basePath = resolveGizmoPacksPathBase();
+  const path = `${basePath}/apply`; // POST /api/gizmo-packs/apply
+  return api.post(path, { packSlug, gadgetSlug, gadgetName });
+}
