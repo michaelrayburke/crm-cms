@@ -28,6 +28,8 @@ import GizmosList from './pages/Gizmos/List';
 import GizmoForm from './pages/Gizmos/Form';
 import GadgetsList from './pages/Gadgets/List';
 import GadgetForm from './pages/Gadgets/Form';
+import GizmoPacksPage from './pages/GizmoPacks';
+
 
 function RequireAuth({ children }) {
   // Very simple auth gate for now: just check for token in localStorage.
@@ -375,6 +377,19 @@ function App() {
             }
           />
 
+          <Route
+            path="/admin/gizmo-packs"
+            element={
+              <RequireAuth>
+                <AdminLayout>
+                  <GizmoPacksPage />
+                </AdminLayout>
+              </RequireAuth>
+            }
+          />
+          
+
+          
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
