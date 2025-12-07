@@ -129,38 +129,49 @@ export async function saveSettings(settings) {
   return api.put(path, settings);
 }
 
-// ---------------- Gizmo Packs helpers ----------------
-//
-// The gizmo-packs router is mounted at /api/gizmo-packs on the API server.
-// We mirror the same "smart path" behavior as settings so this works whether
-// API_BASE is '/api', 'https://.../api', or just 'https://...'.
-//
-//   - If API_BASE = '/api'                     -> use '/gizmo-packs'
-//   - If API_BASE = 'https://.../api'         -> use '/gizmo-packs'
-//   - If API_BASE = 'https://...'             -> use '/api/gizmo-packs'
-
-function resolveGizmoPacksPathBase() {
+// Settings helpers
+// Determine the correct path for the settings endpoint.
+// If API_BASE ends with `/api` (e.g. `/api` or `https://serviceup-api.onrender.com/api`), then
+// we should not prefix another `/api` when requesting settings. Otherwise, prefix `/api`
+// before `/settings` to hit the Express router mounted at `/api/settings`.
+function resolveSettingsPath() {
   try {
     const base = API_BASE || '';
-    const trimmed = base.replace(/\/+$/, '');
-    const endsWithApi = trimmed.endsWith('/api');
-    // If API_BASE already ends with /api, we only need '/gizmo-packs'.
-    // If it does not, we prefix '/api/gizmo-packs'.
-    return endsWithApi ? '/gizmo-packs' : '/api/gizmo-packs';
+    // Remove trailing slash for comparison
+    const baseTrimmed = base.replace(/\/+$/, '');
+    // Check if the base URL ends with `/api`
+    const endsWithApi = baseTrimmed.endsWith('/api');
+    return endsWithApi ? '/settings' : '/api/settings';
   } catch {
-    // Safe fallback
-    return '/api/gizmo-packs';
+    // Fallback to the safe default
+    return '/api/settings';
   }
 }
 
+export async function fetchSettings() {
+  // Loads the global settings via GET at the correct path
+  const path = resolveSettingsPath();
+  return api.get(path);
+}
+
+export async function saveSettings(settings) {
+  // Persists the provided settings via PUT at the correct path
+  const path = resolveSettingsPath();
+  return api.put(path, settings);
+}
+
+/* ------------------------------------------------------------------ */
+/* Gizmo Packs helpers                                                */
+/* ------------------------------------------------------------------ */
 /**
  * Fetch the list of available Gizmo Packs from the backend.
  * Returns an array of pack objects:
  * [{ pack_slug, name, description, filename }, ...]
  */
 export async function getGizmoPacks() {
-  const basePath = resolveGizmoPacksPathBase();
-  return api.get(basePath);
+  // Backend router is mounted as: app.use('/api/gizmo-packs', gizmoPacksRouter)
+  // So the full path is: GET /api/gizmo-packs
+  return api.get('/api/gizmo-packs');
 }
 
 /**
@@ -175,8 +186,8 @@ export async function getGizmoPacks() {
  * @returns {Promise<any>} Whatever the backend returns after applying the pack
  */
 export async function applyGizmoPackApi({ packSlug, gadgetSlug, gadgetName }) {
-  const basePath = resolveGizmoPacksPathBase();
-  return api.post(`${basePath}/apply`, {
+  // POST /api/gizmo-packs/apply
+  return api.post('/api/gizmo-packs/apply', {
     packSlug,
     gadgetSlug,
     gadgetName,
