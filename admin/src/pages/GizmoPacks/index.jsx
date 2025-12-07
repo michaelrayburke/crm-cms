@@ -33,7 +33,7 @@ export default function GizmoPacksPage() {
       setLoading(true);
       setLoadError('');
       try {
-        const res = await api.get('api/gizmo-packs');
+        const res = await api.get('/api/gizmo-packs');
         // Defensive: support either { packs: [...] } or bare array
         const list = Array.isArray(res) ? res : Array.isArray(res?.packs) ? res.packs : [];
         if (!cancelled) {
