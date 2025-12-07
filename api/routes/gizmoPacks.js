@@ -1,94 +1,115 @@
 // api/routes/gizmoPacks.js
+
 import express from 'express';
-import fs from 'fs/promises';
+import fs from 'fs';
 import path from 'path';
+import pg from 'pg';
 
 const router = express.Router();
 
-// Directory where Gizmo Pack JSON files live:
-// e.g. api/gizmo-packs/website-basic.json
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { require: true, rejectUnauthorized: false },
+});
+
+// Directory where pack JSON files live: api/gizmo-packs/*.json
 const PACKS_DIR = path.join(process.cwd(), 'api', 'gizmo-packs');
 
 /**
- * GET /api/gizmo-packs
- *
- * Lists all available Gizmo Pack JSON files in PACKS_DIR.
- * Each pack reports:
- *   - pack_slug
- *   - name
- *   - description
- *   - filename
+ * Safely read all .json files in PACKS_DIR and return a list of
+ * simple metadata objects for the UI.
  */
-router.get('/', async (req, res) => {
+async function loadPackMetadataFromDisk() {
   try {
-    const entries = await fs.readdir(PACKS_DIR, { withFileTypes: true });
-    const packs = [];
+    const entries = await fs.promises.readdir(PACKS_DIR, { withFileTypes: true });
+    const jsonFiles = entries.filter(
+      (ent) => ent.isFile() && ent.name.toLowerCase().endsWith('.json'),
+    );
 
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      if (!entry.name.toLowerCase().endsWith('.json')) continue;
-
-      const fullPath = path.join(PACKS_DIR, entry.name);
-
+    const results = [];
+    for (const file of jsonFiles) {
+      const fullPath = path.join(PACKS_DIR, file.name);
       try {
-        const raw = await fs.readFile(fullPath, 'utf8');
-        const parsed = JSON.parse(raw || '{}');
+        const raw = await fs.promises.readFile(fullPath, 'utf8');
+        const parsed = JSON.parse(raw);
 
-        const slugFromFilename = entry.name.replace(/\.json$/i, '');
-        packs.push({
-          pack_slug: parsed.pack_slug || slugFromFilename,
-          name: parsed.name || parsed.pack_slug || slugFromFilename,
-          description: parsed.description || '',
-          filename: entry.name,
+        const packSlug =
+          typeof parsed.pack_slug === 'string' && parsed.pack_slug.trim()
+            ? parsed.pack_slug.trim()
+            : file.name.replace(/\.json$/i, '');
+
+        results.push({
+          pack_slug: packSlug,
+          name:
+            typeof parsed.name === 'string' && parsed.name.trim()
+              ? parsed.name.trim()
+              : packSlug,
+          description:
+            typeof parsed.description === 'string'
+              ? parsed.description
+              : '',
+          filename: file.name,
         });
       } catch (err) {
-        console.error('[gizmo-packs] Failed to read/parse', entry.name, err);
-        // Skip bad files but don't blow up the whole list
+        console.error('[gizmo-packs] Failed to read/parse', fullPath, err);
+        // Skip broken file but continue
       }
     }
 
-    res.json(packs);
+    return results;
   } catch (err) {
-    if (err.code === 'ENOENT') {
-      // Directory doesn't exist yet -> just report no packs
-      console.warn('[gizmo-packs] PACKS_DIR does not exist:', PACKS_DIR);
-      return res.json([]);
-    }
+    console.error('[gizmo-packs] loadPackMetadataFromDisk error', err);
+    return [];
+  }
+}
 
+// GET /api/gizmo-packs
+// Return list of packs (slug, name, description, filename)
+router.get('/', async (_req, res) => {
+  try {
+    const packs = await loadPackMetadataFromDisk();
+    return res.json(packs);
+  } catch (err) {
     console.error('[GET /api/gizmo-packs] error', err);
-    res.status(500).json({
-      error: 'Failed to list Gizmo Packs',
-      detail: err.message,
-    });
+    return res.status(500).json({ error: 'Failed to list gizmo packs' });
   }
 });
 
-/**
- * POST /api/gizmo-packs/apply
- *
- * For now this is still a stub. Once we wire it fully, this will:
- *  - Read the selected pack JSON
- *  - Create a gadget row
- *  - Create gizmos, content types, entries, etc.
- */
+// POST /api/gizmo-packs/apply
+// NOTE: This is still a stub – it validates the payload and confirms which
+// pack would be applied, but does not yet write to the database.
 router.post('/apply', async (req, res) => {
-  const { packSlug, gadgetSlug, gadgetName } = req.body || {};
+  const { packSlug, gadgetSlug, gadgetName } = (req.body || {});
+
   if (!packSlug || !gadgetSlug || !gadgetName) {
     return res.status(400).json({
       error: 'packSlug, gadgetSlug and gadgetName are required',
     });
   }
 
-  // Temporary placeholder until we wire full "apply" logic
-  console.log('[gizmo-packs/apply] requested', {
-    packSlug,
-    gadgetSlug,
-    gadgetName,
-  });
+  try {
+    const packs = await loadPackMetadataFromDisk();
+    const packMeta = packs.find((p) => p.pack_slug === packSlug);
 
-  return res.status(501).json({
-    error: 'Gizmo Pack apply is not implemented yet',
-  });
+    if (!packMeta) {
+      return res.status(404).json({ error: 'Pack not found' });
+    }
+
+    // For now just echo back what *would* happen; real implementation
+    // that creates gadgets, gizmos, content types and entries can be
+    // added later.
+    return res.json({
+      ok: true,
+      message:
+        'Gizmo Pack apply endpoint is wired but not fully implemented yet.',
+      pack: packMeta,
+      gadgetSlug,
+      gadgetName,
+    });
+  } catch (err) {
+    console.error('[POST /api/gizmo-packs/apply] error', err);
+    return res.status(500).json({ error: 'Failed to apply gizmo pack' });
+  }
 });
 
 export default router;
