@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { getGizmoPacks, applyGizmoPackApi } from "../../lib/api";
-
 /**
  * GizmoPackList is the admin UI component that lets administrators view all
  * available Gizmo Packs and install them. Installing a pack will generate
