@@ -1,3 +1,5 @@
+// admin/src/lib/api.js
+
 export const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 async function handle(res) {
@@ -97,15 +99,16 @@ export const api = {
 // ---------------- Settings helpers ----------------
 //
 // Determine the correct path for the settings endpoint.
-// If API_BASE ends with `/api` (e.g. `/api` or `https://serviceup-api.onrender.com/api`), then
-// we should not prefix another `/api` when requesting settings. Otherwise, prefix `/api`
-// before `/settings` to hit the Express router mounted at `/api/settings`.
+// If API_BASE ends with `/api` (e.g. `/api` or `https://.../api`), then
+// we should not prefix another `/api` when requesting settings. Otherwise,
+// prefix `/api` before `/settings` to hit the Express router mounted at
+// `/api/settings`.
+
 function resolveSettingsPath() {
   try {
     const base = API_BASE || '';
     // Remove trailing slash for comparison
     const baseTrimmed = base.replace(/\/+$/, '');
-    // Check if the base URL ends with `/api`
     const endsWithApi = baseTrimmed.endsWith('/api');
     return endsWithApi ? '/settings' : '/api/settings';
   } catch {
@@ -131,6 +134,10 @@ export async function saveSettings(settings) {
 // The gizmo-packs router is mounted at /api/gizmo-packs on the API server.
 // We mirror the same "smart path" behavior as settings so this works whether
 // API_BASE is '/api', 'https://.../api', or just 'https://...'.
+//
+//   - If API_BASE = '/api'                     -> use '/gizmo-packs'
+//   - If API_BASE = 'https://.../api'         -> use '/gizmo-packs'
+//   - If API_BASE = 'https://...'             -> use '/api/gizmo-packs'
 
 function resolveGizmoPacksPathBase() {
   try {
@@ -153,21 +160,25 @@ function resolveGizmoPacksPathBase() {
  */
 export async function getGizmoPacks() {
   const basePath = resolveGizmoPacksPathBase();
-  // GET /api/gizmo-packs
   return api.get(basePath);
 }
 
 /**
- * Apply a Gizmo Pack to create a new gadget (and associated gizmos,
- * content types, entries, etc.).
+ * Apply a Gizmo Pack to create a new gadget.
+ * The backend will create the gadget, gizmos, content types and entries
+ * defined in the pack.
  *
  * @param {object} opts
- * @param {string} opts.packSlug   - the slug of the pack to apply
- * @param {string} opts.gadgetSlug - the unique slug for the new gadget
- * @param {string} opts.gadgetName - the human-friendly gadget name
+ * @param {string} opts.packSlug   The slug of the pack to apply
+ * @param {string} opts.gadgetSlug A unique slug for the new gadget
+ * @param {string} opts.gadgetName The display name for the gadget
+ * @returns {Promise<any>} Whatever the backend returns after applying the pack
  */
 export async function applyGizmoPackApi({ packSlug, gadgetSlug, gadgetName }) {
   const basePath = resolveGizmoPacksPathBase();
-  const path = `${basePath}/apply`; // POST /api/gizmo-packs/apply
-  return api.post(path, { packSlug, gadgetSlug, gadgetName });
+  return api.post(`${basePath}/apply`, {
+    packSlug,
+    gadgetSlug,
+    gadgetName,
+  });
 }
