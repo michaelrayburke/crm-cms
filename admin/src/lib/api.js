@@ -94,10 +94,11 @@ export const api = {
   },
 };
 
-// Settings helpers
+// ---------------- Settings helpers ----------------
+//
 // Determine the correct path for the settings endpoint.
 // If API_BASE ends with `/api` (e.g. `/api` or `https://serviceup-api.onrender.com/api`), then
-// we should not prefix another `/api` when requesting settings.  Otherwise, prefix `/api`
+// we should not prefix another `/api` when requesting settings. Otherwise, prefix `/api`
 // before `/settings` to hit the Express router mounted at `/api/settings`.
 function resolveSettingsPath() {
   try {
@@ -124,38 +125,6 @@ export async function saveSettings(settings) {
   const path = resolveSettingsPath();
   return api.put(path, settings);
 }
-
-/**
- * Fetch the list of available Gizmo Packs from the backend.
- * Returns an array of pack objects.
- *
- * @returns {Promise<Array<{pack_slug: string, name: string, description: string, filename: string}>>}
- */
-export async function getGizmoPacks() {
-  // This will hit `${API_BASE}/gizmo-packs`
-  return api.get('/gizmo-packs');
-}
-
-/**
- * Apply a Gizmo Pack to create a new gadget.
- * The backend will create the gadget, gizmos, content types and entries
- * defined in the pack.
- *
- * @param {object} opts
- * @param {string} opts.packSlug   The slug of the pack to apply
- * @param {string} opts.gadgetSlug A unique slug for the new gadget
- * @param {string} opts.gadgetName The display name for the gadget
- * @returns {Promise<any>} Whatever the backend returns after applying the pack
- */
-export async function applyGizmoPackApi({ packSlug, gadgetSlug, gadgetName }) {
-  return api.post('/gizmo-packs/apply', {
-    packSlug,
-    gadgetSlug,
-    gadgetName,
-  });
-}
-
-
 
 // ---------------- Gizmo Packs helpers ----------------
 //
@@ -193,7 +162,7 @@ export async function getGizmoPacks() {
  * content types, entries, etc.).
  *
  * @param {object} opts
- * @param {string} opts.packSlug  - the slug of the pack to apply
+ * @param {string} opts.packSlug   - the slug of the pack to apply
  * @param {string} opts.gadgetSlug - the unique slug for the new gadget
  * @param {string} opts.gadgetName - the human-friendly gadget name
  */
