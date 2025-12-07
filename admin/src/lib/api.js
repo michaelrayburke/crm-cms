@@ -96,50 +96,20 @@ export const api = {
   },
 };
 
-// ---------------- Settings helpers ----------------
-//
+/* ------------------------------------------------------------------ */
+/* Settings helpers                                                   */
+/* ------------------------------------------------------------------ */
+
 // Determine the correct path for the settings endpoint.
 // If API_BASE ends with `/api` (e.g. `/api` or `https://.../api`), then
 // we should not prefix another `/api` when requesting settings. Otherwise,
 // prefix `/api` before `/settings` to hit the Express router mounted at
 // `/api/settings`.
-
 function resolveSettingsPath() {
   try {
     const base = API_BASE || '';
     // Remove trailing slash for comparison
     const baseTrimmed = base.replace(/\/+$/, '');
-    const endsWithApi = baseTrimmed.endsWith('/api');
-    return endsWithApi ? '/settings' : '/api/settings';
-  } catch {
-    // Fallback to the safe default
-    return '/api/settings';
-  }
-}
-
-export async function fetchSettings() {
-  // Loads the global settings via GET at the correct path
-  const path = resolveSettingsPath();
-  return api.get(path);
-}
-
-export async function saveSettings(settings) {
-  // Persists the provided settings via PUT at the correct path
-  const path = resolveSettingsPath();
-  return api.put(path, settings);
-}
-
-// Settings helpers
-// Determine the correct path for the settings endpoint.
-// If API_BASE ends with `/api` (e.g. `/api` or `https://serviceup-api.onrender.com/api`), then
-// we should not prefix another `/api` when requesting settings. Otherwise, prefix `/api`
-// before `/settings` to hit the Express router mounted at `/api/settings`.
-function resolveSettingsPath() {
-  try {
-    const base = API_BASE || '';
-    // Remove trailing slash for comparison
-    const baseTrimmed = base.replace(/\/+$/, '');
-    // Check if the base URL ends with `/api`
     const endsWithApi = baseTrimmed.endsWith('/api');
     return endsWithApi ? '/settings' : '/api/settings';
   } catch {
@@ -163,6 +133,7 @@ export async function saveSettings(settings) {
 /* ------------------------------------------------------------------ */
 /* Gizmo Packs helpers                                                */
 /* ------------------------------------------------------------------ */
+
 /**
  * Fetch the list of available Gizmo Packs from the backend.
  * Returns an array of pack objects:
