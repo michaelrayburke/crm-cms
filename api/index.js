@@ -1,4 +1,4 @@
-import usersRouter from './routes/users.js'; 
+l l import usersRouter from './routes/users.js'; 
 import taxonomiesRouter from './routes/taxonomies.js';
 import rolesRouter from './routes/roles.js';
 import {
@@ -23,7 +23,7 @@ import listViewsRouter from './routes/listViews.js';
 // NEW: Gizmos & Gadgets & Widgets routers
 import gizmosRouter from './routes/gizmos.js';
 import gadgetsRouter from './routes/gadgets.js';
-import widgetsRouter from './routes/widgets.js';/
+import widgetsRouter from './routes/widgets.js';
 
 // Gizmo Packs 
 import gizmoPacksRouter from './routes/gizmoPacks.js';
