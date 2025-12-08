@@ -1,4 +1,3 @@
-
 // api/routes/gizmoPacks.js
 import express from 'express';
 import fs from 'fs/promises';
@@ -120,7 +119,7 @@ router.get('/', async (_req, res) => {
  *   - Insert a row into gadgets
  *   - Insert rows into gizmos
  *   - Insert rows into gadget_gizmos
- *   - Insert rows into content_types + content_fields
+ *   - Insert rows into content_types + content_fields (reusing if they exist)
  *   - Insert rows into entries
  */
 router.post('/apply', async (req, res) => {
@@ -263,27 +262,40 @@ router.post('/apply', async (req, res) => {
     /* -------------------- 4) Content types + fields --------------- */
     const ctSlugToId = {};
     for (const ct of pack.content_types || []) {
-      const insertedCt = await client.query(
-        `INSERT INTO content_types (
-          name,
-          slug,
-          description,
-          is_system
-        ) VALUES (
-          $1,$2,$3,$4
-        )
-        RETURNING id`,
-        [
-          ct.name,
-          ct.slug,
-          ct.description || null,
-          ct.is_system === true,
-        ],
+      let ctId;
+
+      // Reuse if a content type with this slug already exists
+      const existingCt = await client.query(
+        'SELECT id FROM content_types WHERE slug = $1 LIMIT 1',
+        [ct.slug],
       );
 
-      const ctId = insertedCt.rows[0].id;
+      if (existingCt.rows.length) {
+        ctId = existingCt.rows[0].id;
+      } else {
+        const insertedCt = await client.query(
+          `INSERT INTO content_types (
+            name,
+            slug,
+            description,
+            is_system
+          ) VALUES (
+            $1,$2,$3,$4
+          )
+          RETURNING id`,
+          [
+            ct.name,
+            ct.slug,
+            ct.description || null,
+            ct.is_system === true,
+          ],
+        );
+        ctId = insertedCt.rows[0].id;
+      }
+
       ctSlugToId[ct.slug] = ctId;
 
+      // Fields: upsert on (content_type_id, field_key)
       for (const f of ct.fields || []) {
         await client.query(
           `INSERT INTO content_fields (
@@ -294,7 +306,12 @@ router.post('/apply', async (req, res) => {
             order_index
           ) VALUES (
             $1,$2,$3,$4,$5
-          )`,
+          )
+          ON CONFLICT (content_type_id, field_key)
+          DO UPDATE SET
+            type = EXCLUDED.type,
+            label = EXCLUDED.label,
+            order_index = EXCLUDED.order_index`,
           [
             ctId,
             f.field_key,
