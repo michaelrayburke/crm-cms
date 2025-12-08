@@ -96,7 +96,7 @@ async function loadPackBySlug(packSlug) {
 /* GET /api/gizmo-packs                                               */
 /* ------------------------------------------------------------------ */
 
-router.get('gizmo-packs', async (_req, res) => {
+router.get('/gizmo-packs', async (_req, res) => {
   try {
     const packs = await listPacks();
     res.json(packs);
