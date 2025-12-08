@@ -120,7 +120,7 @@ router.get('/', async (_req, res) => {
  *   - Insert rows into gizmos
  *   - Insert rows into gadget_gizmos
  *   - Insert rows into content_types + content_fields (reusing if they exist)
- *   - Insert rows into entries
+ *   - Insert rows into entries (upsert on (content_type, slug))
  */
 router.post('/apply', async (req, res) => {
   const { packSlug, gadgetSlug, gadgetName } = req.body || {};
@@ -323,7 +323,7 @@ router.post('/apply', async (req, res) => {
       }
     }
 
-    /* -------------------- 5) Entries ------------------------------ */
+    /* -------------------- 5) Entries (UPSERT) --------------------- */
     for (const entry of pack.entries || []) {
       const ctId = ctSlugToId[entry.content_type_slug];
       if (!ctId) continue;
@@ -337,7 +337,13 @@ router.post('/apply', async (req, res) => {
           data
         ) VALUES (
           $1,$2,$3,$4,$5
-        )`,
+        )
+        ON CONFLICT ON CONSTRAINT entries_content_type_slug_unique
+        DO UPDATE SET
+          title = EXCLUDED.title,
+          status = EXCLUDED.status,
+          data = EXCLUDED.data,
+          updated_at = now()`,
         [
           ctId,
           entry.title,
