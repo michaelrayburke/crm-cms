@@ -32,4 +32,34 @@ function App() {
   )
 }
 
+
+import React, { useEffect, useState } from 'react';
+import Page from './Page';
+
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+const GADGET_SLUG = 'serviceup-site'; // whatever you used for your ServiceUp gadget
+
+export default function App() {
+  const [page, setPage] = useState(null);
+
+  useEffect(() => {
+    async function loadPage() {
+      // This depends on your existing public page API.
+      // Example: GET /api/public/pages/home
+      const res = await fetch(`${API_BASE}/api/public/pages/home`);
+      if (!res.ok) throw new Error('Failed to load page');
+      const json = await res.json();
+      setPage(json.page || json); // adjust to your shape
+    }
+    loadPage().catch((err) => console.error(err));
+  }, []);
+
+  if (!page) return <div>Loading…</div>;
+
+  return <Page page={page} gadgetSlug={GADGET_SLUG} />;
+}
+
+
 export default App
+
+
