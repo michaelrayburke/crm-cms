@@ -1,44 +1,57 @@
-// site/src/widgetRegistry.js
-import React from 'react';
+/**
+ * widgetRegistry.js
+ *
+ * Automatically loads all widget components from /widgets.
+ * The filename becomes the widget_type key.
+ *
+ * Examples:
+ *   widgets/hero.jsx              → widget_type: "hero"
+ *   widgets/feature-grid.jsx      → widget_type: "feature-grid"
+ *   widgets/split_section.jsx     → widget_type: "split_section"
+ *
+ * NO manual imports required.
+ */
 
-// Example hero widget component
-export function HeroWidget({ headline, subheading, primary_cta }) {
-  return (
-    <section className="max-w-5xl mx-auto py-16 px-4">
-      <div className="space-y-4">
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
-          {headline}
-        </h1>
-        {subheading && (
-          <p className="text-lg text-gray-600 max-w-2xl">
-            {subheading}
-          </p>
-        )}
-        {primary_cta && primary_cta.label && (
-          <div className="pt-4">
-            <a
-              href={primary_cta.href || '#'}
-              className="inline-flex items-center px-6 py-3 rounded-full text-sm font-semibold bg-orange-500 text-white hover:bg-orange-600 transition"
-            >
-              {primary_cta.label}
-            </a>
-          </div>
-        )}
-      </div>
-    </section>
-  );
+const modules = import.meta.glob('./widgets/*.{jsx,tsx}', {
+  eager: true,
+});
+
+const registry = {};
+
+/**
+ * Normalize a filename to a widget key.
+ * You can adjust this if you want snake_case instead.
+ */
+function normalizeWidgetKey(name) {
+  return name.trim();
 }
 
-// Add more widget components as you define them:
-// - FeatureGridWidget
-// - TestimonialWidget
-// - CTAWidget
-// etc.
+for (const [path, mod] of Object.entries(modules)) {
+  try {
+    // Extract filename → "hero.jsx"
+    const fileName = path.split('/').pop();
 
-const widgetRegistry = {
-  hero: HeroWidget,
-  // feature_grid: FeatureGridWidget,
-  // testimonial: TestimonialWidget,
-};
+    // Remove extension → "hero", "feature-grid", etc.
+    const baseName = fileName.replace(/\.[jt]sx?$/, '');
 
-export default widgetRegistry;
+    const Component = mod.default;
+
+    if (!Component) {
+      console.warn(
+        `[widgetRegistry] Skipped ${fileName} — no default export found.`
+      );
+      continue;
+    }
+
+    const widgetKey = normalizeWidgetKey(baseName);
+
+    registry[widgetKey] = Component;
+
+    // Optional debug log:
+    // console.log(`[widgetRegistry] Registered widget: ${widgetKey}`);
+  } catch (err) {
+    console.error(`[widgetRegistry] Error loading widget at ${path}`, err);
+  }
+}
+
+export default registry;
