@@ -24,6 +24,8 @@ import listViewsRouter from './routes/listViews.js';
 import gizmosRouter from './routes/gizmos.js';
 import gadgetsRouter from './routes/gadgets.js';
 import widgetsRouter from './routes/widgets.js';
+import publicWidgetsRouter from './routes/publicWidgets.js';
+
 
 // Gizmo Packs 
 import gizmoPacksRouter from './routes/gizmoPacks.js';
@@ -543,6 +545,7 @@ app.use('/api', listViewsRouter);
 app.use('/api', authMiddleware, gizmosRouter);
 app.use('/api', authMiddleware, gadgetsRouter);
 app.use('/api', authMiddleware, widgetsRouter);
+app.use('/api', publicWidgetsRouter);
 
 // Gizmo Packs
 app.use('/api/gizmo-packs', gizmoPacksRouter);
