@@ -28,6 +28,10 @@ import widgetsRouter from './routes/widgets.js';
 // Gizmo Packs 
 import gizmoPacksRouter from './routes/gizmoPacks.js';
 
+// Frontend Renderer
+import publicSiteRouter from './routes/publicSite.js';
+
+
 
 
 /**
