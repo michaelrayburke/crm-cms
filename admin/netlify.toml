@@ -1,6 +1,5 @@
 # /netlify.toml
 [build]
-  base    = "admin"
   command = "npm ci && npm run build"
   publish = "dist"
 
