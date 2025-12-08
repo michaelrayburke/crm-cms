@@ -20,9 +20,10 @@ import contentTypesRouter from './routes/contentTypes.js';
 import entryViewsRouter from './routes/entryViews.js';
 import listViewsRouter from './routes/listViews.js';
 
-// NEW: Gizmos & Gadgets routers
+// NEW: Gizmos & Gadgets & Widgets routers
 import gizmosRouter from './routes/gizmos.js';
 import gadgetsRouter from './routes/gadgets.js';
+import widgetsRouter from './routes/widgets.js';/
 
 // Gizmo Packs 
 import gizmoPacksRouter from './routes/gizmoPacks.js';
@@ -534,9 +535,10 @@ app.use('/api/dashboard', authMiddleware, dashboardRouter);
 app.use('/api', entryViewsRouter);
 app.use('/api', listViewsRouter);
 
-// NEW: Gizmos & Gadgets routers
+// NEW: Gizmos & Gadgets & Widgets routers
 app.use('/api', authMiddleware, gizmosRouter);
 app.use('/api', authMiddleware, gadgetsRouter);
+app.use('/api', authMiddleware, widgetsRouter);
 
 // Gizmo Packs
 app.use('/api/gizmo-packs', gizmoPacksRouter);
