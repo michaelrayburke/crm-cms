@@ -28,6 +28,8 @@ import GizmosList from './pages/Gizmos/List';
 import GizmoForm from './pages/Gizmos/Form';
 import GadgetsList from './pages/Gadgets/List';
 import GadgetForm from './pages/Gadgets/Form';
+import WidgetsList from './pages/Widgets/List';
+import WidgetForm from './pages/Widgets/Form';
 import GizmoPacksPage from './pages/GizmoPacks';
 
 
@@ -376,7 +378,10 @@ function App() {
               </RequireAuth>
             }
           />
-
+{/* Widgets */}
+<Route path="/admin/widgets" element={<WidgetsList />} />
+<Route path="/admin/widgets/new" element={<WidgetForm />} />
+<Route path="/admin/widgets/:id" element={<WidgetForm />} />
           <Route
             path="/admin/gizmo-packs"
             element={
