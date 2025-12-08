@@ -120,7 +120,7 @@ router.get('/', async (_req, res) => {
  *   - Insert rows into gizmos
  *   - Insert rows into gadget_gizmos
  *   - Insert rows into content_types + content_fields (reusing if they exist)
- *   - Insert rows into entries (upsert on (content_type, slug))
+ *   - Insert or update rows into entries (manual upsert)
  */
 router.post('/apply', async (req, res) => {
   const { packSlug, gadgetSlug, gadgetName } = req.body || {};
@@ -296,62 +296,88 @@ router.post('/apply', async (req, res) => {
       ctSlugToId[ct.slug] = ctId;
 
       // Fields: upsert on (content_type_id, field_key)
-      for (const f of ct.fields || []) {
-        await client.query(
-          `INSERT INTO content_fields (
-            content_type_id,
-            field_key,
-            type,
-            label,
-            order_index
-          ) VALUES (
-            $1,$2,$3,$4,$5
-          )
-          ON CONFLICT (content_type_id, field_key)
-          DO UPDATE SET
-            type = EXCLUDED.type,
-            label = EXCLUDED.label,
-            order_index = EXCLUDED.order_index`,
-          [
-            ctId,
-            f.field_key,
-            f.type,
-            f.label,
-            f.order_index || 0,
-          ],
-        );
-      }
+      await Promise.all(
+        (ct.fields || []).map((f) =>
+          client.query(
+            `INSERT INTO content_fields (
+              content_type_id,
+              field_key,
+              type,
+              label,
+              order_index
+            ) VALUES (
+              $1,$2,$3,$4,$5
+            )
+            ON CONFLICT (content_type_id, field_key)
+            DO UPDATE SET
+              type = EXCLUDED.type,
+              label = EXCLUDED.label,
+              order_index = EXCLUDED.order_index`,
+            [
+              ctId,
+              f.field_key,
+              f.type,
+              f.label,
+              f.order_index || 0,
+            ],
+          ),
+        ),
+      );
     }
 
-    /* -------------------- 5) Entries (UPSERT) --------------------- */
+    /* -------------------- 5) Entries (manual UPSERT) -------------- */
     for (const entry of pack.entries || []) {
       const ctId = ctSlugToId[entry.content_type_slug];
       if (!ctId) continue;
 
-      await client.query(
-        `INSERT INTO entries (
-          content_type_id,
-          title,
-          slug,
-          status,
-          data
-        ) VALUES (
-          $1,$2,$3,$4,$5
-        )
-        ON CONFLICT (content_type_id, slug)
-        DO UPDATE SET
-          title = EXCLUDED.title,
-          status = EXCLUDED.status,
-          data = EXCLUDED.data,
-          updated_at = now()`,
-        [
-          ctId,
-          entry.title,
-          entry.slug,
-          entry.status || 'draft',
-          entry.data || {},
-        ],
+      const slug = entry.slug;
+
+      // Check if an entry already exists for this (content_type, slug)
+      const existingEntry = await client.query(
+        `SELECT id FROM entries
+         WHERE content_type_id = $1 AND slug = $2
+         LIMIT 1`,
+        [ctId, slug],
       );
+
+      if (existingEntry.rows.length) {
+        // UPDATE existing entry
+        const entryId = existingEntry.rows[0].id;
+        await client.query(
+          `UPDATE entries
+           SET title = $1,
+               status = $2,
+               data = $3,
+               updated_at = now()
+           WHERE id = $4`,
+          [
+            entry.title,
+            entry.status || 'draft',
+            entry.data || {},
+            entryId,
+          ],
+        );
+      } else {
+        // INSERT new entry
+        await client.query(
+          `INSERT INTO entries (
+            content_type_id,
+            title,
+            slug,
+            status,
+            data
+          ) VALUES (
+            $1,$2,$3,$4,$5
+          )`,
+          [
+            ctId,
+            entry.title,
+            slug,
+            entry.status || 'draft',
+            entry.data || {},
+          ],
+        );
+      }
     }
 
     await client.query('COMMIT');
