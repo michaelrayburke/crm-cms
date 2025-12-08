@@ -1,3 +1,4 @@
+
 // api/routes/gizmoPacks.js
 import express from 'express';
 import fs from 'fs/promises';
@@ -96,7 +97,7 @@ async function loadPackBySlug(packSlug) {
 /* GET /api/gizmo-packs                                               */
 /* ------------------------------------------------------------------ */
 
-router.get('/gizmo-packs', async (_req, res) => {
+router.get('/', async (_req, res) => {
   try {
     const packs = await listPacks();
     res.json(packs);
@@ -122,7 +123,7 @@ router.get('/gizmo-packs', async (_req, res) => {
  *   - Insert rows into content_types + content_fields
  *   - Insert rows into entries
  */
-router.post('/gizmo-packs/apply', async (req, res) => {
+router.post('/apply', async (req, res) => {
   const { packSlug, gadgetSlug, gadgetName } = req.body || {};
 
   if (!packSlug || !gadgetSlug || !gadgetName) {
