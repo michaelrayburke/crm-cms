@@ -338,7 +338,7 @@ router.post('/apply', async (req, res) => {
         ) VALUES (
           $1,$2,$3,$4,$5
         )
-        ON CONFLICT ON CONSTRAINT entries_content_type_slug_unique
+        ON CONFLICT (content_type_id, slug)
         DO UPDATE SET
           title = EXCLUDED.title,
           status = EXCLUDED.status,
