@@ -1,0 +1,221 @@
+{
+  "pack_slug": "app-basic",
+  "name": "Basic App Pack",
+  "description": "Creates a simple app gadget with an app shell, navigation, API client config, and a Home screen.",
+  "gadget": {
+    "gadget_type": "app",
+    "description": "Basic app created from the Basic App Gizmo Pack.",
+    "api_base_url": "https://serviceup-api.onrender.com/api",
+    "deploy_url_app": "https://example-app.netlify.app",
+    "primary_color": "#0f766e",
+    "secondary_color": "#0f172a",
+    "accent_color": "#f97316",
+    "logo_url": "/media/logo-app-demo.png",
+    "favicon_url": "/media/favicon-app-demo.ico",
+    "design_config": {},
+    "structure_config": {},
+    "is_active": true,
+    "is_system": false
+  },
+
+  "gizmos": [
+    {
+      "name": "App Shell",
+      "slug": "app-shell",
+      "gizmo_type": "app_shell",
+      "description": "Top-level app layout with header, optional sidebar, and content frame.",
+      "config": {
+        "header_title": "Demo App",
+        "show_logo": true,
+        "logo_url": "/media/logo-app-demo.png",
+        "nav_gizmo_slug": "app-main-nav",
+        "theme": "system",
+        "max_width": "1024px"
+      },
+      "is_enabled": true,
+      "is_system": false
+    },
+    {
+      "name": "App Main Navigation",
+      "slug": "app-main-nav",
+      "gizmo_type": "navigation_tabs",
+      "description": "Primary in-app navigation tabs.",
+      "config": {
+        "items": [
+          { "label": "Home", "screen_slug": "home-screen", "icon": "home" },
+          { "label": "Activity", "screen_slug": "activity-screen", "icon": "activity" },
+          { "label": "Settings", "screen_slug": "settings-screen", "icon": "settings" }
+        ],
+        "style": "tabs_bottom"
+      },
+      "is_enabled": true,
+      "is_system": false
+    },
+    {
+      "name": "API Client",
+      "slug": "api-client",
+      "gizmo_type": "api_client",
+      "description": "Base configuration for calling the ServiceUp API from the app.",
+      "config": {
+        "base_url": "https://serviceup-api.onrender.com/api",
+        "timeout_ms": 10000,
+        "auth_strategy": "jwt",
+        "jwt_storage_key": "serviceup.jwt"
+      },
+      "is_enabled": true,
+      "is_system": false
+    },
+    {
+      "name": "Home Screen Layout",
+      "slug": "home-screen-layout",
+      "gizmo_type": "screen_layout",
+      "description": "Layout definition for the Home screen.",
+      "config": {
+        "sections": [
+          {
+            "type": "hero",
+            "props": {
+              "headline": "Welcome to the Demo App",
+              "subheading": "Powered by ServiceUp Gadgets, Gizmos, and Gizmo Packs."
+            }
+          },
+          {
+            "type": "list",
+            "props": {
+              "title": "Quick Actions",
+              "items": [
+                { "label": "View Activity", "screen_slug": "activity-screen" },
+                { "label": "Open Settings", "screen_slug": "settings-screen" }
+              ]
+            }
+          }
+        ]
+      },
+      "is_enabled": true,
+      "is_system": false
+    }
+  ],
+
+  "gadget_gizmos": [
+    "app-shell",
+    "app-main-nav",
+    "api-client",
+    "home-screen-layout"
+  ],
+
+  "content_types": [
+    {
+      "name": "Screen",
+      "slug": "screen",
+      "description": "Configurable application screen.",
+      "is_system": false,
+      "fields": [
+        {
+          "field_key": "title",
+          "type": "text",
+          "label": "Title",
+          "order_index": 1
+        },
+        {
+          "field_key": "slug",
+          "type": "text",
+          "label": "Slug",
+          "order_index": 2
+        },
+        {
+          "field_key": "layout_json",
+          "type": "json",
+          "label": "Layout JSON",
+          "order_index": 3
+        },
+        {
+          "field_key": "meta_json",
+          "type": "json",
+          "label": "Meta JSON",
+          "order_index": 4
+        }
+      ]
+    }
+  ],
+
+  "entries": [
+    {
+      "content_type_slug": "screen",
+      "title": "Home",
+      "slug": "home-screen",
+      "status": "published",
+      "data": {
+        "title": "Home",
+        "slug": "home-screen",
+        "layout_json": {
+          "blocks": [
+            {
+              "type": "hero",
+              "props": {
+                "headline": "Welcome to the Demo App",
+                "subheading": "This is your starting screen, generated from the App Pack.",
+                "primary_cta": { "label": "View Activity", "screen_slug": "activity-screen" }
+              }
+            }
+          ]
+        },
+        "meta_json": {
+          "icon": "home",
+          "order": 1
+        }
+      }
+    },
+    {
+      "content_type_slug": "screen",
+      "title": "Activity",
+      "slug": "activity-screen",
+      "status": "published",
+      "data": {
+        "title": "Activity",
+        "slug": "activity-screen",
+        "layout_json": {
+          "blocks": [
+            {
+              "type": "placeholder",
+              "props": {
+                "label": "Recent activity will show here."
+              }
+            }
+          ]
+        },
+        "meta_json": {
+          "icon": "activity",
+          "order": 2
+        }
+      }
+    },
+    {
+      "content_type_slug": "screen",
+      "title": "Settings",
+      "slug": "settings-screen",
+      "status": "published",
+      "data": {
+        "title": "Settings",
+        "slug": "settings-screen",
+        "layout_json": {
+          "blocks": [
+            {
+              "type": "form",
+              "props": {
+                "headline": "App Settings",
+                "fields": [
+                  { "key": "dark_mode", "label": "Dark mode", "type": "boolean" },
+                  { "key": "notifications", "label": "Notifications", "type": "boolean" }
+                ]
+              }
+            }
+          ]
+        },
+        "meta_json": {
+          "icon": "settings",
+          "order": 3
+        }
+      }
+    }
+  ]
+}
