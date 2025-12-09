@@ -253,6 +253,12 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 function authMiddleware(req, res, next) {
+  // Allow all /public/* endpoints to be accessed without a token
+  // When mounted at '/api', req.path will be like '/public/widgets', '/public/pages/...'
+  if (req.path.startsWith('/public/')) {
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'No token provided' });
   const token = authHeader.split(' ')[1];
@@ -524,6 +530,11 @@ app.get('/api/health', (_req, res) => {
  */
 
 /* ----------------------- Routers ----------------------------------- */
+
+// PUBLIC routes first (no auth needed for /public/*)
+app.use('/api', publicSiteRouter);      // e.g. /api/public/pages/:slug
+app.use('/api', publicWidgetsRouter);  // /api/public/widgets
+
 app.use('/api/content-types', authMiddleware, contentTypesRouter);
 app.use('/api/users', authMiddleware, usersRouter);
 app.use('/api/taxonomies', taxonomiesRouter);
@@ -545,7 +556,7 @@ app.use('/api', listViewsRouter);
 app.use('/api', authMiddleware, gizmosRouter);
 app.use('/api', authMiddleware, gadgetsRouter);
 app.use('/api', authMiddleware, widgetsRouter);
-app.use('/api', publicWidgetsRouter);
+
 
 // Gizmo Packs
 app.use('/api/gizmo-packs', gizmoPacksRouter);
