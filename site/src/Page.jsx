@@ -1,4 +1,4 @@
-// site/src/Page.jsx
+// site/src/Page.jsx 
 import React, { useEffect, useMemo, useState } from 'react';
 import widgetRegistry from './widgetRegistry';
 
