@@ -2,7 +2,21 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import widgetRegistry from './widgetRegistry';
 
-const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+// Raw base from env
+const RAW_API_BASE = import.meta.env.VITE_API_BASE || '/api';
+
+// Normalize to always point at the /api root, without double `/api`
+function getApiRoot() {
+  const base = (RAW_API_BASE || '').replace(/\/+$/, '');
+  // If it already ends with /api (e.g. "/api" or "https://api.serviceup.tech/api"),
+  // just use it. Otherwise, append /api.
+  if (base.toLowerCase().endsWith('/api')) {
+    return base;
+  }
+  return `${base}/api`;
+}
+
+const API_ROOT = getApiRoot();
 
 /**
  * Page component that:
@@ -48,13 +62,15 @@ export default function Page({ page, gadgetSlug }) {
         setWidgetsLoading(true);
         setWidgetsError('');
 
-        const url = new URL(
-          `${API_BASE}/api/public/widgets`,
-          window.location.origin,
-        );
-        url.searchParams.set('gadget_slug', gadgetSlug);
+        // Public widgets endpoint:
+        // - local dev (VITE_API_BASE=/api)   -> /api/public/widgets?gadget_slug=...
+        // - prod (VITE_API_BASE=https://api.serviceup.tech) ->
+        //     https://api.serviceup.tech/api/public/widgets?gadget_slug=...
+        const url = `${API_ROOT}/public/widgets?gadget_slug=${encodeURIComponent(
+          gadgetSlug,
+        )}`;
 
-        const res = await fetch(url.toString(), {
+        const res = await fetch(url, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -180,7 +196,7 @@ export default function Page({ page, gadgetSlug }) {
       <div className="space-y-8 pb-16">
         {blocks.length === 0 && (
           <section className="max-w-5xl mx-auto px-4 py-10 text-gray-500">
-            This page doesn’t have any blocks yet.
+            This page doesn&apos;t have any blocks yet.
           </section>
         )}
 
