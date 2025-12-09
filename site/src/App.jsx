@@ -109,13 +109,6 @@ export default function App() {
           <h2>Meet the Squad</h2>
           <div className="mascots-grid">
             <div className="mascot-card">
-              <img src={LOGO_IMG} alt="Logo" />
-              <h3>Logo</h3>
-              <p>
-                The face of ServiceUp — our friendly gear dog who guides you through every project with a smile.
-              </p>
-            </div>
-            <div className="mascot-card">
               <img src={GIZMO_IMG} alt="Gizmo" />
               <h3>Gizmo</h3>
               <p>
