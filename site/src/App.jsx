@@ -23,7 +23,7 @@ export default function App() {
 
       try {
         // Example endpoint: /api/public/pages/home?gadget=serviceup-site
-        const url = `${API_BASE}/public/pages/${encodeURIComponent(
+        const url = `${API_BASE}/api/public/pages/${encodeURIComponent(
           PAGE_SLUG,
         )}?gadget=${encodeURIComponent(GADGET_SLUG)}`;
 
