@@ -170,38 +170,26 @@ export default function Page({ page, gadgetSlug }) {
   }
 
   return (
-    <main className="min-h-screen bg-white text-gray-900">
-      <header className="max-w-5xl mx-auto px-4 pt-10 pb-6">
-        <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
-          {page?.data?.title || page?.title || 'Untitled Page'}
-        </h1>
-        {page?.slug && (
-          <p className="text-xs text-gray-500 mt-1">
-            /{page.slug}
+    <div className="page-wrapper">
+      {/* Render each block using its corresponding widget component */}
+      <div className="space-y-8 pb-16">
+        {widgetsLoading && (
+          <p className="max-w-5xl mx-auto px-4 text-sm text-gray-500">
+            Loading widgets…
           </p>
         )}
-      </header>
-
-      {widgetsLoading && (
-        <p className="max-w-5xl mx-auto px-4 text-sm text-gray-500">
-          Loading widgets…
-        </p>
-      )}
-      {widgetsError && (
-        <p className="max-w-5xl mx-auto px-4 text-sm text-red-600">
-          {widgetsError}
-        </p>
-      )}
-
-      <div className="space-y-8 pb-16">
-        {blocks.length === 0 && (
+        {widgetsError && (
+          <p className="max-w-5xl mx-auto px-4 text-sm text-red-600">
+            {widgetsError}
+          </p>
+        )}
+        {blocks.length === 0 && !widgetsLoading && (
           <section className="max-w-5xl mx-auto px-4 py-10 text-gray-500">
-            This page doesn&apos;t have any blocks yet.
+            This page doesn’t have any blocks yet.
           </section>
         )}
-
         {blocks.map((block, index) => renderBlock(block, index))}
       </div>
-    </main>
+    </div>
   );
 }

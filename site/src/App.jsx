@@ -1,6 +1,21 @@
-// src/App.jsx
 import React, { useEffect, useState } from 'react';
 import Page from './Page';
+
+// Image assets for mascots. If you later store these in the CMS, you can
+// reference them via config on the page or via environment variables. For now we
+// fall back to the Supabase URLs provided by the user.
+const LOGO_IMG =
+  import.meta.env.VITE_LOGO_URL ||
+  'https://amvelysrjxpigiokbkgr.supabase.co/storage/v1/object/public/uploads-public/155afc74-ecea-4448-8f78-21dc496ff3c2/image/unknown/new/1765260502179-54uoe9o75z.svg';
+const GIZMO_IMG =
+  import.meta.env.VITE_GIZMO_URL ||
+  'https://amvelysrjxpigiokbkgr.supabase.co/storage/v1/object/public/uploads-public/155afc74-ecea-4448-8f78-21dc496ff3c2/image/unknown/new/1765260548281-c9h7kn2q4dk.svg';
+const GADGET_IMG =
+  import.meta.env.VITE_GADGET_URL ||
+  'https://amvelysrjxpigiokbkgr.supabase.co/storage/v1/object/public/uploads-public/155afc74-ecea-4448-8f78-21dc496ff3c2/image/unknown/new/1765260895066-2bj6nsk0swh.svg';
+const WIDGET_IMG =
+  import.meta.env.VITE_WIDGET_URL ||
+  'https://amvelysrjxpigiokbkgr.supabase.co/storage/v1/object/public/uploads-public/155afc74-ecea-4448-8f78-21dc496ff3c2/image/unknown/new/1765260865949-hlhuo56pzxv.svg';
 
 // Public API base (same pattern as in Page.jsx)
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
@@ -13,7 +28,7 @@ const PAGE_SLUG =
 
 export default function App() {
   const [page, setPage] = useState(null);
-  const [status, setStatus] = useState('loading'); // 'loading' | 'ready' | 'error'
+  const [status, setStatus] = useState('loading');
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -68,74 +83,82 @@ export default function App() {
       {/* HEADER */}
       <header className="site-header">
         <div className="site-header-inner">
-          <div className="site-logo">
-            {/* You can swap this for an SVG/logo image later */}
-            ServiceUp
-          </div>
-
-          {/* Simple placeholder nav – customize as needed */}
+          <div className="site-logo">ServiceUp</div>
           <nav className="site-nav">
-            <a href="#features">Features</a>
-            <a href="#how-it-works">How it works</a>
+            <a href="#about">About</a>
+            <a href="#mascots">Mascots</a>
             <a href="#contact">Contact</a>
           </nav>
         </div>
       </header>
-
-      {/* MAIN */}
       <main className="site-main">
-        {/* HERO */}
-        <section className="hero">
-          <div className="hero-inner">
-            <p className="hero-subheading">
-              Build client sites and apps in hours — not weeks.
-            </p>
-            <h1>
-              Spin up complete websites & apps with{' '}
-              <span>Gizmos & Gadgets</span>
-            </h1>
-            <p>
-              ServiceUp is your headless “site builder engine”: define
-              content once, and generate matching frontends, admin
-              dashboards, and APIs for every project.
-            </p>
-
-            <div className="hero-cta">
-              <a href="#get-started" className="btn-primary">
-                Get started with ServiceUp
-              </a>
-              <a href="#demo" className="btn-secondary">
-                View live demo
-              </a>
-            </div>
-
-            {status === 'loading' && (
-              <p className="hero-status">Loading page content…</p>
-            )}
-            {status === 'error' && (
-              <p className="hero-status hero-status-error">
-                We couldn’t load dynamic content yet ({error}).<br />
-                The static landing still works, and widgets/page data
-                will appear once your API is wired up.
+        {/* Page content loaded from CMS. The hero widget should be the first block in your page. */}
+        {page && <Page page={page} gadgetSlug={GADGET_SLUG} />}
+        {/* ABOUT SECTION */}
+        <section id="about" className="section about-section">
+          <h2>What is ServiceUp?</h2>
+          <p>
+            ServiceUp is your headless site builder engine. Define your content once and instantly spin up matching
+            websites, admin dashboards, and powerful APIs for every client project. With ServiceUp you get the
+            speed of a template builder with the flexibility of a custom CMS — build client sites and apps in
+            hours, not weeks.
+          </p>
+        </section>
+        {/* MASCOTS SECTION */}
+        <section id="mascots" className="section mascots-section">
+          <h2>Meet the Squad</h2>
+          <div className="mascots-grid">
+            <div className="mascot-card">
+              <img src={LOGO_IMG} alt="Logo" />
+              <h3>Logo</h3>
+              <p>
+                The face of ServiceUp — our friendly gear dog who guides you through every project with a smile.
               </p>
-            )}
+            </div>
+            <div className="mascot-card">
+              <img src={GIZMO_IMG} alt="Gizmo" />
+              <h3>Gizmo</h3>
+              <p>
+                Gizmo handles the nitty gritty tasks behind the scenes, keeping your content structured and tidy.
+              </p>
+            </div>
+            <div className="mascot-card">
+              <img src={GADGET_IMG} alt="Gadget" />
+              <h3>Gadget</h3>
+              <p>
+                Gadget powers your client sites and apps, turning your content into beautiful, responsive frontends.
+              </p>
+            </div>
+            <div className="mascot-card">
+              <img src={WIDGET_IMG} alt="Widget" />
+              <h3>Widget</h3>
+              <p>
+                Widget connects everything together — the final puzzle piece that takes your project from idea to
+                reality.
+              </p>
+            </div>
           </div>
         </section>
-
-        {/* PAGE CONTENT RENDERED BY GIZMOS/GADGETS */}
-        <section id="features" className="page-section">
-          {page && (
-            <Page page={page} gadgetSlug={GADGET_SLUG} />
-          )}
+        {/* CONTACT SECTION */}
+        <section id="contact" className="section contact-section">
+          <h2>Get in Touch</h2>
+          <p>
+            Ready to empower your clients? Fill out the form below and we’ll reach out to show you how ServiceUp can
+            level up your workflow.
+          </p>
+          <form className="contact-form" action="mailto:michael@burkemedia.pro" method="POST" encType="text/plain">
+            <input type="text" name="name" placeholder="Your Name" required />
+            <input type="email" name="email" placeholder="Your Email" required />
+            <textarea name="message" placeholder="How can we help you?" required />
+            <button type="submit">Send Message</button>
+          </form>
         </section>
       </main>
-
       {/* FOOTER */}
       <footer className="site-footer">
         <div className="site-footer-inner">
           <span>
-            © {new Date().getFullYear()} ServiceUp. All rights
-            reserved.
+            © {new Date().getFullYear()} ServiceUp. All rights reserved.
           </span>
         </div>
       </footer>
