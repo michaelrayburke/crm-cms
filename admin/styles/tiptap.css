@@ -1,0 +1,48 @@
+/* Minimal TipTap/ProseMirror styling */
+
+.tiptap {
+  min-height: 180px;
+  padding: 10px;
+  border: 1px solid var(--su-editor-border);
+  border-radius: 8px;
+  outline: none;
+}
+
+.tiptap p { margin: 0 0 8px; }
+.tiptap a { text-decoration: underline; }
+.tiptap ul, .tiptap ol { padding-left: 1.25rem; }
+.tiptap h1, .tiptap h2, .tiptap h3 { margin: 0.6em 0 0.4em; }
+
+.tiptap blockquote {
+  margin: 8px 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--su-editor-border);
+  color: var(--su-editor-text-muted);
+}
+
+.tiptap:focus { border-color: var(--su-editor-border-focus); }
+
+.tiptap-editor-surface {
+  border: 1px solid var(--su-editor-border);
+  border-radius: 8px;
+  padding: 12px;
+  min-height: 180px;
+}
+
+.ProseMirror:focus { outline: none; }
+.ProseMirror p { margin: 0 0 .75rem; line-height: 1.6; }
+.ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4 { margin: .75rem 0; }
+
+.ProseMirror blockquote {
+  border-left: 3px solid var(--su-editor-border);
+  margin: .75rem 0;
+  padding-left: .75rem;
+  color: var(--su-editor-text-muted);
+}
+
+.ProseMirror ul, .ProseMirror ol { padding-left: 1.25rem; }
+.ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--su-editor-hr);
+  margin: 1rem 0;
+}

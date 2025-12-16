@@ -1,0 +1,15 @@
+/*
+  Per-install customizations (client-owned)
+  - Prefer changing tokens only
+  - Avoid selector overrides unless absolutely necessary
+*/
+
+:root {
+  /* Example: rebrand */
+  /* --su-accent: #ff0000; */
+  /* --su-radius: 16px; */
+  /* --su-control-radius: 12px; */
+}
+
+/* Rare exceptions (keep minimal + scoped) */
+/* body[data-install="kihon"] .su-sidebar { width: 300px; } */
