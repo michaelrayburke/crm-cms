@@ -1,27 +1,18 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 
-// SettingsContext holds global settings, a loading flag, and a version counter
-// used to notify list pages when list view definitions change. The
-// bumpListViewsVersion function increments the version so that any
-// component that depends on list views (like TypeList.jsx) can refetch
-// its configuration when a list view is saved or deleted.
 const SettingsContext = createContext(null);
 
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
-  // NEW: global version counter for list views. See ListViews.jsx
-  // and TypeList.jsx for usage.
   const [listViewsVersion, setListViewsVersion] = useState(0);
 
-  // Call this function to signal that list views have changed (e.g. after
-  // save or delete). Components that listen for listViewsVersion will
-  // automatically update.
   const bumpListViewsVersion = () => {
     setListViewsVersion((v) => v + 1);
   };
 
+  // 1) Load settings once
   useEffect(() => {
     (async () => {
       try {
@@ -32,7 +23,7 @@ export function SettingsProvider({ children }) {
       } catch (e) {
         console.warn('Failed to load settings, using defaults', e);
         const fallback = {
-          appName: 'ServiceUp Admin',
+          app_name: 'ServiceUp', // keep naming consistent with your title logic
           timezone: 'America/Los_Angeles',
           poweredBy: 'serviceup / bmp',
           theme: {
@@ -57,6 +48,12 @@ export function SettingsProvider({ children }) {
       }
     })();
   }, []);
+
+  // 2) Update document title whenever settings changes
+  useEffect(() => {
+    const title = settings?.app_name || settings?.name || 'ServiceUp';
+    document.title = title;
+  }, [settings]);
 
   return (
     <SettingsContext.Provider
