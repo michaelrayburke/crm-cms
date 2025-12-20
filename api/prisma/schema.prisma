@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model UserProfile {
+  id        String   @id @db.Uuid
+  email     String?  @unique
+  name      String?
+  username  String?  @unique
+  avatar    String?
+  role      String?
+  status    String?
+  updatedAt DateTime @default(now()) @db.Timestamptz(6)
+
+  ownedEntries   Entry[] @relation("OwnerEntries")
+  createdEntries Entry[] @relation("CreatedByEntries")
+  updatedEntries Entry[] @relation("UpdatedByEntries")
+
+  @@map("users")
+}
+
+model Taxonomy {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String
+  key            String
+  label          String
+  isHierarchical Boolean  @default(false)
+  isVisible      Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  terms          Term[]
+
+  @@unique([tenantId, key])
+  @@map("taxonomies")
+}
+
+model Term {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String
+  taxonomyId String
+  parentId   String?
+  name       String
+  slug       String
+  description String?
+  image      Json?
+  seo        Json?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @db.Timestamptz(6)
+
+  taxonomy   Taxonomy  @relation(fields: [taxonomyId], references: [id])
+  parent     Term?     @relation("TermChildren", fields: [parentId], references: [id])
+  children   Term[]    @relation("TermChildren")
+  entryLinks EntryTerm[]
+
+  @@unique([tenantId, taxonomyId, slug])
+  @@map("terms")
+}
+
+model EntryTerm {
+  tenantId String
+  entryId  String
+  termId   String
+
+  entry    Entry   @relation(fields: [entryId], references: [id])
+  term     Term    @relation(fields: [termId], references: [id])
+
+  @@id([tenantId, entryId, termId])
+  @@map("entry_terms")
+}
+
+// Extend your existing Entry model with these fields/relations:
+model Entry {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId       String?  @db.Uuid
+  createdBy     String?  @db.Uuid
+  updatedBy     String?  @db.Uuid
+
+  owner         UserProfile? @relation("OwnerEntries", fields: [ownerId], references: [id])
+  createdByUser UserProfile? @relation("CreatedByEntries", fields: [createdBy], references: [id])
+  updatedByUser UserProfile? @relation("UpdatedByEntries", fields: [updatedBy], references: [id])
+
+  entryTerms    EntryTerm[]
+}

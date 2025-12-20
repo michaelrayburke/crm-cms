@@ -1,0 +1,25 @@
+{
+  "name": "supabase-crm-api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0",
+	"@supabase/supabase-js": "^2.48.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "libphonenumber-js": "^1.12.26",
+    "pg": "^8.11.5",
+    "validator": "^13.15.22"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  }
+}
