@@ -551,9 +551,8 @@ export default function QuickBuilderPage() {
   // === FIELD CONFIG EDITOR (per selected row) ===
   function FieldConfigEditor({ field, onChange }) {
     if (!field) return null;
-    const cfg = field.config && typeof field.config === "object"
-      ? { ...field.config }
-      : {};
+    const cfg =
+      field.config && typeof field.config === "object" ? { ...field.config } : {};
 
     const type = field.type || "text";
 
@@ -580,13 +579,15 @@ export default function QuickBuilderPage() {
         .split("\n")
         .map((s) => s.trim())
         .filter(Boolean);
-      return lines.map((line) => {
-        const [value, label] = line.split("|");
-        const v = (value || "").trim();
-        const l = (label || value || "").trim();
-        if (!v) return null;
-        return { value: v, label: l || v };
-      }).filter(Boolean);
+      return lines
+        .map((line) => {
+          const [value, label] = line.split("|");
+          const v = (value || "").trim();
+          const l = (label || value || "").trim();
+          if (!v) return null;
+          return { value: v, label: l || v };
+        })
+        .filter(Boolean);
     }
 
     return (
@@ -596,7 +597,9 @@ export default function QuickBuilderPage() {
         </div>
 
         {/* Choice-based fields */}
-        {["radio", "dropdown", "checkbox", "select", "multiselect"].includes(type) && (
+        {["radio", "dropdown", "checkbox", "select", "multiselect"].includes(
+          type
+        ) && (
           <div className="mb-4 space-y-1">
             <div className="font-medium">Choices</div>
             <p className="text-xs text-gray-500">
@@ -607,7 +610,9 @@ export default function QuickBuilderPage() {
               className="su-input"
               rows={4}
               value={choicesToText(cfg.choices)}
-              onChange={(e) => updateCfg({ choices: textToChoices(e.target.value) })}
+              onChange={(e) =>
+                updateCfg({ choices: textToChoices(e.target.value) })
+              }
             />
           </div>
         )}
@@ -679,6 +684,60 @@ export default function QuickBuilderPage() {
           </div>
         )}
 
+        {/* User relationship config */}
+        {type === "relation_user" && (
+          <div className="mb-4 grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={!!cfg.multiple}
+                  onChange={(e) => updateCfg({ multiple: e.target.checked })}
+                />
+                <span>Allow multiple users</span>
+              </label>
+
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={cfg.onlyActive === undefined ? true : !!cfg.onlyActive}
+                  onChange={(e) => updateCfg({ onlyActive: e.target.checked })}
+                />
+                <span>Only show ACTIVE users in picker</span>
+              </label>
+            </div>
+
+            <label className="space-y-1 text-sm">
+              <span className="font-medium">Role filter (optional)</span>
+              <input
+                className="su-input"
+                value={cfg.roleFilter || ""}
+                onChange={(e) => updateCfg({ roleFilter: e.target.value.toUpperCase() })}
+                placeholder="ADMIN, EDITOR, etc."
+              />
+              <div className="text-[11px] text-gray-500">
+                If set, picker will only show users with that role.
+              </div>
+            </label>
+
+            <label className="space-y-1 text-sm md:col-span-2">
+              <span className="font-medium">Display format</span>
+              <select
+                className="su-input"
+                value={cfg.display || "name_email"}
+                onChange={(e) => updateCfg({ display: e.target.value })}
+              >
+                <option value="name_email">Name — Email</option>
+                <option value="name">Name only</option>
+                <option value="email">Email only</option>
+              </select>
+              <div className="text-[11px] text-gray-500">
+                How the selected user should be labeled in editors and views.
+              </div>
+            </label>
+          </div>
+        )}
+
         {/* Media upload config */}
         {["image", "file", "video"].includes(type) && (
           <div className="mb-4 grid gap-3 md:grid-cols-[minmax(0,2fr),minmax(0,1fr)]">
@@ -699,9 +758,7 @@ export default function QuickBuilderPage() {
                 value={cfg.maxSizeMB ?? ""}
                 onChange={(e) =>
                   updateCfg({
-                    maxSizeMB: e.target.value
-                      ? Number(e.target.value)
-                      : undefined,
+                    maxSizeMB: e.target.value ? Number(e.target.value) : undefined,
                   })
                 }
               />
@@ -724,6 +781,8 @@ export default function QuickBuilderPage() {
           "checkbox",
           "tags",
           "relationship",
+          "relation",
+          "relation_user",
           "image",
           "file",
           "video",
@@ -732,8 +791,7 @@ export default function QuickBuilderPage() {
         ].includes(type) &&
           !supportsSubfields(type) && (
             <div className="text-xs text-gray-500">
-              This field type has no extra config yet. (We can always add more
-              later.)
+              This field type has no extra config yet. (We can always add more later.)
             </div>
           )}
       </div>
@@ -1081,15 +1139,14 @@ export default function QuickBuilderPage() {
                   </table>
                 </div>
 
-                {activeFieldIndex !== null &&
-                  fields[activeFieldIndex] && (
-                    <FieldConfigEditor
-                      field={fields[activeFieldIndex]}
-                      onChange={(cfg) =>
-                        updateFieldRow(activeFieldIndex, { config: cfg })
-                      }
-                    />
-                  )}
+                {activeFieldIndex !== null && fields[activeFieldIndex] && (
+                  <FieldConfigEditor
+                    field={fields[activeFieldIndex]}
+                    onChange={(cfg) =>
+                      updateFieldRow(activeFieldIndex, { config: cfg })
+                    }
+                  />
+                )}
               </>
             )}
           </form>

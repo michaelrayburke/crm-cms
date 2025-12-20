@@ -1,9 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import FieldInput from "../../components/FieldInput";
 
@@ -46,9 +42,7 @@ function buildLayoutFromView(contentType, viewConfig) {
 
   const sections = [];
   const cfgSections =
-    viewConfig && Array.isArray(viewConfig.sections)
-      ? viewConfig.sections
-      : null;
+    viewConfig && Array.isArray(viewConfig.sections) ? viewConfig.sections : null;
 
   if (cfgSections && cfgSections.length) {
     for (const sec of cfgSections) {
@@ -134,6 +128,10 @@ export default function Editor() {
   // Structured custom data from entries.data
   const [data, setData] = useState({});
 
+  // ✅ NEW: resolved payload from API (Option B)
+  // Shape: { usersById, userFields, ...future }
+  const [resolved, setResolved] = useState(null);
+
   // Content type + editor view
   const [contentType, setContentType] = useState(null);
   const [editorViewConfig, setEditorViewConfig] = useState(null);
@@ -161,8 +159,7 @@ export default function Editor() {
         const basicCt =
           list.find(
             (t) =>
-              t.slug === typeSlug ||
-              t.slug?.toLowerCase() === typeSlug?.toLowerCase(),
+              t.slug === typeSlug || t.slug?.toLowerCase() === typeSlug?.toLowerCase()
           ) || null;
 
         if (!basicCt) {
@@ -180,10 +177,7 @@ export default function Editor() {
           const fullRes = await api.get(`/api/content-types/${basicCt.id}?all=true`);
           fullCt = fullRes?.data || fullRes || basicCt;
         } catch (e) {
-          console.warn(
-            "Failed to load full content type, falling back to basic",
-            e,
-          );
+          console.warn("Failed to load full content type, falling back to basic", e);
           fullCt = basicCt;
         }
 
@@ -195,7 +189,9 @@ export default function Editor() {
         if (fullCt && fullCt.id) {
           try {
             const vRes = await api.get(
-              `/api/content-types/${fullCt.id}/editor-views?role=${encodeURIComponent(roleUpper)}`,
+              `/api/content-types/${fullCt.id}/editor-views?role=${encodeURIComponent(
+                roleUpper
+              )}`
             );
             const rawViews = vRes?.data ?? vRes;
             if (Array.isArray(rawViews)) {
@@ -206,7 +202,7 @@ export default function Editor() {
           } catch (err) {
             console.warn(
               "[Editor] Failed to load editor views for type; falling back to auto layout",
-              err?.response?.data || err,
+              err?.response?.data || err
             );
           }
         }
@@ -240,7 +236,7 @@ export default function Editor() {
           if (!cancelled) {
             setActiveViewSlug(chosenView.slug);
             setActiveViewLabel(
-              chosenView.label || chosenView.name || chosenView.title || chosenView.slug,
+              chosenView.label || chosenView.name || chosenView.title || chosenView.slug
             );
             setEditorViewConfig(chosenView.config || {});
           }
@@ -282,7 +278,7 @@ export default function Editor() {
 
   const sections = useMemo(
     () => buildLayoutFromView(contentType, editorViewConfig),
-    [contentType, editorViewConfig],
+    [contentType, editorViewConfig]
   );
 
   // ---------------------------------------------------------------------------
@@ -295,6 +291,7 @@ export default function Editor() {
       setSlug("");
       setStatus("draft");
       setData({});
+      setResolved(null); // ✅ clear resolved for new entry
       setLoadingEntry(false);
       return;
     }
@@ -313,14 +310,14 @@ export default function Editor() {
         const entry = res.entry || res.data || res;
         if (cancelled) return;
 
+        // ✅ capture Option B resolved payload
+        setResolved(entry?._resolved || null);
+
         // Start from entry.data if present
         const rawData =
-          entry && typeof entry.data === "object" && entry.data !== null
-            ? entry.data
-            : {};
+          entry && typeof entry.data === "object" && entry.data !== null ? entry.data : {};
 
-        let entryData =
-          rawData && typeof rawData === "object" ? { ...rawData } : {};
+        let entryData = rawData && typeof rawData === "object" ? { ...rawData } : {};
 
         // Merge in any extra keys from the top-level entry that
         // are not system columns. This handles cases where the API
@@ -340,6 +337,7 @@ export default function Editor() {
           "version",
           "version_of",
           "published_at",
+          "_resolved", // ✅ prevent resolved from being merged into data
         ]);
 
         Object.entries(entry || {}).forEach(([k, v]) => {
@@ -363,22 +361,15 @@ export default function Editor() {
           delete entryData.undefined;
         }
 
-        // 🔍 DEBUG: see exactly what we loaded and what keys exist
+        // 🔍 DEBUG
         console.log("[Editor] Loaded entry from API", { typeSlug, entryId, entry });
+        console.log("[Editor] entry._resolved from API", entry?._resolved);
         console.log("[Editor] entry.data from API", rawData);
         console.log("[Editor] entryData after merge/flatten", entryData);
-        console.log(
-          "[Editor] keys in entryData",
-          entryData && typeof entryData === "object"
-            ? Object.keys(entryData)
-            : "(not an object)"
-        );
 
         // Derive core fields, but prefer the top-level columns if present
-        const loadedTitle =
-          entry.title ?? entryData.title ?? entryData._title ?? "";
-        const loadedSlug =
-          entry.slug ?? entryData.slug ?? entryData._slug ?? "";
+        const loadedTitle = entry.title ?? entryData.title ?? entryData._title ?? "";
+        const loadedSlug = entry.slug ?? entryData.slug ?? entryData._slug ?? "";
         const loadedStatus =
           entry.status ?? entryData.status ?? entryData._status ?? "draft";
 
@@ -457,13 +448,12 @@ export default function Editor() {
 
         const created = res.entry || res.data || res;
 
-        const newId =
-          created?.id ?? created?.entry?.id ?? created?.data?.id ?? null;
+        // ✅ capture resolved payload returned by API on create
+        setResolved(created?._resolved || null);
+
+        const newId = created?.id ?? created?.entry?.id ?? created?.data?.id ?? null;
         const newSlug =
-          created?.slug ??
-          created?.entry?.slug ??
-          created?.data?.slug ??
-          finalSlug;
+          created?.slug ?? created?.entry?.slug ?? created?.data?.slug ?? finalSlug;
 
         if (newId) {
           const slugOrId = newSlug || newId;
@@ -474,33 +464,23 @@ export default function Editor() {
         }
       } else {
         // UPDATE
-        const res = await api.put(
-          `/api/content/${typeSlug}/${entryId}`,
-          payload,
-        );
+        const res = await api.put(`/api/content/${typeSlug}/${entryId}`, payload);
         if (res && res.ok === false) {
           throw new Error(res.error || res.detail || "Failed to save entry");
         }
 
         const updated = res.entry || res.data || res;
+
+        // ✅ capture resolved payload returned by API on update
+        setResolved(updated?._resolved || null);
+
         if (updated) {
           const entryData = updated.data || mergedData;
 
-          const loadedTitle =
-            updated.title ??
-            entryData.title ??
-            entryData._title ??
-            title;
-          const loadedSlug =
-            updated.slug ??
-            entryData.slug ??
-            entryData._slug ??
-            finalSlug;
+          const loadedTitle = updated.title ?? entryData.title ?? entryData._title ?? title;
+          const loadedSlug = updated.slug ?? entryData.slug ?? entryData._slug ?? finalSlug;
           const loadedStatus =
-            updated.status ??
-            entryData.status ??
-            entryData._status ??
-            status;
+            updated.status ?? entryData.status ?? entryData._status ?? status;
 
           setTitle(loadedTitle);
           setSlug(loadedSlug);
@@ -563,21 +543,62 @@ export default function Editor() {
       slug,
       status,
     }),
-    [data, title, slug, status],
+    [data, title, slug, status]
   );
 
-  const customFieldEntries = useMemo(
-    () => Object.entries(data || {}),
-    [data],
-  );
+  // Build quick lookup of field defs (for pretty preview formatting)
+  const fieldDefByKey = useMemo(() => {
+    const map = {};
+    const f = Array.isArray(contentType?.fields) ? contentType.fields : [];
+    for (const def of f) {
+      const key = def?.field_key || def?.key;
+      if (key) map[key] = { ...def, key };
+    }
+    return map;
+  }, [contentType]);
+
+  const customFieldEntries = useMemo(() => Object.entries(data || {}), [data]);
+
+  function userLabelFromResolved(user, display) {
+    if (!user) return "";
+    const name = user.name || "";
+    const email = user.email || "";
+    if (display === "email") return email || name || "";
+    if (display === "name") return name || email || "";
+    return name && email ? `${name} — ${email}` : name || email || "";
+  }
+
+  function prettyValueForField(key, v) {
+    const def = fieldDefByKey[key];
+    const type = String(def?.type || "").toLowerCase();
+
+    // ✅ nicer preview for relation_user
+    if (type === "relation_user") {
+      const userFields = resolved?.userFields || {};
+      const usersById = resolved?.usersById || {};
+      const cfg = userFields[key] || def?.config || {};
+      const display = cfg?.display || "name_email";
+
+      if (Array.isArray(v)) {
+        const labels = v
+          .map((id) => userLabelFromResolved(usersById[id], display) || String(id))
+          .filter(Boolean);
+        return labels.join(", ");
+      }
+
+      if (typeof v === "string") {
+        return userLabelFromResolved(usersById[v], display) || v;
+      }
+      return "";
+    }
+
+    // default pretty formatting
+    return prettyValue(v);
+  }
 
   function prettyValue(v) {
     if (v === null || v === undefined) return "";
-    if (
-      typeof v === "string" ||
-      typeof v === "number" ||
-      typeof v === "boolean"
-    ) {
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
       return String(v);
     }
     if (Array.isArray(v)) {
@@ -588,10 +609,7 @@ export default function Editor() {
       return JSON.stringify(v);
     }
     if (typeof v === "object") {
-      if (
-        v.label &&
-        (typeof v.value === "string" || typeof v.value === "number")
-      ) {
+      if (v.label && (typeof v.value === "string" || typeof v.value === "number")) {
         return `${v.label} (${v.value})`;
       }
       if (v.label && !v.value) return String(v.label);
@@ -609,11 +627,7 @@ export default function Editor() {
       {/* LEFT: Editor card */}
       <div className="su-card">
         <h2 style={{ marginTop: 0, marginBottom: 12 }}>
-          {overallLoading
-            ? "Edit entry"
-            : isNew
-            ? `New ${typeSlug} entry`
-            : `Edit ${typeSlug}`}
+          {overallLoading ? "Edit entry" : isNew ? `New ${typeSlug} entry` : `Edit ${typeSlug}`}
         </h2>
 
         {/* Editor view selector */}
@@ -626,17 +640,12 @@ export default function Editor() {
                 const dRoles = Array.isArray(cfg.default_roles)
                   ? cfg.default_roles.map((r) => String(r || "").toUpperCase())
                   : [];
-                const isDefaultForRole = dRoles.length
-                  ? dRoles.includes(roleUpper)
-                  : !!v.is_default;
+                const isDefaultForRole = dRoles.length ? dRoles.includes(roleUpper) : !!v.is_default;
                 return (
                   <button
                     key={v.slug}
                     type="button"
-                    className={
-                      "su-chip" +
-                      (v.slug === activeViewSlug ? " su-chip--active" : "")
-                    }
+                    className={"su-chip" + (v.slug === activeViewSlug ? " su-chip--active" : "")}
                     onClick={() => {
                       if (v.slug === activeViewSlug) return;
                       setActiveViewSlug(v.slug);
@@ -648,9 +657,7 @@ export default function Editor() {
                     }}
                   >
                     {v.label || v.name || v.title || v.slug}
-                    {isDefaultForRole && (
-                      <span className="su-chip-badge">default</span>
-                    )}
+                    {isDefaultForRole && <span className="su-chip-badge">default</span>}
                   </button>
                 );
               })}
@@ -690,9 +697,7 @@ export default function Editor() {
           </div>
         )}
 
-        {overallLoading && !isNew && (
-          <p style={{ fontSize: 13, opacity: 0.7 }}>Loading entry…</p>
-        )}
+        {overallLoading && !isNew && <p style={{ fontSize: 13, opacity: 0.7 }}>Loading entry…</p>}
 
         <form onSubmit={handleSave}>
           {/* Core fields */}
@@ -719,11 +724,7 @@ export default function Editor() {
 
             <label style={{ fontSize: 13 }}>
               Status
-              <select
-                className="su-select"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
+              <select className="su-select" value={status} onChange={(e) => setStatus(e.target.value)}>
                 <option value="draft">Draft</option>
                 <option value="published">Published</option>
                 <option value="archived">Archived</option>
@@ -749,8 +750,7 @@ export default function Editor() {
 
             {!sections.length && (
               <p style={{ fontSize: 12, opacity: 0.7 }}>
-                No fields defined for this content type yet. Create fields in
-                QuickBuilder.
+                No fields defined for this content type yet. Create fields in QuickBuilder.
               </p>
             )}
 
@@ -766,13 +766,7 @@ export default function Editor() {
                 }}
               >
                 {section.title && (
-                  <div
-                    style={{
-                      marginBottom: 8,
-                      fontSize: 13,
-                      fontWeight: 600,
-                    }}
-                  >
+                  <div style={{ marginBottom: 8, fontSize: 13, fontWeight: 600 }}>
                     {section.title}
                   </div>
                 )}
@@ -781,9 +775,7 @@ export default function Editor() {
                   style={{
                     display: "grid",
                     gap: 12,
-                    gridTemplateColumns: `repeat(${
-                      section.columns || 1
-                    }, minmax(0, 1fr))`,
+                    gridTemplateColumns: `repeat(${section.columns || 1}, minmax(0, 1fr))`,
                   }}
                 >
                   {section.rows.map(({ def, width }) => {
@@ -791,17 +783,17 @@ export default function Editor() {
                     if (!key) return null;
                     const value = data ? data[key] : undefined;
                     return (
-                      <div
-                        key={key}
-                        style={{ gridColumn: `span ${width || 1}` }}
-                      >
+                      <div key={key} style={{ gridColumn: `span ${width || 1}` }}>
                         <div style={{ display: "grid", gap: 6 }}>
                           <label style={{ fontSize: 13, fontWeight: 600 }}>
                             {def.label || def.name || def.key}
                           </label>
+
                           <FieldInput
                             field={def}
                             value={value}
+                            // ✅ NEW: pass resolved payload so relation_user can render labels / picker
+                            resolved={resolved}
                             onChange={(val) => {
                               if (!key) return;
                               setData((prev) => ({
@@ -810,6 +802,7 @@ export default function Editor() {
                               }));
                             }}
                           />
+
                           {(def.help || def.description) && (
                             <div style={{ fontSize: 12, opacity: 0.7 }}>
                               {def.help || def.description}
@@ -829,12 +822,7 @@ export default function Editor() {
             <button className="su-btn primary" type="submit" disabled={saving}>
               {saving ? "Saving…" : isNew ? "Create entry" : "Save entry"}
             </button>
-            <button
-              className="su-btn"
-              type="button"
-              onClick={() => navigate(-1)}
-              disabled={saving}
-            >
+            <button className="su-btn" type="button" onClick={() => navigate(-1)} disabled={saving}>
               Back
             </button>
             <button
@@ -868,24 +856,18 @@ export default function Editor() {
           }}
         >
           <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 16, fontWeight: 600 }}>
-              {title || "(untitled entry)"}
-            </div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>{title || "(untitled entry)"}</div>
             <div style={{ fontSize: 12, opacity: 0.7 }}>
               /{slug || slugify(title || "my-entry")} ·{" "}
               <span style={{ textTransform: "uppercase" }}>{status}</span>
             </div>
           </div>
 
-          <div
-            style={{
-              borderTop: "1px solid var(--su-border)",
-              paddingTop: 8,
-            }}
-          >
+          <div style={{ borderTop: "1px solid var(--su-border)", paddingTop: 8 }}>
             {customFieldEntries.length === 0 && (
               <p style={{ fontSize: 12, opacity: 0.7 }}>No fields yet.</p>
             )}
+
             {customFieldEntries.map(([key, value]) => (
               <div
                 key={key}
@@ -898,7 +880,7 @@ export default function Editor() {
                 }}
               >
                 <div style={{ opacity: 0.7 }}>{key}</div>
-                <div>{prettyValue(value)}</div>
+                <div>{prettyValueForField(key, value)}</div>
               </div>
             ))}
           </div>

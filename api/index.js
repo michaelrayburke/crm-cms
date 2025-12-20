@@ -192,6 +192,96 @@ function normalizeEntryData(fieldDefs, dataIn) {
   }
 }
 
+/**
+ * Option B: auto-expand relation_user fields.
+ *
+ * Adds:
+ *  entry._resolved = {
+ *    usersById: { [uuid]: { id,email,name,role,status } },
+ *    userFields: { [field_key]: { multiple, display, roleFilter, onlyActive } }
+ *  }
+ */
+async function attachResolvedUsersToEntries(typeId, entries) {
+  const list = Array.isArray(entries) ? entries : [entries];
+  if (!typeId || !list.length) return entries;
+
+  // 1) Load only the user-relation fields for this type
+  const { rows: userFieldRows } = await pool.query(
+    `
+      SELECT field_key, type, config
+      FROM content_fields
+      WHERE content_type_id = $1
+        AND type = 'relation_user'
+    `,
+    [typeId]
+  );
+
+  if (!userFieldRows.length) return entries;
+
+  // normalize field config + compute which keys we should read from data
+  const userFields = {};
+  for (const f of userFieldRows) {
+    const cfg = (f.config && typeof f.config === 'object') ? f.config : {};
+    userFields[f.field_key] = {
+      multiple: !!cfg.multiple,
+      display: cfg.display || 'name_email',
+      roleFilter: cfg.roleFilter || '',
+      onlyActive: cfg.onlyActive === undefined ? true : !!cfg.onlyActive,
+    };
+  }
+
+  // 2) Gather all UUIDs referenced in entry.data[field_key]
+  const idsSet = new Set();
+
+  for (const entry of list) {
+    const data = entry?.data && typeof entry.data === 'object' ? entry.data : {};
+    for (const fieldKey of Object.keys(userFields)) {
+      const v = data[fieldKey];
+
+      if (Array.isArray(v)) {
+        for (const maybeId of v) {
+          if (isUuid(maybeId)) idsSet.add(String(maybeId));
+        }
+      } else {
+        if (isUuid(v)) idsSet.add(String(v));
+      }
+    }
+  }
+
+  const ids = Array.from(idsSet);
+  if (!ids.length) {
+    // still attach field metadata so the UI knows how to render the field
+    for (const entry of list) {
+      entry._resolved = entry._resolved || {};
+      entry._resolved.userFields = userFields;
+      entry._resolved.usersById = entry._resolved.usersById || {};
+    }
+    return entries;
+  }
+
+  // 3) Resolve all users in one query
+  const { rows: users } = await pool.query(
+    `
+      SELECT id, email, name, role, status
+      FROM public.users
+      WHERE id = ANY($1::uuid[])
+    `,
+    [ids]
+  );
+
+  const usersById = {};
+  for (const u of users) usersById[u.id] = u;
+
+  // 4) Attach
+  for (const entry of list) {
+    entry._resolved = entry._resolved || {};
+    entry._resolved.userFields = userFields;
+    entry._resolved.usersById = usersById;
+  }
+
+  return entries;
+}
+
 /* ----------------------- Debug endpoints --------------------------- */
 app.get('/__ping', (_req, res) => res.json({ ok: true, build: Date.now() }));
 app.get('/__routes', (_req, res) => res.json({ routes: listRoutes(app) }));
@@ -260,6 +350,9 @@ app.get('/api/content/:slug', async (req, res) => {
       [typeId]
     );
 
+    // ✅ Option B expansion (list)
+    await attachResolvedUsersToEntries(typeId, entries);
+
     res.json(entries);
   } catch (err) {
     console.error('[GET /api/content/:slug] error', err);
@@ -316,6 +409,9 @@ app.post('/api/content/:slug', authMiddleware, async (req, res) => {
       [typeId, safeTitle, finalSlug, finalStatus, normalizedData]
     );
 
+    // optional: attach resolved users on create response (helps immediate UI render)
+    await attachResolvedUsersToEntries(typeId, rows[0]);
+
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('[POST /api/content/:slug] error', err);
@@ -355,6 +451,9 @@ app.get('/api/content/:slug/:id', authMiddleware, async (req, res) => {
 
     const { rows } = await pool.query(entryQuery, entryParams);
     if (!rows.length) return res.status(404).json({ error: 'Entry not found' });
+
+    // ✅ Option B expansion (single)
+    await attachResolvedUsersToEntries(typeId, rows[0]);
 
     res.json(rows[0]);
   } catch (err) {
@@ -431,6 +530,9 @@ app.put('/api/content/:slug/:id', authMiddleware, async (req, res) => {
     }
 
     if (!updated.rows.length) return res.status(404).json({ error: 'Entry not found' });
+
+    // optional: attach resolved users on update response
+    await attachResolvedUsersToEntries(typeId, updated.rows[0]);
 
     res.json(updated.rows[0]);
   } catch (err) {

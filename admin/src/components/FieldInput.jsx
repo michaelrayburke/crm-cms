@@ -1,6 +1,5 @@
-// admin/src/components/FieldInput.jsx 
-
-import React, { useState, useMemo } from "react";
+// admin/src/components/FieldInput.jsx
+import React, { useState, useMemo, useEffect } from "react";
 import RichTextEditor from "./RichTextEditor";
 import { combineDateAndTimeToUTC } from "../utils/datetime";
 import { contrastRatio, normalizeHex } from "../utils/color";
@@ -9,6 +8,7 @@ import {
   getSignedUrl,
   resolveBucketName,
 } from "../lib/storage";
+import { api } from "../lib/api";
 
 /** ---------- Helpers ---------- */
 
@@ -90,25 +90,362 @@ function getFieldConfig(field) {
  */
 function getFieldChoices(field) {
   const cfg = getFieldConfig(field);
-  return (
-    cfg.choices ??
-    cfg.options ??
-    field?.choices ??
-    field?.options ??
-    []
-  );
+  return cfg.choices ?? cfg.options ?? field?.choices ?? field?.options ?? [];
 }
 
 /** Subfield config helper */
 function subCfg(field, key, fallbackLabel, defaultShow = true) {
   const cfg = getFieldConfig(field);
   const s =
-    cfg.subfields && typeof cfg.subfields === "object" ? cfg.subfields[key] || {} : {};
+    cfg.subfields && typeof cfg.subfields === "object"
+      ? cfg.subfields[key] || {}
+      : {};
   return {
     show: s.show !== undefined ? !!s.show : !!defaultShow,
     label:
       typeof s.label === "string" && s.label.length ? s.label : fallbackLabel,
   };
+}
+
+function safeStr(v) {
+  return v == null ? "" : String(v);
+}
+
+function userLabel(user, display = "name_email") {
+  if (!user) return "";
+  const name = safeStr(user.name).trim();
+  const email = safeStr(user.email).trim();
+  if (display === "email") return email || name || "";
+  if (display === "name") return name || email || "";
+  // default "name_email"
+  return name && email ? `${name} — ${email}` : name || email || "";
+}
+
+function normalizeUserIds(value, multiple) {
+  if (multiple) {
+    if (Array.isArray(value)) return value.map(String).filter(Boolean);
+    if (typeof value === "string" && value.trim()) return [value.trim()];
+    return [];
+  }
+  if (typeof value === "string" && value.trim()) return value.trim();
+  return "";
+}
+
+/** ------------------------------------------------------------------ */
+/** USER RELATIONSHIP FIELD (relation_user)                             */
+/** ------------------------------------------------------------------ */
+function UserRelationField({ field, value, onChange, resolved }) {
+  const cfg = getFieldConfig(field);
+  const fieldKey = field?.key;
+
+  // Prefer server-provided userFields (Option B), fallback to field.config
+  const serverUserFields =
+    resolved?.userFields && fieldKey ? resolved.userFields[fieldKey] : null;
+
+  const multiple = !!(serverUserFields?.multiple ?? cfg?.multiple);
+  const display = serverUserFields?.display || cfg?.display || "name_email";
+  const roleFilter =
+    (serverUserFields?.roleFilter || cfg?.roleFilter || "").toString().trim();
+  const onlyActive =
+    serverUserFields?.onlyActive ??
+    (cfg?.onlyActive === undefined ? true : !!cfg.onlyActive);
+
+  const usersById = resolved?.usersById || {};
+
+  const normalized = useMemo(
+    () => normalizeUserIds(value, multiple),
+    [value, multiple]
+  );
+
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState([]);
+  const [err, setErr] = useState("");
+
+  // Debounced search (used for BOTH single + multi)
+  useEffect(() => {
+    let alive = true;
+    const handle = setTimeout(async () => {
+      if (!open) return;
+      setBusy(true);
+      setErr("");
+      try {
+        const params = new URLSearchParams();
+        params.set("q", q || "");
+        if (roleFilter) params.set("role", roleFilter);
+        params.set("onlyActive", onlyActive ? "true" : "false");
+        params.set("limit", "50");
+
+        const res = await api.get(`/api/users/picker?${params.toString()}`);
+        const list = res?.users || res?.data?.users || [];
+        if (!alive) return;
+        setResults(Array.isArray(list) ? list : []);
+      } catch (e) {
+        if (!alive) return;
+        setErr(e?.message || "Failed to load users");
+        setResults([]);
+      } finally {
+        if (alive) setBusy(false);
+      }
+    }, 200);
+
+    return () => {
+      alive = false;
+      clearTimeout(handle);
+    };
+  }, [q, open, roleFilter, onlyActive]);
+
+  function isSelected(id) {
+    if (!id) return false;
+    if (multiple) return Array.isArray(normalized) && normalized.includes(id);
+    return normalized === id;
+  }
+
+  function selectUser(id) {
+    if (!id) return;
+    if (multiple) {
+      const current = Array.isArray(normalized) ? normalized : [];
+      if (current.includes(id)) return;
+      onChange([...current, id]);
+      setQ("");
+      setOpen(true);
+      return;
+    }
+    onChange(id);
+    setOpen(false);
+    setQ("");
+  }
+
+  function removeUser(id) {
+    if (!id) return;
+    if (multiple) {
+      const current = Array.isArray(normalized) ? normalized : [];
+      onChange(current.filter((x) => x !== id));
+    } else {
+      if (normalized === id) onChange("");
+    }
+  }
+
+  // Selected IDs
+  const selectedIds = multiple
+    ? (Array.isArray(normalized) ? normalized : [])
+    : (normalized ? [normalized] : []);
+
+  const selectedUsers = selectedIds.map((id) => ({
+    id,
+    user: usersById[id] || results.find((u) => u.id === id) || null,
+  }));
+
+  /**
+   * ✅ NEW: compact single-select UI when multiple=false
+   */
+  if (!multiple) {
+    const selectedUser = normalized ? (usersById[normalized] || results.find((u) => u.id === normalized) || null) : null;
+
+    // When the dropdown is opened/focused, we want some options even if q is empty
+    // so we keep "open" true while interacting.
+    return (
+      <div style={{ display: "grid", gap: 8 }}>
+        {/* Optional: search box for narrowing results */}
+        <input
+          type="text"
+          value={q}
+          placeholder="Search users…"
+          onChange={(e) => setQ(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => {
+            // Keep it open long enough for select click
+            setTimeout(() => setOpen(false), 150);
+          }}
+        />
+
+        <select
+          className="su-select"
+          value={normalized || ""}
+          onFocus={() => setOpen(true)}
+          onBlur={() => {
+            setTimeout(() => setOpen(false), 150);
+          }}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (next === "__clear__") {
+              onChange("");
+              return;
+            }
+            if (!next) {
+              onChange("");
+              return;
+            }
+            selectUser(next);
+          }}
+        >
+          <option value="">— Select a user —</option>
+          {normalized && <option value="__clear__">Clear selection</option>}
+
+          {/* If we already know selected user but it’s not in results, show it */}
+          {normalized && selectedUser && !results.some((u) => u.id === normalized) && (
+            <option value={normalized}>
+              {userLabel(selectedUser, display) || selectedUser.email || normalized}
+            </option>
+          )}
+
+          {/* Results list */}
+          {results.map((u) => (
+            <option key={u.id} value={u.id}>
+              {userLabel(u, display) || u.email || u.id}
+            </option>
+          ))}
+        </select>
+
+        <div style={{ fontSize: 11, opacity: 0.7 }}>
+          Stores a user ID.
+          {roleFilter ? ` Filter: ${roleFilter}.` : ""}{" "}
+          {onlyActive ? "Active only." : "Includes inactive."}{" "}
+          {busy ? "Searching…" : err ? err : ""}
+        </div>
+      </div>
+    );
+  }
+
+  /**
+   * Multi-select UI (chips + search) unchanged
+   */
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {/* Selected chips */}
+      {selectedIds.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {selectedUsers.map(({ id, user }) => (
+            <span
+              key={id}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                border: "1px solid var(--su-border, #e5e7eb)",
+                borderRadius: 999,
+                padding: "4px 10px",
+                fontSize: 12,
+                background: "var(--su-surface, #fff)",
+              }}
+              title={id}
+            >
+              <span style={{ opacity: 0.9 }}>
+                {userLabel(user, display) || id}
+              </span>
+              <button
+                type="button"
+                onClick={() => removeUser(id)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  lineHeight: 1,
+                  opacity: 0.7,
+                }}
+                aria-label="Remove"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Search/picker */}
+      <div style={{ position: "relative" }}>
+        <input
+          type="text"
+          value={q}
+          placeholder={"Search users… (add multiple)"}
+          onChange={(e) => setQ(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => {
+            // Delay close so click on results works
+            setTimeout(() => setOpen(false), 150);
+          }}
+        />
+
+        {open && (
+          <div
+            style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              left: 0,
+              right: 0,
+              zIndex: 20,
+              border: "1px solid var(--su-border, #e5e7eb)",
+              borderRadius: 10,
+              background: "var(--su-surface, #fff)",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
+              maxHeight: 260,
+              overflow: "auto",
+            }}
+          >
+            <div style={{ padding: 8, fontSize: 12, opacity: 0.75 }}>
+              {busy
+                ? "Searching…"
+                : err
+                ? err
+                : results.length
+                ? "Select a user"
+                : "No matches"}
+            </div>
+
+            {!busy &&
+              !err &&
+              results.map((u) => {
+                const label = userLabel(u, display) || u.email || u.id;
+                const selected = isSelected(u.id);
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => selectUser(u.id)}
+                    disabled={selected}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "10px 10px",
+                      border: "none",
+                      borderTop: "1px solid rgba(0,0,0,0.06)",
+                      background: selected
+                        ? "rgba(59,130,246,0.08)"
+                        : "transparent",
+                      cursor: selected ? "not-allowed" : "pointer",
+                      fontSize: 13,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        opacity: selected ? 0.7 : 1,
+                      }}
+                    >
+                      {label}
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.65 }}>
+                      {u.role ? `${u.role} · ` : ""}
+                      {u.status || ""}
+                    </div>
+                  </button>
+                );
+              })}
+          </div>
+        )}
+      </div>
+
+      {/* Helper line */}
+      <div style={{ fontSize: 11, opacity: 0.7 }}>
+        Stores an array of user IDs.
+        {roleFilter ? ` Filter: ${roleFilter}.` : ""}{" "}
+        {onlyActive ? "Active only." : "Includes inactive."}
+      </div>
+    </div>
+  );
 }
 
 /** Simple NAME field with subfields */
@@ -148,7 +485,10 @@ function NameField({ field, value, onChange }) {
             <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>
               {firstCfg.label}
             </label>
-            <input value={v.first || ""} onChange={(e) => set({ first: e.target.value })} />
+            <input
+              value={v.first || ""}
+              onChange={(e) => set({ first: e.target.value })}
+            />
           </div>
         )}
         {middleCfg.show && (
@@ -156,7 +496,10 @@ function NameField({ field, value, onChange }) {
             <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>
               {middleCfg.label}
             </label>
-            <input value={v.middle || ""} onChange={(e) => set({ middle: e.target.value })} />
+            <input
+              value={v.middle || ""}
+              onChange={(e) => set({ middle: e.target.value })}
+            />
           </div>
         )}
       </div>
@@ -166,7 +509,10 @@ function NameField({ field, value, onChange }) {
             <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>
               {lastCfg.label}
             </label>
-            <input value={v.last || ""} onChange={(e) => set({ last: e.target.value })} />
+            <input
+              value={v.last || ""}
+              onChange={(e) => set({ last: e.target.value })}
+            />
           </div>
         )}
         {maidenCfg.show && (
@@ -174,7 +520,10 @@ function NameField({ field, value, onChange }) {
             <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>
               {maidenCfg.label}
             </label>
-            <input value={v.maiden || ""} onChange={(e) => set({ maiden: e.target.value })} />
+            <input
+              value={v.maiden || ""}
+              onChange={(e) => set({ maiden: e.target.value })}
+            />
           </div>
         )}
       </div>
@@ -183,7 +532,10 @@ function NameField({ field, value, onChange }) {
           <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>
             {suffixCfg.label}
           </label>
-          <input value={v.suffix || ""} onChange={(e) => set({ suffix: e.target.value })} />
+          <input
+            value={v.suffix || ""}
+            onChange={(e) => set({ suffix: e.target.value })}
+          />
         </div>
       )}
     </div>
@@ -192,7 +544,14 @@ function NameField({ field, value, onChange }) {
 
 /** ADDRESS field with subfields */
 function AddressField({ field, value, onChange }) {
-  const base = { line1: "", line2: "", city: "", state: "", postal: "", country: "" };
+  const base = {
+    line1: "",
+    line2: "",
+    city: "",
+    state: "",
+    postal: "",
+    country: "",
+  };
   const a = { ...base, ...(typeof value === "object" && value ? value : {}) };
   const set = (patch) => onChange({ ...a, ...patch });
 
@@ -206,29 +565,40 @@ function AddressField({ field, value, onChange }) {
   };
 
   return (
-    <div className="field-address" style={{ display: "grid", gap: 8, maxWidth: 520 }}>
+    <div
+      className="field-address"
+      style={{ display: "grid", gap: 8, maxWidth: 520 }}
+    >
       {cfg.line1.show && (
         <div>
-          <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>{cfg.line1.label}</label>
+          <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>
+            {cfg.line1.label}
+          </label>
           <input value={a.line1} onChange={(e) => set({ line1: e.target.value })} />
         </div>
       )}
       {cfg.line2.show && (
         <div>
-          <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>{cfg.line2.label}</label>
+          <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>
+            {cfg.line2.label}
+          </label>
           <input value={a.line2} onChange={(e) => set({ line2: e.target.value })} />
         </div>
       )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {cfg.city.show && (
           <div>
-            <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>{cfg.city.label}</label>
+            <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>
+              {cfg.city.label}
+            </label>
             <input value={a.city} onChange={(e) => set({ city: e.target.value })} />
           </div>
         )}
         {cfg.state.show && (
           <div>
-            <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>{cfg.state.label}</label>
+            <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>
+              {cfg.state.label}
+            </label>
             <input value={a.state} onChange={(e) => set({ state: e.target.value })} />
           </div>
         )}
@@ -236,13 +606,17 @@ function AddressField({ field, value, onChange }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {cfg.postal.show && (
           <div>
-            <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>{cfg.postal.label}</label>
+            <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>
+              {cfg.postal.label}
+            </label>
             <input value={a.postal} onChange={(e) => set({ postal: e.target.value })} />
           </div>
         )}
         {cfg.country.show && (
           <div>
-            <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>{cfg.country.label}</label>
+            <label style={{ fontSize: 12, opacity: 0.8, display: "block" }}>
+              {cfg.country.label}
+            </label>
             <input value={a.country} onChange={(e) => set({ country: e.target.value })} />
           </div>
         )}
@@ -376,18 +750,27 @@ function ImageField({ field, value, onChange, entryContext }) {
         <input
           placeholder={captionCfg.label}
           value={value?.caption || ""}
-          onChange={(e) => onChange({ ...(value || {}), caption: e.target.value })}
+          onChange={(e) =>
+            onChange({ ...(value || {}), caption: e.target.value })
+          }
         />
       )}
       {creditCfg.show && (
         <input
           placeholder={creditCfg.label}
           value={value?.credit || ""}
-          onChange={(e) => onChange({ ...(value || {}), credit: e.target.value })}
+          onChange={(e) =>
+            onChange({ ...(value || {}), credit: e.target.value })
+          }
         />
       )}
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <input type="file" accept={acceptAttr} onChange={handleUpload} disabled={busy} />
+        <input
+          type="file"
+          accept={acceptAttr}
+          onChange={handleUpload}
+          disabled={busy}
+        />
         {visibility === "private" && value?.path && (
           <button type="button" onClick={copySignedLink} disabled={busy}>
             Copy signed URL
@@ -480,7 +863,12 @@ function FileField({ field, value, onChange, entryContext, accept }) {
     <div style={{ display: "grid", gap: 6 }}>
       <input placeholder="File name" value={value?.name || ""} readOnly />
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <input type="file" accept={accept} onChange={handleUpload} disabled={busy} />
+        <input
+          type="file"
+          accept={accept}
+          onChange={handleUpload}
+          disabled={busy}
+        />
         {visibility === "private" && value?.path && (
           <button type="button" onClick={copySignedLink} disabled={busy}>
             Copy signed URL
@@ -498,17 +886,23 @@ function FileField({ field, value, onChange, entryContext, accept }) {
         <input
           placeholder={captionCfg.label}
           value={value?.caption || ""}
-          onChange={(e) => onChange({ ...(value || {}), caption: e.target.value })}
+          onChange={(e) =>
+            onChange({ ...(value || {}), caption: e.target.value })
+          }
         />
       )}
       {creditCfg.show && (
         <input
           placeholder={creditCfg.label}
           value={value?.credit || ""}
-          onChange={(e) => onChange({ ...(value || {}), credit: e.target.value })}
+          onChange={(e) =>
+            onChange({ ...(value || {}), credit: e.target.value })
+          }
         />
       )}
-      {visibility === "public" && value?.publicUrl && <small>Public URL: {value.publicUrl}</small>}
+      {visibility === "public" && value?.publicUrl && (
+        <small>Public URL: {value.publicUrl}</small>
+      )}
     </div>
   );
 }
@@ -523,10 +917,23 @@ export default function FieldInput({
   relatedCache,
   choicesCache,
   entryContext,
+  resolved, // ✅ NEW
 }) {
   // ✅ CRITICAL: fix the crash (fieldType must exist)
   const fieldType = (field?.type || "text").toString().trim().toLowerCase();
   const cfg = getFieldConfig(field);
+
+  // ✅ NEW: user relationship field
+  if (fieldType === "relation_user") {
+    return (
+      <UserRelationField
+        field={field}
+        value={value}
+        onChange={onChange}
+        resolved={resolved}
+      />
+    );
+  }
 
   // ---- Dynamic choice helpers ----
   const isChoice = ["radio", "dropdown", "checkbox", "select", "multiselect"].includes(fieldType);
@@ -716,9 +1123,6 @@ export default function FieldInput({
 
   // ---- Relation ----
   if (fieldType === "relation" || fieldType === "relationship") {
-    // Supports both:
-    // - cfg.relation = { kind:'one'|'many', contentType:'users' }
-    // - legacy cfg.relatedType / cfg.multiple
     const rel = cfg?.relation?.contentType || cfg?.relatedType;
     const allowMultiple =
       cfg?.relation?.kind === "many" || !!cfg?.multiple;
@@ -933,8 +1337,6 @@ export default function FieldInput({
   }
 
   if (fieldType === "tags") {
-    // you can keep your current tags UI as-is (omitted here for brevity)
-    // fallback to simple comma-separated string entry:
     const chips = Array.isArray(value)
       ? value
       : typeof value === "string"

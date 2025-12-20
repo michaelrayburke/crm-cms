@@ -1,5 +1,5 @@
 // admin/src/pages/Users/index.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 
 export default function UsersPage() {
@@ -15,6 +15,10 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // ✅ NEW: inline name editing state
+  const [nameDraftById, setNameDraftById] = useState({});
+  const [nameSavingById, setNameSavingById] = useState({});
 
   useEffect(() => {
     (async () => {
@@ -80,9 +84,11 @@ export default function UsersPage() {
     try {
       const updated = await api.patch(`/api/users/${id}`, patch);
       setUsers((prev) => prev.map((u) => (u.id === id ? updated : u)));
+      return updated;
     } catch (err) {
       console.error(err);
       setError(err.message || 'Failed to update user');
+      throw err;
     }
   }
 
@@ -96,11 +102,60 @@ export default function UsersPage() {
     try {
       await api.del(`/api/users/${id}`);
       setUsers((prev) => prev.filter((u) => u.id !== id));
+      setNameDraftById((m) => {
+        const next = { ...m };
+        delete next[id];
+        return next;
+      });
+      setNameSavingById((m) => {
+        const next = { ...m };
+        delete next[id];
+        return next;
+      });
     } catch (err) {
       console.error(err);
       setError(err.message || 'Failed to delete user');
     }
   }
+
+  // ✅ NEW: inline name editing helpers
+  const getNameDraft = (u) => {
+    const v = nameDraftById[u.id];
+    if (v === undefined) return u.name || '';
+    return v;
+  };
+
+  const isNameDirty = (u) => {
+    const draft = getNameDraft(u);
+    return (draft || '') !== (u.name || '');
+  };
+
+  const setDraft = (id, val) => {
+    setNameDraftById((m) => ({ ...m, [id]: val }));
+  };
+
+  const cancelNameEdit = (u) => {
+    setNameDraftById((m) => ({ ...m, [u.id]: u.name || '' }));
+  };
+
+  const saveName = async (u) => {
+    const draft = getNameDraft(u).trim();
+    const nextName = draft.length ? draft : null;
+
+    // no-op if unchanged
+    if ((u.name || '') === (nextName || '')) return;
+
+    setNameSavingById((m) => ({ ...m, [u.id]: true }));
+    try {
+      const updated = await updateUser(u.id, { name: nextName });
+      // sync draft to saved value
+      setNameDraftById((m) => ({ ...m, [u.id]: updated?.name || '' }));
+    } finally {
+      setNameSavingById((m) => ({ ...m, [u.id]: false }));
+    }
+  };
+
+  const usersToRender = useMemo(() => filteredUsers(), [users, q]); // eslint-disable-line
 
   return (
     <div className="su-page su-page--users">
@@ -221,47 +276,99 @@ export default function UsersPage() {
                   <th>Email</th>
                   <th>Name</th>
                   <th style={{ width: 140 }}>Role</th>
-                  <th style={{ width: 80 }} />
+                  <th style={{ width: 160 }} />
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers().map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.email}</td>
-                    <td>{u.name}</td>
-                    <td>
-                      <select
-                        className="su-select"
-                        value={u.role || 'VIEWER'}
-                        onChange={(e) =>
-                          updateUser(u.id, { role: e.target.value })
-                        }
-                      >
-                        {roles.map((r) => (
-                          <option key={r.id} value={r.slug}>
-                            {r.label} ({r.slug})
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="su-btn"
-                        style={{
-                          fontSize: 12,
-                          borderColor: '#fecaca',
-                          background: '#fef2f2',
-                          color: '#b91c1c',
-                        }}
-                        onClick={() => deleteUser(u.id)}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {filteredUsers().length === 0 && !loading && (
+                {usersToRender.map((u) => {
+                  const nameDraft = getNameDraft(u);
+                  const dirty = isNameDirty(u);
+                  const nameSaving = !!nameSavingById[u.id];
+
+                  return (
+                    <tr key={u.id}>
+                      <td>{u.email}</td>
+
+                      {/* ✅ Editable Name column */}
+                      <td>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <input
+                            className="su-input"
+                            value={nameDraft}
+                            placeholder="(no name)"
+                            onChange={(e) => setDraft(u.id, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                saveName(u);
+                              }
+                              if (e.key === 'Escape') {
+                                e.preventDefault();
+                                cancelNameEdit(u);
+                              }
+                            }}
+                            style={{ minWidth: 180 }}
+                          />
+
+                          <button
+                            type="button"
+                            className="su-btn primary"
+                            disabled={!dirty || nameSaving}
+                            onClick={() => saveName(u)}
+                            style={{ fontSize: 12, padding: '6px 10px' }}
+                          >
+                            {nameSaving ? 'Saving…' : 'Save'}
+                          </button>
+
+                          {dirty && !nameSaving && (
+                            <button
+                              type="button"
+                              className="su-btn"
+                              onClick={() => cancelNameEdit(u)}
+                              style={{ fontSize: 12, padding: '6px 10px' }}
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+                      </td>
+
+                      <td>
+                        <select
+                          className="su-select"
+                          value={u.role || 'VIEWER'}
+                          onChange={(e) =>
+                            updateUser(u.id, { role: e.target.value })
+                          }
+                        >
+                          {roles.map((r) => (
+                            <option key={r.id} value={r.slug}>
+                              {r.label} ({r.slug})
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+
+                      <td>
+                        <button
+                          type="button"
+                          className="su-btn"
+                          style={{
+                            fontSize: 12,
+                            borderColor: '#fecaca',
+                            background: '#fef2f2',
+                            color: '#b91c1c',
+                          }}
+                          onClick={() => deleteUser(u.id)}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {usersToRender.length === 0 && !loading && (
                   <tr>
                     <td colSpan={4} style={{ padding: '12px 0', opacity: 0.75 }}>
                       No users found.
